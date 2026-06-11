@@ -1,0 +1,83 @@
+{
+  "title": "Schema for fixtures/documents.json",
+  "description": "Document corpus. Every document carries the full key set Document.to_dict() emits (supersedes and subject_id are present even when null). ACL rules carry rule_id and kind always, plus only the kind-specific payload keys AclRule.to_dict() kept.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["documents"],
+  "properties": {
+    "documents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "source",
+          "title",
+          "body",
+          "author_id",
+          "department",
+          "created_at",
+          "sensitivity",
+          "acl_refs",
+          "version",
+          "supersedes",
+          "doc_type",
+          "subject_id"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "body": { "type": "string", "minLength": 1 },
+          "author_id": { "type": "string", "minLength": 1 },
+          "department": { "type": "string", "minLength": 1 },
+          "created_at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$"
+          },
+          "sensitivity": {
+            "type": "string",
+            "enum": ["public", "internal", "confidential", "restricted", "special_category"]
+          },
+          "acl_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["rule_id", "kind"],
+              "properties": {
+                "rule_id": { "type": "string", "minLength": 1 },
+                "kind": {
+                  "type": "string",
+                  "enum": ["public", "group", "role", "attr_site", "attr_band_min"]
+                },
+                "group": { "type": "string", "minLength": 1 },
+                "role": { "type": "string", "minLength": 1 },
+                "site": { "type": "string", "minLength": 1 },
+                "min_band": { "type": "integer", "minimum": 1, "maximum": 5 }
+              }
+            }
+          },
+          "version": { "type": "integer", "minimum": 1 },
+          "supersedes": { "type": ["string", "null"], "minLength": 1 },
+          "doc_type": {
+            "type": "string",
+            "enum": [
+              "sop",
+              "quality_record",
+              "hr_record",
+              "board_minutes",
+              "customer_account",
+              "wiki_page",
+              "mail_thread",
+              "general"
+            ]
+          },
+          "subject_id": { "type": ["string", "null"], "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "title": "Schema for fixtures/company.json",
+  "description": "Org fixture: company header, sites, the eight departments, people, groups, agent principals and the five sources. Object shapes mirror synth.model to_dict() output exactly; optional keys appear only where to_dict() omits None values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["company", "sites", "departments", "people", "groups", "agents", "sources"],
+  "properties": {
+    "company": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fictional", "regulatory_context"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "fictional": { "const": true },
+        "regulatory_context": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sites": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "departments": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "people": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "department",
+          "role",
+          "manager_id",
+          "employment_band",
+          "site",
+          "start_date",
+          "synthetic"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "department": { "type": "string", "minLength": 1 },
+          "role": { "type": "string", "minLength": 1 },
+          "manager_id": { "type": ["string", "null"], "minLength": 1 },
+          "employment_band": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "site": { "type": "string", "minLength": 1 },
+          "start_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+          "synthetic": { "const": true }
+        }
+      }
+    },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "description", "member_ids"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "member_ids": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "grant", "owner_user_id", "synthetic"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "grant": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["groups"],
+            "properties": {
+              "groups": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "site": { "type": "string", "minLength": 1 },
+              "employment_band": { "type": "integer", "minimum": 1, "maximum": 5 }
+            }
+          },
+          "owner_user_id": { "type": "string", "minLength": 1 },
+          "synthetic": { "const": true }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

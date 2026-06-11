@@ -1,0 +1,76 @@
+{
+  "title": "Schema for fixtures/oracle_stats.json",
+  "description": "Aggregate allow/deny statistics for the oracle. The five by_sensitivity buckets are written out longhand because this validator subset has no $ref. Rate ceilings themselves are policed by the allow-rate tests, not here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "total_pairs",
+    "allow_total",
+    "allow_rate",
+    "by_sensitivity",
+    "restricted_special_allow_rate"
+  ],
+  "properties": {
+    "total_pairs": { "type": "integer", "minimum": 0 },
+    "allow_total": { "type": "integer", "minimum": 0 },
+    "allow_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "by_sensitivity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["public", "internal", "confidential", "restricted", "special_category"],
+      "properties": {
+        "public": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pairs", "allows", "allow_rate"],
+          "properties": {
+            "pairs": { "type": "integer", "minimum": 0 },
+            "allows": { "type": "integer", "minimum": 0 },
+            "allow_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "internal": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pairs", "allows", "allow_rate"],
+          "properties": {
+            "pairs": { "type": "integer", "minimum": 0 },
+            "allows": { "type": "integer", "minimum": 0 },
+            "allow_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "confidential": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pairs", "allows", "allow_rate"],
+          "properties": {
+            "pairs": { "type": "integer", "minimum": 0 },
+            "allows": { "type": "integer", "minimum": 0 },
+            "allow_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "restricted": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pairs", "allows", "allow_rate"],
+          "properties": {
+            "pairs": { "type": "integer", "minimum": 0 },
+            "allows": { "type": "integer", "minimum": 0 },
+            "allow_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "special_category": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pairs", "allows", "allow_rate"],
+          "properties": {
+            "pairs": { "type": "integer", "minimum": 0 },
+            "allows": { "type": "integer", "minimum": 0 },
+            "allow_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+    "restricted_special_allow_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}

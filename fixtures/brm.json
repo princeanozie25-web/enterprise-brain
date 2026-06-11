@@ -1,0 +1,1488 @@
+{
+  "capabilities": [
+    {
+      "document_ids": [
+        "d0001",
+        "d0051",
+        "d0183",
+        "d0573"
+      ],
+      "id": "cap01",
+      "name": "Capability: Cold Storage Monitoring 01",
+      "workflow_id": "wf01"
+    },
+    {
+      "document_ids": [
+        "d0002",
+        "d0064",
+        "d0196",
+        "d0586"
+      ],
+      "id": "cap02",
+      "name": "Capability: Document Control 02",
+      "workflow_id": "wf02"
+    },
+    {
+      "document_ids": [
+        "d0003",
+        "d0077",
+        "d0209",
+        "d0599"
+      ],
+      "id": "cap03",
+      "name": "Capability: Pick Accuracy 03",
+      "workflow_id": "wf03"
+    },
+    {
+      "document_ids": [
+        "d0004",
+        "d0090",
+        "d0522"
+      ],
+      "id": "cap04",
+      "name": "Capability: Recall Execution 04",
+      "workflow_id": "wf04"
+    },
+    {
+      "document_ids": [
+        "d0005",
+        "d0145",
+        "d0535"
+      ],
+      "id": "cap05",
+      "name": "Capability: Account Onboarding 05",
+      "workflow_id": "wf05"
+    },
+    {
+      "document_ids": [
+        "d0006",
+        "d0158",
+        "d0548"
+      ],
+      "id": "cap06",
+      "name": "Capability: Payroll Processing 06",
+      "workflow_id": "wf06"
+    },
+    {
+      "document_ids": [
+        "d0007",
+        "d0171",
+        "d0561"
+      ],
+      "id": "cap07",
+      "name": "Capability: Access Review 07",
+      "workflow_id": "wf07"
+    },
+    {
+      "document_ids": [
+        "d0008",
+        "d0052",
+        "d0184",
+        "d0574"
+      ],
+      "id": "cap08",
+      "name": "Capability: Incident Triage 08",
+      "workflow_id": "wf08"
+    },
+    {
+      "document_ids": [
+        "d0009",
+        "d0065",
+        "d0197",
+        "d0587"
+      ],
+      "id": "cap09",
+      "name": "Capability: Fleet Telemetry 09",
+      "workflow_id": "wf09"
+    },
+    {
+      "document_ids": [
+        "d0010",
+        "d0078",
+        "d0210",
+        "d0600"
+      ],
+      "id": "cap10",
+      "name": "Capability: Shelf-Life Tracking 10",
+      "workflow_id": "wf10"
+    },
+    {
+      "document_ids": [
+        "d0011",
+        "d0133",
+        "d0523"
+      ],
+      "id": "cap11",
+      "name": "Capability: Controlled Drugs Handling 11",
+      "workflow_id": "wf11"
+    },
+    {
+      "document_ids": [
+        "d0012",
+        "d0146",
+        "d0536"
+      ],
+      "id": "cap12",
+      "name": "Capability: Quality Sign-Off 12",
+      "workflow_id": "wf12"
+    },
+    {
+      "document_ids": [
+        "d0013",
+        "d0159",
+        "d0549"
+      ],
+      "id": "cap13",
+      "name": "Capability: Cold Storage Monitoring 13",
+      "workflow_id": "wf13"
+    },
+    {
+      "document_ids": [
+        "d0014",
+        "d0172",
+        "d0562"
+      ],
+      "id": "cap14",
+      "name": "Capability: Document Control 14",
+      "workflow_id": "wf14"
+    },
+    {
+      "document_ids": [
+        "d0015",
+        "d0053",
+        "d0185",
+        "d0575"
+      ],
+      "id": "cap15",
+      "name": "Capability: Pick Accuracy 15",
+      "workflow_id": "wf15"
+    },
+    {
+      "document_ids": [
+        "d0016",
+        "d0066",
+        "d0198",
+        "d0588"
+      ],
+      "id": "cap16",
+      "name": "Capability: Recall Execution 16",
+      "workflow_id": "wf16"
+    },
+    {
+      "document_ids": [
+        "d0017",
+        "d0079",
+        "d0211"
+      ],
+      "id": "cap17",
+      "name": "Capability: Account Onboarding 17",
+      "workflow_id": "wf17"
+    },
+    {
+      "document_ids": [
+        "d0018",
+        "d0134",
+        "d0524"
+      ],
+      "id": "cap18",
+      "name": "Capability: Payroll Processing 18",
+      "workflow_id": "wf18"
+    },
+    {
+      "document_ids": [
+        "d0019",
+        "d0147",
+        "d0537"
+      ],
+      "id": "cap19",
+      "name": "Capability: Access Review 19",
+      "workflow_id": "wf19"
+    },
+    {
+      "document_ids": [
+        "d0020",
+        "d0160",
+        "d0550"
+      ],
+      "id": "cap20",
+      "name": "Capability: Incident Triage 20",
+      "workflow_id": "wf20"
+    },
+    {
+      "document_ids": [
+        "d0021",
+        "d0173",
+        "d0563"
+      ],
+      "id": "cap21",
+      "name": "Capability: Fleet Telemetry 21",
+      "workflow_id": "wf21"
+    },
+    {
+      "document_ids": [
+        "d0022",
+        "d0054",
+        "d0186",
+        "d0576"
+      ],
+      "id": "cap22",
+      "name": "Capability: Shelf-Life Tracking 22",
+      "workflow_id": "wf22"
+    },
+    {
+      "document_ids": [
+        "d0023",
+        "d0067",
+        "d0199",
+        "d0589"
+      ],
+      "id": "cap23",
+      "name": "Capability: Controlled Drugs Handling 23",
+      "workflow_id": "wf23"
+    },
+    {
+      "document_ids": [
+        "d0024",
+        "d0080",
+        "d0212"
+      ],
+      "id": "cap24",
+      "name": "Capability: Quality Sign-Off 24",
+      "workflow_id": "wf24"
+    },
+    {
+      "document_ids": [
+        "d0025",
+        "d0135",
+        "d0525"
+      ],
+      "id": "cap25",
+      "name": "Capability: Cold Storage Monitoring 25",
+      "workflow_id": "wf25"
+    },
+    {
+      "document_ids": [
+        "d0026",
+        "d0148",
+        "d0538"
+      ],
+      "id": "cap26",
+      "name": "Capability: Document Control 26",
+      "workflow_id": "wf26"
+    },
+    {
+      "document_ids": [
+        "d0027",
+        "d0161",
+        "d0551"
+      ],
+      "id": "cap27",
+      "name": "Capability: Pick Accuracy 27",
+      "workflow_id": "wf27"
+    },
+    {
+      "document_ids": [
+        "d0028",
+        "d0174",
+        "d0564"
+      ],
+      "id": "cap28",
+      "name": "Capability: Recall Execution 28",
+      "workflow_id": "wf28"
+    },
+    {
+      "document_ids": [
+        "d0029",
+        "d0055",
+        "d0187",
+        "d0577"
+      ],
+      "id": "cap29",
+      "name": "Capability: Account Onboarding 29",
+      "workflow_id": "wf29"
+    },
+    {
+      "document_ids": [
+        "d0030",
+        "d0068",
+        "d0200",
+        "d0590"
+      ],
+      "id": "cap30",
+      "name": "Capability: Payroll Processing 30",
+      "workflow_id": "wf30"
+    },
+    {
+      "document_ids": [
+        "d0031",
+        "d0081",
+        "d0513"
+      ],
+      "id": "cap31",
+      "name": "Capability: Access Review 31",
+      "workflow_id": "wf31"
+    },
+    {
+      "document_ids": [
+        "d0032",
+        "d0136",
+        "d0526"
+      ],
+      "id": "cap32",
+      "name": "Capability: Incident Triage 32",
+      "workflow_id": "wf32"
+    },
+    {
+      "document_ids": [
+        "d0033",
+        "d0149",
+        "d0539"
+      ],
+      "id": "cap33",
+      "name": "Capability: Fleet Telemetry 33",
+      "workflow_id": "wf33"
+    },
+    {
+      "document_ids": [
+        "d0034",
+        "d0162",
+        "d0552"
+      ],
+      "id": "cap34",
+      "name": "Capability: Shelf-Life Tracking 34",
+      "workflow_id": "wf34"
+    },
+    {
+      "document_ids": [
+        "d0035",
+        "d0175",
+        "d0565"
+      ],
+      "id": "cap35",
+      "name": "Capability: Controlled Drugs Handling 35",
+      "workflow_id": "wf35"
+    },
+    {
+      "document_ids": [
+        "d0036",
+        "d0056",
+        "d0188",
+        "d0578"
+      ],
+      "id": "cap36",
+      "name": "Capability: Quality Sign-Off 36",
+      "workflow_id": "wf36"
+    },
+    {
+      "document_ids": [
+        "d0037",
+        "d0069",
+        "d0201",
+        "d0591"
+      ],
+      "id": "cap37",
+      "name": "Capability: Cold Storage Monitoring 37",
+      "workflow_id": "wf37"
+    },
+    {
+      "document_ids": [
+        "d0038",
+        "d0082",
+        "d0514"
+      ],
+      "id": "cap38",
+      "name": "Capability: Document Control 38",
+      "workflow_id": "wf38"
+    },
+    {
+      "document_ids": [
+        "d0039",
+        "d0137",
+        "d0527"
+      ],
+      "id": "cap39",
+      "name": "Capability: Pick Accuracy 39",
+      "workflow_id": "wf39"
+    },
+    {
+      "document_ids": [
+        "d0040",
+        "d0150",
+        "d0540"
+      ],
+      "id": "cap40",
+      "name": "Capability: Recall Execution 40",
+      "workflow_id": "wf40"
+    },
+    {
+      "document_ids": [
+        "d0041",
+        "d0163",
+        "d0553"
+      ],
+      "id": "cap41",
+      "name": "Capability: Account Onboarding 41",
+      "workflow_id": "wf01"
+    },
+    {
+      "document_ids": [
+        "d0042",
+        "d0176",
+        "d0566"
+      ],
+      "id": "cap42",
+      "name": "Capability: Payroll Processing 42",
+      "workflow_id": "wf02"
+    },
+    {
+      "document_ids": [
+        "d0043",
+        "d0057",
+        "d0189",
+        "d0579"
+      ],
+      "id": "cap43",
+      "name": "Capability: Access Review 43",
+      "workflow_id": "wf03"
+    },
+    {
+      "document_ids": [
+        "d0044",
+        "d0070",
+        "d0202",
+        "d0592"
+      ],
+      "id": "cap44",
+      "name": "Capability: Incident Triage 44",
+      "workflow_id": "wf04"
+    },
+    {
+      "document_ids": [
+        "d0045",
+        "d0083",
+        "d0515"
+      ],
+      "id": "cap45",
+      "name": "Capability: Fleet Telemetry 45",
+      "workflow_id": "wf05"
+    },
+    {
+      "document_ids": [
+        "d0046",
+        "d0138",
+        "d0528"
+      ],
+      "id": "cap46",
+      "name": "Capability: Shelf-Life Tracking 46",
+      "workflow_id": "wf06"
+    },
+    {
+      "document_ids": [
+        "d0047",
+        "d0151",
+        "d0541"
+      ],
+      "id": "cap47",
+      "name": "Capability: Controlled Drugs Handling 47",
+      "workflow_id": "wf07"
+    },
+    {
+      "document_ids": [
+        "d0048",
+        "d0164",
+        "d0554"
+      ],
+      "id": "cap48",
+      "name": "Capability: Quality Sign-Off 48",
+      "workflow_id": "wf08"
+    },
+    {
+      "document_ids": [
+        "d0049",
+        "d0177",
+        "d0567"
+      ],
+      "id": "cap49",
+      "name": "Capability: Cold Storage Monitoring 49",
+      "workflow_id": "wf09"
+    },
+    {
+      "document_ids": [
+        "d0050",
+        "d0058",
+        "d0190",
+        "d0580"
+      ],
+      "id": "cap50",
+      "name": "Capability: Document Control 50",
+      "workflow_id": "wf10"
+    },
+    {
+      "document_ids": [
+        "d0071",
+        "d0203",
+        "d0593"
+      ],
+      "id": "cap51",
+      "name": "Capability: Pick Accuracy 51",
+      "workflow_id": "wf11"
+    },
+    {
+      "document_ids": [
+        "d0084",
+        "d0516"
+      ],
+      "id": "cap52",
+      "name": "Capability: Recall Execution 52",
+      "workflow_id": "wf12"
+    },
+    {
+      "document_ids": [
+        "d0139",
+        "d0529"
+      ],
+      "id": "cap53",
+      "name": "Capability: Account Onboarding 53",
+      "workflow_id": "wf13"
+    },
+    {
+      "document_ids": [
+        "d0152",
+        "d0542"
+      ],
+      "id": "cap54",
+      "name": "Capability: Payroll Processing 54",
+      "workflow_id": "wf14"
+    },
+    {
+      "document_ids": [
+        "d0165",
+        "d0555"
+      ],
+      "id": "cap55",
+      "name": "Capability: Access Review 55",
+      "workflow_id": "wf15"
+    },
+    {
+      "document_ids": [
+        "d0178",
+        "d0568"
+      ],
+      "id": "cap56",
+      "name": "Capability: Incident Triage 56",
+      "workflow_id": "wf16"
+    },
+    {
+      "document_ids": [
+        "d0059",
+        "d0191",
+        "d0581"
+      ],
+      "id": "cap57",
+      "name": "Capability: Fleet Telemetry 57",
+      "workflow_id": "wf17"
+    },
+    {
+      "document_ids": [
+        "d0072",
+        "d0204",
+        "d0594"
+      ],
+      "id": "cap58",
+      "name": "Capability: Shelf-Life Tracking 58",
+      "workflow_id": "wf18"
+    },
+    {
+      "document_ids": [
+        "d0085",
+        "d0517"
+      ],
+      "id": "cap59",
+      "name": "Capability: Controlled Drugs Handling 59",
+      "workflow_id": "wf19"
+    },
+    {
+      "document_ids": [
+        "d0140",
+        "d0530"
+      ],
+      "id": "cap60",
+      "name": "Capability: Quality Sign-Off 60",
+      "workflow_id": "wf20"
+    },
+    {
+      "document_ids": [
+        "d0153",
+        "d0543"
+      ],
+      "id": "cap61",
+      "name": "Capability: Cold Storage Monitoring 61",
+      "workflow_id": "wf21"
+    },
+    {
+      "document_ids": [
+        "d0166",
+        "d0556"
+      ],
+      "id": "cap62",
+      "name": "Capability: Document Control 62",
+      "workflow_id": "wf22"
+    },
+    {
+      "document_ids": [
+        "d0179",
+        "d0569"
+      ],
+      "id": "cap63",
+      "name": "Capability: Pick Accuracy 63",
+      "workflow_id": "wf23"
+    },
+    {
+      "document_ids": [
+        "d0060",
+        "d0192",
+        "d0582"
+      ],
+      "id": "cap64",
+      "name": "Capability: Recall Execution 64",
+      "workflow_id": "wf24"
+    },
+    {
+      "document_ids": [
+        "d0073",
+        "d0205",
+        "d0595"
+      ],
+      "id": "cap65",
+      "name": "Capability: Account Onboarding 65",
+      "workflow_id": "wf25"
+    },
+    {
+      "document_ids": [
+        "d0086",
+        "d0518"
+      ],
+      "id": "cap66",
+      "name": "Capability: Payroll Processing 66",
+      "workflow_id": "wf26"
+    },
+    {
+      "document_ids": [
+        "d0141",
+        "d0531"
+      ],
+      "id": "cap67",
+      "name": "Capability: Access Review 67",
+      "workflow_id": "wf27"
+    },
+    {
+      "document_ids": [
+        "d0154",
+        "d0544"
+      ],
+      "id": "cap68",
+      "name": "Capability: Incident Triage 68",
+      "workflow_id": "wf28"
+    },
+    {
+      "document_ids": [
+        "d0167",
+        "d0557"
+      ],
+      "id": "cap69",
+      "name": "Capability: Fleet Telemetry 69",
+      "workflow_id": "wf29"
+    },
+    {
+      "document_ids": [
+        "d0180",
+        "d0570"
+      ],
+      "id": "cap70",
+      "name": "Capability: Shelf-Life Tracking 70",
+      "workflow_id": "wf30"
+    },
+    {
+      "document_ids": [
+        "d0061",
+        "d0193",
+        "d0583"
+      ],
+      "id": "cap71",
+      "name": "Capability: Controlled Drugs Handling 71",
+      "workflow_id": "wf31"
+    },
+    {
+      "document_ids": [
+        "d0074",
+        "d0206",
+        "d0596"
+      ],
+      "id": "cap72",
+      "name": "Capability: Quality Sign-Off 72",
+      "workflow_id": "wf32"
+    },
+    {
+      "document_ids": [
+        "d0087",
+        "d0519"
+      ],
+      "id": "cap73",
+      "name": "Capability: Cold Storage Monitoring 73",
+      "workflow_id": "wf33"
+    },
+    {
+      "document_ids": [
+        "d0142",
+        "d0532"
+      ],
+      "id": "cap74",
+      "name": "Capability: Document Control 74",
+      "workflow_id": "wf34"
+    },
+    {
+      "document_ids": [
+        "d0155",
+        "d0545"
+      ],
+      "id": "cap75",
+      "name": "Capability: Pick Accuracy 75",
+      "workflow_id": "wf35"
+    },
+    {
+      "document_ids": [
+        "d0168",
+        "d0558"
+      ],
+      "id": "cap76",
+      "name": "Capability: Recall Execution 76",
+      "workflow_id": "wf36"
+    },
+    {
+      "document_ids": [
+        "d0181",
+        "d0571"
+      ],
+      "id": "cap77",
+      "name": "Capability: Account Onboarding 77",
+      "workflow_id": "wf37"
+    },
+    {
+      "document_ids": [
+        "d0062",
+        "d0194",
+        "d0584"
+      ],
+      "id": "cap78",
+      "name": "Capability: Payroll Processing 78",
+      "workflow_id": "wf38"
+    },
+    {
+      "document_ids": [
+        "d0075",
+        "d0207",
+        "d0597"
+      ],
+      "id": "cap79",
+      "name": "Capability: Access Review 79",
+      "workflow_id": "wf39"
+    },
+    {
+      "document_ids": [
+        "d0088",
+        "d0520"
+      ],
+      "id": "cap80",
+      "name": "Capability: Incident Triage 80",
+      "workflow_id": "wf40"
+    },
+    {
+      "document_ids": [
+        "d0143",
+        "d0533"
+      ],
+      "id": "cap81",
+      "name": "Capability: Fleet Telemetry 81",
+      "workflow_id": "wf01"
+    },
+    {
+      "document_ids": [
+        "d0156",
+        "d0546"
+      ],
+      "id": "cap82",
+      "name": "Capability: Shelf-Life Tracking 82",
+      "workflow_id": "wf02"
+    },
+    {
+      "document_ids": [
+        "d0169",
+        "d0559"
+      ],
+      "id": "cap83",
+      "name": "Capability: Controlled Drugs Handling 83",
+      "workflow_id": "wf03"
+    },
+    {
+      "document_ids": [
+        "d0182",
+        "d0572"
+      ],
+      "id": "cap84",
+      "name": "Capability: Quality Sign-Off 84",
+      "workflow_id": "wf04"
+    },
+    {
+      "document_ids": [
+        "d0063",
+        "d0195",
+        "d0585"
+      ],
+      "id": "cap85",
+      "name": "Capability: Cold Storage Monitoring 85",
+      "workflow_id": "wf05"
+    },
+    {
+      "document_ids": [
+        "d0076",
+        "d0208",
+        "d0598"
+      ],
+      "id": "cap86",
+      "name": "Capability: Document Control 86",
+      "workflow_id": "wf06"
+    },
+    {
+      "document_ids": [
+        "d0089",
+        "d0521"
+      ],
+      "id": "cap87",
+      "name": "Capability: Pick Accuracy 87",
+      "workflow_id": "wf07"
+    },
+    {
+      "document_ids": [
+        "d0144",
+        "d0534"
+      ],
+      "id": "cap88",
+      "name": "Capability: Recall Execution 88",
+      "workflow_id": "wf08"
+    },
+    {
+      "document_ids": [
+        "d0157",
+        "d0547"
+      ],
+      "id": "cap89",
+      "name": "Capability: Account Onboarding 89",
+      "workflow_id": "wf09"
+    },
+    {
+      "document_ids": [
+        "d0170",
+        "d0560"
+      ],
+      "id": "cap90",
+      "name": "Capability: Payroll Processing 90",
+      "workflow_id": "wf10"
+    }
+  ],
+  "initiatives": [
+    {
+      "id": "init01",
+      "name": "Strengthen Resilient Cold Chain",
+      "strategy_id": "strat01",
+      "workflow_ids": [
+        "wf01",
+        "wf19",
+        "wf37"
+      ]
+    },
+    {
+      "id": "init02",
+      "name": "Automate Resilient Cold Chain",
+      "strategy_id": "strat01",
+      "workflow_ids": [
+        "wf02",
+        "wf20",
+        "wf38"
+      ]
+    },
+    {
+      "id": "init03",
+      "name": "Standardise Resilient Cold Chain",
+      "strategy_id": "strat01",
+      "workflow_ids": [
+        "wf03",
+        "wf21",
+        "wf39"
+      ]
+    },
+    {
+      "id": "init04",
+      "name": "Audit Digital Traceability",
+      "strategy_id": "strat02",
+      "workflow_ids": [
+        "wf04",
+        "wf22",
+        "wf40"
+      ]
+    },
+    {
+      "id": "init05",
+      "name": "Expand Digital Traceability",
+      "strategy_id": "strat02",
+      "workflow_ids": [
+        "wf05",
+        "wf23"
+      ]
+    },
+    {
+      "id": "init06",
+      "name": "Consolidate Digital Traceability",
+      "strategy_id": "strat02",
+      "workflow_ids": [
+        "wf06",
+        "wf24"
+      ]
+    },
+    {
+      "id": "init07",
+      "name": "Strengthen Regulatory Excellence",
+      "strategy_id": "strat03",
+      "workflow_ids": [
+        "wf07",
+        "wf25"
+      ]
+    },
+    {
+      "id": "init08",
+      "name": "Automate Regulatory Excellence",
+      "strategy_id": "strat03",
+      "workflow_ids": [
+        "wf08",
+        "wf26"
+      ]
+    },
+    {
+      "id": "init09",
+      "name": "Standardise Regulatory Excellence",
+      "strategy_id": "strat03",
+      "workflow_ids": [
+        "wf09",
+        "wf27"
+      ]
+    },
+    {
+      "id": "init10",
+      "name": "Audit Customer Service Reliability",
+      "strategy_id": "strat04",
+      "workflow_ids": [
+        "wf10",
+        "wf28"
+      ]
+    },
+    {
+      "id": "init11",
+      "name": "Expand Customer Service Reliability",
+      "strategy_id": "strat04",
+      "workflow_ids": [
+        "wf11",
+        "wf29"
+      ]
+    },
+    {
+      "id": "init12",
+      "name": "Consolidate Customer Service Reliability",
+      "strategy_id": "strat04",
+      "workflow_ids": [
+        "wf12",
+        "wf30"
+      ]
+    },
+    {
+      "id": "init13",
+      "name": "Strengthen Workforce Capability",
+      "strategy_id": "strat05",
+      "workflow_ids": [
+        "wf13",
+        "wf31"
+      ]
+    },
+    {
+      "id": "init14",
+      "name": "Automate Workforce Capability",
+      "strategy_id": "strat05",
+      "workflow_ids": [
+        "wf14",
+        "wf32"
+      ]
+    },
+    {
+      "id": "init15",
+      "name": "Standardise Workforce Capability",
+      "strategy_id": "strat05",
+      "workflow_ids": [
+        "wf15",
+        "wf33"
+      ]
+    },
+    {
+      "id": "init16",
+      "name": "Audit Network Efficiency",
+      "strategy_id": "strat06",
+      "workflow_ids": [
+        "wf16",
+        "wf34"
+      ]
+    },
+    {
+      "id": "init17",
+      "name": "Expand Network Efficiency",
+      "strategy_id": "strat06",
+      "workflow_ids": [
+        "wf17",
+        "wf35"
+      ]
+    },
+    {
+      "id": "init18",
+      "name": "Consolidate Network Efficiency",
+      "strategy_id": "strat06",
+      "workflow_ids": [
+        "wf18",
+        "wf36"
+      ]
+    }
+  ],
+  "strategies": [
+    {
+      "id": "strat01",
+      "initiative_ids": [
+        "init01",
+        "init02",
+        "init03"
+      ],
+      "name": "Strategy: Resilient Cold Chain"
+    },
+    {
+      "id": "strat02",
+      "initiative_ids": [
+        "init04",
+        "init05",
+        "init06"
+      ],
+      "name": "Strategy: Digital Traceability"
+    },
+    {
+      "id": "strat03",
+      "initiative_ids": [
+        "init07",
+        "init08",
+        "init09"
+      ],
+      "name": "Strategy: Regulatory Excellence"
+    },
+    {
+      "id": "strat04",
+      "initiative_ids": [
+        "init10",
+        "init11",
+        "init12"
+      ],
+      "name": "Strategy: Customer Service Reliability"
+    },
+    {
+      "id": "strat05",
+      "initiative_ids": [
+        "init13",
+        "init14",
+        "init15"
+      ],
+      "name": "Strategy: Workforce Capability"
+    },
+    {
+      "id": "strat06",
+      "initiative_ids": [
+        "init16",
+        "init17",
+        "init18"
+      ],
+      "name": "Strategy: Network Efficiency"
+    }
+  ],
+  "workflows": [
+    {
+      "capability_ids": [
+        "cap01",
+        "cap41",
+        "cap81"
+      ],
+      "id": "wf01",
+      "initiative_id": "init01",
+      "name": "Workflow: Goods-In Verification 01"
+    },
+    {
+      "capability_ids": [
+        "cap02",
+        "cap42",
+        "cap82"
+      ],
+      "id": "wf02",
+      "initiative_id": "init02",
+      "name": "Workflow: Temperature Excursion Response 02"
+    },
+    {
+      "capability_ids": [
+        "cap03",
+        "cap43",
+        "cap83"
+      ],
+      "id": "wf03",
+      "initiative_id": "init03",
+      "name": "Workflow: Batch Release Review 03"
+    },
+    {
+      "capability_ids": [
+        "cap04",
+        "cap44",
+        "cap84"
+      ],
+      "id": "wf04",
+      "initiative_id": "init04",
+      "name": "Workflow: Customer Credit Review 04"
+    },
+    {
+      "capability_ids": [
+        "cap05",
+        "cap45",
+        "cap85"
+      ],
+      "id": "wf05",
+      "initiative_id": "init05",
+      "name": "Workflow: Returns Quarantine 05"
+    },
+    {
+      "capability_ids": [
+        "cap06",
+        "cap46",
+        "cap86"
+      ],
+      "id": "wf06",
+      "initiative_id": "init06",
+      "name": "Workflow: Licence Renewal 06"
+    },
+    {
+      "capability_ids": [
+        "cap07",
+        "cap47",
+        "cap87"
+      ],
+      "id": "wf07",
+      "initiative_id": "init07",
+      "name": "Workflow: Stock Reconciliation 07"
+    },
+    {
+      "capability_ids": [
+        "cap08",
+        "cap48",
+        "cap88"
+      ],
+      "id": "wf08",
+      "initiative_id": "init08",
+      "name": "Workflow: Delivery Scheduling 08"
+    },
+    {
+      "capability_ids": [
+        "cap09",
+        "cap49",
+        "cap89"
+      ],
+      "id": "wf09",
+      "initiative_id": "init09",
+      "name": "Workflow: Supplier Qualification 09"
+    },
+    {
+      "capability_ids": [
+        "cap10",
+        "cap50",
+        "cap90"
+      ],
+      "id": "wf10",
+      "initiative_id": "init10",
+      "name": "Workflow: Deviation Handling 10"
+    },
+    {
+      "capability_ids": [
+        "cap11",
+        "cap51"
+      ],
+      "id": "wf11",
+      "initiative_id": "init11",
+      "name": "Workflow: Goods-In Verification 11"
+    },
+    {
+      "capability_ids": [
+        "cap12",
+        "cap52"
+      ],
+      "id": "wf12",
+      "initiative_id": "init12",
+      "name": "Workflow: Temperature Excursion Response 12"
+    },
+    {
+      "capability_ids": [
+        "cap13",
+        "cap53"
+      ],
+      "id": "wf13",
+      "initiative_id": "init13",
+      "name": "Workflow: Batch Release Review 13"
+    },
+    {
+      "capability_ids": [
+        "cap14",
+        "cap54"
+      ],
+      "id": "wf14",
+      "initiative_id": "init14",
+      "name": "Workflow: Customer Credit Review 14"
+    },
+    {
+      "capability_ids": [
+        "cap15",
+        "cap55"
+      ],
+      "id": "wf15",
+      "initiative_id": "init15",
+      "name": "Workflow: Returns Quarantine 15"
+    },
+    {
+      "capability_ids": [
+        "cap16",
+        "cap56"
+      ],
+      "id": "wf16",
+      "initiative_id": "init16",
+      "name": "Workflow: Licence Renewal 16"
+    },
+    {
+      "capability_ids": [
+        "cap17",
+        "cap57"
+      ],
+      "id": "wf17",
+      "initiative_id": "init17",
+      "name": "Workflow: Stock Reconciliation 17"
+    },
+    {
+      "capability_ids": [
+        "cap18",
+        "cap58"
+      ],
+      "id": "wf18",
+      "initiative_id": "init18",
+      "name": "Workflow: Delivery Scheduling 18"
+    },
+    {
+      "capability_ids": [
+        "cap19",
+        "cap59"
+      ],
+      "id": "wf19",
+      "initiative_id": "init01",
+      "name": "Workflow: Supplier Qualification 19"
+    },
+    {
+      "capability_ids": [
+        "cap20",
+        "cap60"
+      ],
+      "id": "wf20",
+      "initiative_id": "init02",
+      "name": "Workflow: Deviation Handling 20"
+    },
+    {
+      "capability_ids": [
+        "cap21",
+        "cap61"
+      ],
+      "id": "wf21",
+      "initiative_id": "init03",
+      "name": "Workflow: Goods-In Verification 21"
+    },
+    {
+      "capability_ids": [
+        "cap22",
+        "cap62"
+      ],
+      "id": "wf22",
+      "initiative_id": "init04",
+      "name": "Workflow: Temperature Excursion Response 22"
+    },
+    {
+      "capability_ids": [
+        "cap23",
+        "cap63"
+      ],
+      "id": "wf23",
+      "initiative_id": "init05",
+      "name": "Workflow: Batch Release Review 23"
+    },
+    {
+      "capability_ids": [
+        "cap24",
+        "cap64"
+      ],
+      "id": "wf24",
+      "initiative_id": "init06",
+      "name": "Workflow: Customer Credit Review 24"
+    },
+    {
+      "capability_ids": [
+        "cap25",
+        "cap65"
+      ],
+      "id": "wf25",
+      "initiative_id": "init07",
+      "name": "Workflow: Returns Quarantine 25"
+    },
+    {
+      "capability_ids": [
+        "cap26",
+        "cap66"
+      ],
+      "id": "wf26",
+      "initiative_id": "init08",
+      "name": "Workflow: Licence Renewal 26"
+    },
+    {
+      "capability_ids": [
+        "cap27",
+        "cap67"
+      ],
+      "id": "wf27",
+      "initiative_id": "init09",
+      "name": "Workflow: Stock Reconciliation 27"
+    },
+    {
+      "capability_ids": [
+        "cap28",
+        "cap68"
+      ],
+      "id": "wf28",
+      "initiative_id": "init10",
+      "name": "Workflow: Delivery Scheduling 28"
+    },
+    {
+      "capability_ids": [
+        "cap29",
+        "cap69"
+      ],
+      "id": "wf29",
+      "initiative_id": "init11",
+      "name": "Workflow: Supplier Qualification 29"
+    },
+    {
+      "capability_ids": [
+        "cap30",
+        "cap70"
+      ],
+      "id": "wf30",
+      "initiative_id": "init12",
+      "name": "Workflow: Deviation Handling 30"
+    },
+    {
+      "capability_ids": [
+        "cap31",
+        "cap71"
+      ],
+      "id": "wf31",
+      "initiative_id": "init13",
+      "name": "Workflow: Goods-In Verification 31"
+    },
+    {
+      "capability_ids": [
+        "cap32",
+        "cap72"
+      ],
+      "id": "wf32",
+      "initiative_id": "init14",
+      "name": "Workflow: Temperature Excursion Response 32"
+    },
+    {
+      "capability_ids": [
+        "cap33",
+        "cap73"
+      ],
+      "id": "wf33",
+      "initiative_id": "init15",
+      "name": "Workflow: Batch Release Review 33"
+    },
+    {
+      "capability_ids": [
+        "cap34",
+        "cap74"
+      ],
+      "id": "wf34",
+      "initiative_id": "init16",
+      "name": "Workflow: Customer Credit Review 34"
+    },
+    {
+      "capability_ids": [
+        "cap35",
+        "cap75"
+      ],
+      "id": "wf35",
+      "initiative_id": "init17",
+      "name": "Workflow: Returns Quarantine 35"
+    },
+    {
+      "capability_ids": [
+        "cap36",
+        "cap76"
+      ],
+      "id": "wf36",
+      "initiative_id": "init18",
+      "name": "Workflow: Licence Renewal 36"
+    },
+    {
+      "capability_ids": [
+        "cap37",
+        "cap77"
+      ],
+      "id": "wf37",
+      "initiative_id": "init01",
+      "name": "Workflow: Stock Reconciliation 37"
+    },
+    {
+      "capability_ids": [
+        "cap38",
+        "cap78"
+      ],
+      "id": "wf38",
+      "initiative_id": "init02",
+      "name": "Workflow: Delivery Scheduling 38"
+    },
+    {
+      "capability_ids": [
+        "cap39",
+        "cap79"
+      ],
+      "id": "wf39",
+      "initiative_id": "init03",
+      "name": "Workflow: Supplier Qualification 39"
+    },
+    {
+      "capability_ids": [
+        "cap40",
+        "cap80"
+      ],
+      "id": "wf40",
+      "initiative_id": "init04",
+      "name": "Workflow: Deviation Handling 40"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+[project]
+name = "enterprise-brain-m0"
+version = "0.1.0"
+description = "M0: deterministic synthetic-company generator with a ground-truth access-control oracle"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+addopts = "-q"

@@ -1,0 +1,33 @@
+{
+  "allow_rate": 0.226895,
+  "allow_total": 16881,
+  "by_sensitivity": {
+    "confidential": {
+      "allow_rate": 0.140165,
+      "allows": 1599,
+      "pairs": 11408
+    },
+    "internal": {
+      "allow_rate": 0.151359,
+      "allows": 7620,
+      "pairs": 50344
+    },
+    "public": {
+      "allow_rate": 1.0,
+      "allows": 7440,
+      "pairs": 7440
+    },
+    "restricted": {
+      "allow_rate": 0.048387,
+      "allows": 72,
+      "pairs": 1488
+    },
+    "special_category": {
+      "allow_rate": 0.040323,
+      "allows": 150,
+      "pairs": 3720
+    }
+  },
+  "restricted_special_allow_rate": 0.042627,
+  "total_pairs": 74400
+}

@@ -1,0 +1,81 @@
+{
+  "title": "Schema for fixtures/traps.json",
+  "description": "Planted leak traps. Counts are policed by the trap-presence tests against synth.constants minimums; the schema only requires each family to be a non-empty array of well-formed records.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["effective_version", "mosaic", "confused_deputy", "manager_overreach", "cross_site"],
+  "properties": {
+    "effective_version": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["current_id", "superseded_id", "parameter_class"],
+        "properties": {
+          "current_id": { "type": "string", "minLength": 1 },
+          "superseded_id": { "type": "string", "minLength": 1 },
+          "parameter_class": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "mosaic": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["doc_a", "doc_b", "principal_id", "inferred_fact_class"],
+        "properties": {
+          "doc_a": { "type": "string", "minLength": 1 },
+          "doc_b": { "type": "string", "minLength": 1 },
+          "principal_id": { "type": "string", "minLength": 1 },
+          "inferred_fact_class": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "confused_deputy": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["agent_id", "owner_id", "resource_id"],
+        "properties": {
+          "agent_id": { "type": "string", "minLength": 1 },
+          "owner_id": { "type": "string", "minLength": 1 },
+          "resource_id": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "manager_overreach": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["manager_id", "subject_id", "resource_id"],
+        "properties": {
+          "manager_id": { "type": "string", "minLength": 1 },
+          "subject_id": { "type": "string", "minLength": 1 },
+          "resource_id": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "cross_site": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["principal_id", "resource_id", "required_site", "principal_site"],
+        "properties": {
+          "principal_id": { "type": "string", "minLength": 1 },
+          "resource_id": { "type": "string", "minLength": 1 },
+          "required_site": { "type": "string", "minLength": 1 },
+          "principal_site": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

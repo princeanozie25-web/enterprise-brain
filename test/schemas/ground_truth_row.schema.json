@@ -1,0 +1,17 @@
+{
+  "title": "Schema for one line of fixtures/ground_truth.jsonl",
+  "description": "One oracle decision per line: principal x resource with an ALLOW/DENY verdict and at least one non-empty reason string.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["principal_id", "resource_id", "decision", "reasons"],
+  "properties": {
+    "principal_id": { "type": "string", "minLength": 1 },
+    "resource_id": { "type": "string", "minLength": 1 },
+    "decision": { "type": "string", "enum": ["ALLOW", "DENY"] },
+    "reasons": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}
