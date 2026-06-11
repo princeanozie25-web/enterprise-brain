@@ -7,7 +7,9 @@ Also sweeps the generation-path DO-NOTs (no wall clocks, no network, synthetic
 flags, no cross-domain body leaks).
 """
 
+import io
 import re
+import tokenize
 from pathlib import Path
 
 SYNTH_DIR = Path(__file__).resolve().parent.parent / "synth"
@@ -106,16 +108,24 @@ def test_full_matrix_matches_independent_rederivation(company, documents, ground
 
 def test_do_not_sweeps(company, documents) -> None:
     # Generation paths: no wall clocks, no randomness outside the seeded RNG,
-    # no network machinery of any kind.
+    # no network machinery of any kind. Docstrings/comments legitimately STATE
+    # these prohibitions, so strip all strings and comments via tokenize and
+    # scan only executable code.
+    def code_only(text: str) -> str:
+        tokens = tokenize.generate_tokens(io.StringIO(text).readline)
+        return " ".join(
+            t.string for t in tokens if t.type not in (tokenize.COMMENT, tokenize.STRING)
+        )
+
     forbidden = [
-        r"datetime\.now", r"date\.today", r"\btime\.time\b", r"uuid\.",
-        r"os\.urandom", r"\burllib\b", r"\brequests\b", r"\bsocket\b",
-        r"\bhttp\.client\b", r"random\.seed\(",
+        r"datetime\s*\.\s*now", r"date\s*\.\s*today", r"\btime\s*\.\s*time\b",
+        r"\buuid\b", r"\burandom\b", r"random\s*\.\s*seed",
+        r"\b(?:import|from)\s+(?:urllib|requests|socket|http)\b",
     ]
     for path in sorted(SYNTH_DIR.glob("*.py")):
-        text = path.read_text(encoding="utf-8")
+        code = code_only(path.read_text(encoding="utf-8"))
         for pattern in forbidden:
-            assert not re.search(pattern, text), f"{pattern} found in {path.name}"
+            assert not re.search(pattern, code), f"{pattern} found in {path.name}"
 
     # Every principal record is flagged synthetic.
     for record in company["people"] + company["agents"]:
