@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "@/lib/api";
 import type { AtlasResponse, DocCard, LensDoc, LensResponse, LensSection } from "@/lib/api";
 import { PRINCIPALS } from "@/lib/principals";
 import { COLOR, TYPE } from "@/lib/tokens";
 import { AgentEmblem } from "./AgentEmblem";
+import { DiffView } from "./DiffView";
 import { DocInspector } from "./DocInspector";
 import { EgoGraph } from "./EgoGraph";
 import { SensitivityBadge } from "./SensitivityBadge";
@@ -18,13 +19,23 @@ import { Skeleton } from "./Skeleton";
  * server-side before anything renders, and stated plainly here — a quiet
  * line, neutral register, not a warning.
  */
-export function LensRoom({ actor }: { actor: string | null }) {
+export function LensRoom({
+  actor,
+  entryDiff = null,
+}: {
+  actor: string | null;
+  /** /lens?diff=… — the compare entry door; opens the diff view once. */
+  entryDiff?: string | null;
+}) {
   const [subject, setSubject] = useState<string | null>(actor);
   const [lens, setLens] = useState<LensResponse | null>(null);
   const [atlas, setAtlas] = useState<AtlasResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
   const [subjectSearch, setSubjectSearch] = useState("");
+  const [diffRight, setDiffRight] = useState<string | null>(null);
+  const [compareSearch, setCompareSearch] = useState("");
+  const entryDiffSpent = useRef(false);
   const [inspector, setInspector] = useState<{
     open: boolean;
     loading: boolean;
@@ -35,7 +46,23 @@ export function LensRoom({ actor }: { actor: string | null }) {
     setSubject(actor);
   }, [actor]);
 
+  // The entry door is spent on first use; an actor switch remounts the room
+  // (key={principal}) and Console drops the door, so a diff never survives
+  // a lens change.
   useEffect(() => {
+    if (entryDiffSpent.current || entryDiff === null) {
+      return;
+    }
+    entryDiffSpent.current = true;
+    setDiffRight(entryDiff);
+  }, [entryDiff]);
+
+  useEffect(() => {
+    if (diffRight !== null) {
+      // The diff view owns the room; the lens body refetches fresh when it
+      // returns (diffRight back to null re-runs this effect).
+      return;
+    }
     if (actor === null || subject === null) {
       setLens(null);
       return;
@@ -66,7 +93,7 @@ export function LensRoom({ actor }: { actor: string | null }) {
     return () => {
       cancelled = true;
     };
-  }, [actor, subject]);
+  }, [actor, subject, diffRight]);
 
   // AP-3: the actor's own atlas, fetched alongside the lens. It feeds the
   // ego-graph's capability ring and nothing else in this room.
@@ -162,6 +189,35 @@ export function LensRoom({ actor }: { actor: string | null }) {
     return PRINCIPALS.filter((p) => p.toLowerCase().includes(needle)).slice(0, 10);
   }, [subjectSearch]);
 
+  // AP-4: the Compare affordance. Choosing a principal renders the diff
+  // view and reflects it in the address bar — /lens?diff=<right> is the
+  // same entry door a fresh visit would use.
+  const compareMatches = useMemo(() => {
+    const needle = compareSearch.trim().toLowerCase();
+    if (needle.length === 0) {
+      return [];
+    }
+    return PRINCIPALS.filter(
+      (p) => p !== subject && p.toLowerCase().includes(needle),
+    ).slice(0, 10);
+  }, [compareSearch, subject]);
+
+  const chooseCompare = useCallback(
+    (right: string) => {
+      setCompareSearch("");
+      setDiffRight(right);
+      const carry = actor === null ? "" : `&as=${encodeURIComponent(actor)}`;
+      window.history.replaceState(null, "", `/lens?diff=${encodeURIComponent(right)}${carry}`);
+    },
+    [actor],
+  );
+
+  const closeDiff = useCallback(() => {
+    setDiffRight(null);
+    const carry = actor === null ? "" : `?as=${encodeURIComponent(actor)}`;
+    window.history.replaceState(null, "", `/lens${carry}`);
+  }, [actor]);
+
   const scrollToSection = useCallback((groupId: string) => {
     // No motion: the budget animates the iris and nothing else.
     document
@@ -174,6 +230,29 @@ export function LensRoom({ actor }: { actor: string | null }) {
       <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="lens-room-empty">
         Select a lens to begin.
       </p>
+    );
+  }
+
+  // The diff view owns the room while open; leaving it returns to the
+  // subject's lens (closeDiff), and an actor switch remounts everything.
+  if (diffRight !== null && subject !== null) {
+    return (
+      <div data-testid="lens-room">
+        <DiffView
+          actor={actor}
+          left={subject}
+          right={diffRight}
+          onClose={closeDiff}
+          onOpenDoc={openDoc}
+        />
+        <DocInspector
+          open={inspector.open}
+          loading={inspector.loading}
+          card={inspector.card}
+          onClose={() => setInspector({ open: false, loading: false, card: null })}
+          onOpenDoc={openDoc}
+        />
+      </div>
     );
   }
 
@@ -261,6 +340,34 @@ export function LensRoom({ actor }: { actor: string | null }) {
                   {lens.subject.department}
                 </span>
               )}
+              {/* AP-4: the Compare affordance — the subject selector's
+                  anatomy, scoped to choosing the diff's right side. */}
+              <span className="relative ml-auto">
+                <input
+                  value={compareSearch}
+                  onChange={(e) => setCompareSearch(e.target.value)}
+                  placeholder="Compare with…"
+                  className="w-44 rounded px-2 py-1"
+                  style={{ fontSize: TYPE.scale.xs }}
+                  data-testid="compare-search"
+                />
+                {compareMatches.length > 0 && (
+                  <span className="ap-card ap-fade-view absolute right-0 z-10 mt-1 block w-44 rounded">
+                    {compareMatches.map((id) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => chooseCompare(id)}
+                        className="ap-washable ap-register-evidence block w-full truncate px-2 py-1 text-left"
+                        style={{ fontSize: TYPE.scale.xs }}
+                        data-testid="compare-row"
+                      >
+                        {id}
+                      </button>
+                    ))}
+                  </span>
+                )}
+              </span>
             </div>
             {lens.cross_lens && (
               <p

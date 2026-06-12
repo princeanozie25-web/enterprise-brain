@@ -15,6 +15,7 @@ pub mod answer;
 pub mod atlas;
 pub mod cache;
 pub mod cors;
+pub mod diff;
 pub mod generate;
 pub mod identity;
 pub mod lens;
@@ -444,6 +445,7 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/scope", get(handle_scope))
         .route("/healthz", get(handle_healthz))
         .route("/agent/{id}/run", post(handle_agent_run))
+        .route("/lens/diff", get(handle_lens_diff))
         .route("/lens/{id}", get(handle_lens))
         .route("/atlas", get(handle_atlas))
         .route("/proposals", get(handle_proposals_list))
@@ -593,6 +595,62 @@ async fn handle_lens(
         }
         Err(join_error) => {
             eprintln!("lens task failed: {join_error}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+    }
+}
+
+/// GET /lens/diff?left=<id>&right=<id> — the lens diff (AP-4): two
+/// principals side by side, set-exact against both compiled artifacts, one
+/// audited act. The static segment outranks /lens/{id} in the router, so
+/// "diff" is never a subject. Exactly the two parameters are accepted —
+/// anything else is a 400 in OUR error shape (a string map deserializes
+/// from any well-formed query, so axum's own rejection is unreachable in
+/// practice).
+async fn handle_lens_diff(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+    axum::extract::Query(params): axum::extract::Query<BTreeMap<String, String>>,
+) -> Response {
+    let bad_request = |message: &str| {
+        json_bytes_response(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{{\"demo_identity_mode\":true,\"error\":{}}}\n",
+                serde_json::to_string(message).unwrap_or_else(|_| "\"bad request\"".into())
+            )
+            .into_bytes(),
+        )
+    };
+    if params.keys().any(|k| k != "left" && k != "right") {
+        return bad_request("only left and right are accepted");
+    }
+    let (Some(left), Some(right)) = (params.get("left"), params.get("right")) else {
+        return bad_request("left and right are required");
+    };
+    let (left, right) = (left.clone(), right.clone());
+
+    let blocking_state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        diff::diff_view(&blocking_state, &actor, &left, &right)
+    })
+    .await;
+    match result {
+        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => bad_request(&message),
+        Ok(Err(AskError::Internal(err))) => {
+            eprintln!("lens diff failed: {err:#}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+        Err(join_error) => {
+            eprintln!("lens diff task failed: {join_error}");
             json_bytes_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),

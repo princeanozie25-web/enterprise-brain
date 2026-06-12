@@ -85,8 +85,15 @@ enum StoreEvent {
 pub struct AuditEvent {
     pub action: String,
     pub actor_principal: String,
+    /// AP-4: the two sides of a `lens_diff` act. Absent on every other
+    /// action (optional + defaulted, so pre-AP-4 rows parse and pre-AP-4
+    /// writers stay byte-identical).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left: Option<String>,
     pub ordinal: u64,
     pub outcome: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right: Option<String>,
     pub target: String,
 }
 
@@ -272,9 +279,31 @@ impl ProposalStore {
         let event = AuditEvent {
             action: action.to_string(),
             actor_principal: actor.to_string(),
+            left: None,
             ordinal,
             outcome: outcome.to_string(),
+            right: None,
             target: target.to_string(),
+        };
+        Self::append(&self.audit_path, &event)?;
+        state.next_audit_ordinal += 1;
+        Ok(ordinal)
+    }
+
+    /// AP-4: the `lens_diff` audit row — ONE act with TWO subjects, never
+    /// two lens_view rows. Same append+sync discipline as `audit`; `target`
+    /// keeps the legacy `left|right` form so the log greps uniformly.
+    pub fn audit_diff(&self, actor: &str, left: &str, right: &str, outcome: &str) -> Result<u64> {
+        let mut state = self.state.lock().expect("store mutex");
+        let ordinal = state.next_audit_ordinal;
+        let event = AuditEvent {
+            action: "lens_diff".to_string(),
+            actor_principal: actor.to_string(),
+            left: Some(left.to_string()),
+            ordinal,
+            outcome: outcome.to_string(),
+            right: Some(right.to_string()),
+            target: format!("{left}|{right}"),
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;

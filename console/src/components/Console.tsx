@@ -29,6 +29,20 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/**
+ * THE ENTRY-DOOR SWAP POINT (carried requirement from the AP-3 review).
+ * demo_identity_mode ONLY: a URL-borne actor (?as=…) is honored here so the
+ * rooms — separate static pages — can hand a lens across a door. This is
+ * the console twin of the service's authorize_cross_lens seam: in a real
+ * deployment the actor derives from the SESSION (OIDC), a URL-borne actor
+ * is REFUSED, and this function returns null unconditionally. Swap THIS
+ * function and nothing else moves.
+ */
+function entryDoorActor(search: string): string | null {
+  const as = (new URLSearchParams(search).get("as") ?? "").trim();
+  return as.length > 0 ? as : null;
+}
+
 export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
@@ -38,6 +52,7 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
   const [envelope, setEnvelope] = useState<AnswerEnvelope | null>(null);
   const [asking, setAsking] = useState(false);
   const [entryCapability, setEntryCapability] = useState<string | null>(null);
+  const [entryDiff, setEntryDiff] = useState<string | null>(null);
   const [inspector, setInspector] = useState<{
     open: boolean;
     loading: boolean;
@@ -51,24 +66,31 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
     setScope(null);
     setEnvelope(null);
     setInspector({ open: false, loading: false, card: null });
-    // The entry door is spent: a lens switch never re-opens a sheet.
+    // The entry doors are spent: a lens switch never re-opens a sheet and
+    // never re-enters a diff (the residue rule).
     setEntryCapability(null);
+    setEntryDiff(null);
   }, []);
 
-  // AP-3 ENTRY DOORS: /atlas?cap=… opens the capability sheet once the
-  // atlas loads; ?as=… carries the lens across a room change (the rooms are
-  // separate static pages, so the door is how the ego-ring click-through
-  // arrives still wearing its lens). Read once on mount; absent in tests
-  // and direct visits, so nothing changes without them.
+  // ENTRY DOORS (AP-3/AP-4): /atlas?cap=… opens the capability sheet once
+  // the atlas loads; /lens?diff=… opens the diff view against the room's
+  // subject; ?as=… carries the lens across a room change — and ONLY through
+  // entryDoorActor above, the one function a real deployment swaps out.
+  // Read once on mount; absent in tests and direct visits.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const as = (params.get("as") ?? "").trim();
-    if (as.length > 0) {
+    const search = window.location.search;
+    const as = entryDoorActor(search);
+    if (as !== null) {
       setPrincipal(as);
     }
+    const params = new URLSearchParams(search);
     const cap = (params.get("cap") ?? "").trim();
     if (cap.length > 0) {
       setEntryCapability(cap);
+    }
+    const diff = (params.get("diff") ?? "").trim();
+    if (diff.length > 0) {
+      setEntryDiff(diff);
     }
   }, []);
 
@@ -160,7 +182,7 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
       >
         {view === "lens" ? (
           <main className="min-w-0 flex-1">
-            <LensRoom actor={principal} />
+            <LensRoom actor={principal} entryDiff={entryDiff} />
           </main>
         ) : view === "atlas" ? (
           <main className="min-w-0 flex-1">

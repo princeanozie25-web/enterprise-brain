@@ -245,3 +245,63 @@ export async function getAtlas(actor: string): Promise<AtlasResponse | null> {
   }
   return parse<AtlasResponse>(response);
 }
+
+// ---------------------------------------------------------------------------
+// AP-4: GET /lens/diff — mirrored field-for-field from service/src/diff.rs.
+// SET EXACTNESS lives at the type layer too: three columns and nothing
+// else. No counts, no coverage, no summary fields exist to render.
+// ---------------------------------------------------------------------------
+
+export interface DiffPassport {
+  id: string;
+  kind: "human" | "agent";
+  name: string;
+}
+
+export interface DiffDocRow {
+  document_id: string;
+  effective_successor?: string;
+  sensitivity: Sensitivity;
+  superseded?: boolean;
+  title: string;
+}
+
+export interface DiffSection {
+  docs: DiffDocRow[];
+  reason: string;
+  sentence: string;
+}
+
+export interface DiffSharedRow {
+  divergent_route: boolean;
+  doc: DiffDocRow;
+  /** Verbatim from each side's artifact. */
+  left_reasons: string[];
+  right_reasons: string[];
+}
+
+export interface DiffResponse {
+  actor_id: string;
+  left: DiffPassport;
+  left_only: DiffSection[];
+  right: DiffPassport;
+  right_only: DiffSection[];
+  shared: DiffSharedRow[];
+  snapshot_version: string;
+}
+
+/** GET /lens/diff. 404 (unknown side, byte-identical) -> null. */
+export async function getLensDiff(
+  actor: string,
+  left: string,
+  right: string,
+): Promise<DiffResponse | null> {
+  const response = await fetch(
+    `${SERVICE_URL}/lens/diff?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`,
+    { headers: headers(actor) },
+  );
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<DiffResponse>(response);
+}

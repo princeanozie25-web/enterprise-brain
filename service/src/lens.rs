@@ -21,8 +21,9 @@ use crate::answer::AskError;
 use crate::AppState;
 
 /// Reason priority classes: SUBJECT > REBAC > ABAC > AGENT > PUBLIC,
-/// lexicographic within a class.
-fn reason_class(reason: &str) -> Result<u8> {
+/// lexicographic within a class. Crate-visible since AP-4: the diff applies
+/// the same priority law per side.
+pub(crate) fn reason_class(reason: &str) -> Result<u8> {
     if reason == "SUBJECT:self" {
         Ok(0)
     } else if reason.starts_with("REBAC:") {
@@ -83,7 +84,7 @@ pub fn sentence_for(reason: &str) -> Result<String> {
 /// Public-sensitivity docs group under one section, last.
 const PUBLIC_SECTION: &str = "PUBLIC:all";
 
-fn display_reason(reason: &str) -> String {
+pub(crate) fn display_reason(reason: &str) -> String {
     if reason == "PUBLIC:sensitivity" {
         PUBLIC_SECTION.to_string()
     } else {
