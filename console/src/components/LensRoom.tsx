@@ -9,6 +9,7 @@ import { AgentEmblem } from "./AgentEmblem";
 import { DiffView } from "./DiffView";
 import { DocInspector } from "./DocInspector";
 import { EgoGraph } from "./EgoGraph";
+import { ExportButton } from "./ExportButton";
 import { SensitivityBadge } from "./SensitivityBadge";
 import { Skeleton } from "./Skeleton";
 
@@ -265,7 +266,21 @@ export function LensRoom({
         >
           Lens
         </h1>
-        <div className="relative ml-auto">
+        {/* AP-5: masthead-adjacent home — the header row exists while the
+            masthead loads, so the disabled state can too (not hidden). */}
+        <span className="ml-auto">
+          <ExportButton
+            actor={actor}
+            request={subject === null ? null : { view: "lens", lens: { subject_id: subject } }}
+            filename={
+              subject !== null && lens !== null
+                ? api.exportFilename("lens", subject, lens.snapshot_version)
+                : null
+            }
+            disabled={loading || lens === null}
+          />
+        </span>
+        <div className="relative">
           <input
             value={subjectSearch}
             onChange={(e) => setSubjectSearch(e.target.value)}

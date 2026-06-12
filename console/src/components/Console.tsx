@@ -7,6 +7,7 @@ import { DERIVED, TYPE } from "@/lib/tokens";
 import { AnswerCard } from "./AnswerCard";
 import { AtlasRoom } from "./AtlasRoom";
 import { DocInspector } from "./DocInspector";
+import { ExportButton } from "./ExportButton";
 import { IdentityRail } from "./IdentityRail";
 import { LensBar } from "./LensBar";
 import { LensRoom } from "./LensRoom";
@@ -51,6 +52,13 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
   const [judge, setJudge] = useState(false);
   const [envelope, setEnvelope] = useState<AnswerEnvelope | null>(null);
   const [asking, setAsking] = useState(false);
+  /** AP-5: the params that produced the displayed envelope — what an
+   * export must name (the textarea may have moved on). */
+  const [submitted, setSubmitted] = useState<{
+    query: string;
+    hybrid: boolean;
+    judge: boolean;
+  } | null>(null);
   const [entryCapability, setEntryCapability] = useState<string | null>(null);
   const [entryDiff, setEntryDiff] = useState<string | null>(null);
   const [inspector, setInspector] = useState<{
@@ -65,6 +73,7 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
     // reveals a clean world.
     setScope(null);
     setEnvelope(null);
+    setSubmitted(null);
     setInspector({ open: false, loading: false, card: null });
     // The entry doors are spent: a lens switch never re-opens a sheet and
     // never re-enters a diff (the residue rule).
@@ -122,9 +131,11 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
     }
     setAsking(true);
     setEnvelope(null);
+    setSubmitted(null);
     try {
       const response = await api.ask(principal, query, { hybrid, judge });
       setEnvelope(response);
+      setSubmitted({ query, hybrid, judge });
     } catch {
       // Internal errors render as the quiet no-answer state; the service
       // never explains absence and neither does the console.
@@ -270,6 +281,20 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
             )}
             {envelope && (
               <>
+                {/* AP-5: the answer card's export home — present only when
+                    an envelope is, naming the params that produced it. */}
+                <div className="flex justify-end">
+                  <ExportButton
+                    actor={principal}
+                    request={submitted === null ? null : { view: "ask", ask: submitted }}
+                    filename={api.exportFilename(
+                      "ask",
+                      envelope.query_hash.slice(0, 8),
+                      envelope.snapshot_version,
+                    )}
+                    disabled={asking}
+                  />
+                </div>
                 <AnswerCard envelope={envelope} onOpenDoc={openDoc} />
                 <section className="ap-card rounded p-2">
                   <h2

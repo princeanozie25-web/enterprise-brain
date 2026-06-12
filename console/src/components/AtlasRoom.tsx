@@ -5,6 +5,7 @@ import * as api from "@/lib/api";
 import type { AtlasCapability, AtlasDoc, AtlasResponse, DocCard } from "@/lib/api";
 import { COLOR, GEOMETRY, TYPE } from "@/lib/tokens";
 import { DocInspector } from "./DocInspector";
+import { ExportButton } from "./ExportButton";
 import { SensitivityBadge } from "./SensitivityBadge";
 import { Skeleton } from "./Skeleton";
 
@@ -237,9 +238,11 @@ export function AtlasRoom({
           </section>
         ))}
 
-      {sheetCapability && (
+      {sheetCapability && atlas && (
         <CapabilitySheet
           capability={sheetCapability}
+          actor={actor}
+          snapshotVersion={atlas.snapshot_version}
           onClose={() => setSheetCapabilityId(null)}
           onOpenDoc={openDoc}
         />
@@ -347,10 +350,14 @@ function CardDocRow({ doc }: { doc: AtlasDoc }) {
  */
 function CapabilitySheet({
   capability,
+  actor,
+  snapshotVersion,
   onClose,
   onOpenDoc,
 }: {
   capability: AtlasCapability;
+  actor: string | null;
+  snapshotVersion: string;
   onClose: () => void;
   onOpenDoc: (docId: string) => void;
 }) {
@@ -360,13 +367,23 @@ function CapabilitySheet({
       style={{ width: GEOMETRY.atlasSheetWidth }}
       data-testid="capability-sheet"
     >
-      <div className="ap-hairline flex items-center justify-between border-b px-4 py-3">
+      <div className="ap-hairline flex items-center justify-between gap-2 border-b px-4 py-3">
         <h2
           className="ap-register-chrome ap-soft"
           style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
         >
           Capability
         </h2>
+        <span className="ml-auto">
+          <ExportButton
+            actor={actor}
+            request={{
+              view: "atlas_capability",
+              atlas_capability: { capability_id: capability.id },
+            }}
+            filename={api.exportFilename("atlas_capability", capability.id, snapshotVersion)}
+          />
+        </span>
         <button
           type="button"
           onClick={onClose}

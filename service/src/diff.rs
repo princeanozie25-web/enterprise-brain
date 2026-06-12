@@ -135,7 +135,8 @@ fn load_passports(
 /// The priority-law primary of one side's verbatim reason set: normalize the
 /// PUBLIC display section, then minimum by (class, lexicographic). Total —
 /// any unknown reason refuses the whole response, never a partial render.
-fn primary_reason(reasons: &[String]) -> Result<String> {
+/// Crate-visible since AP-5: the PDF renderer prints the same chips.
+pub(crate) fn primary_reason(reasons: &[String]) -> Result<String> {
     if reasons.is_empty() {
         bail!("artifact entry with no reasons; refusing");
     }
@@ -290,15 +291,15 @@ pub fn build_diff_columns(
 /// even lens_view (deny unless the actor holds the diff-admin grant), and
 /// the actor derives from the SESSION — an actor borne by a URL or any
 /// other request surface is refused. Swap THIS function and nothing else
-/// moves.
-fn authorize_lens_diff(state: &AppState, actor: &str, left: &str, right: &str) -> Result<()> {
+/// moves. Returns the audit ordinal of the one act — AP-5's attestation
+/// cites it.
+fn authorize_lens_diff(state: &AppState, actor: &str, left: &str, right: &str) -> Result<u64> {
     let Some(store) = &state.proposals else {
         // No audit sink configured: the one act cannot be recorded, so it
         // cannot happen. Fail closed.
         bail!("lens diff requires the audit store (--state-dir); refusing");
     };
-    store.audit_diff(actor, left, right, "allowed_demo")?;
-    Ok(())
+    store.audit_diff(actor, left, right, "allowed_demo")
 }
 
 // ---------------------------------------------------------------------------
@@ -310,12 +311,14 @@ fn authorize_lens_diff(state: &AppState, actor: &str, left: &str, right: &str) -
 /// error (400), checked before any lookup so the answer is the same for
 /// known and unknown ids. The audit row is written only on the render path:
 /// refusals leave no `lens_diff` row.
+/// Returns the body bytes plus the audit ordinal of the one `lens_diff`
+/// act — AP-5's evidence export cites it.
 pub fn diff_view(
     state: &AppState,
     actor: &str,
     left_id: &str,
     right_id: &str,
-) -> Result<Option<Vec<u8>>, AskError> {
+) -> Result<Option<(Vec<u8>, u64)>, AskError> {
     if left_id == right_id {
         return Err(AskError::BadRequest(
             "a diff of a lens against itself is a category error".to_string(),
@@ -332,7 +335,8 @@ pub fn diff_view(
     let (left, right) = load_passports(state, left_id, right_id).map_err(AskError::Internal)?;
 
     // ONE audited act, before anything renders.
-    authorize_lens_diff(state, actor, left_id, right_id).map_err(AskError::Internal)?;
+    let act_ordinal =
+        authorize_lens_diff(state, actor, left_id, right_id).map_err(AskError::Internal)?;
 
     let (left_only, right_only, shared) =
         build_diff_columns(&left_entries, &right_entries, &state.docs)
@@ -347,6 +351,6 @@ pub fn diff_view(
         snapshot_version: state.snapshot_version.clone(),
     };
     canonical_json_bytes(&response)
-        .map(Some)
+        .map(|bytes| Some((bytes, act_ordinal)))
         .map_err(AskError::Internal)
 }

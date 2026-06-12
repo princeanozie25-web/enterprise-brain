@@ -16,6 +16,7 @@ pub mod atlas;
 pub mod cache;
 pub mod cors;
 pub mod diff;
+pub mod export;
 pub mod generate;
 pub mod identity;
 pub mod lens;
@@ -171,6 +172,13 @@ pub struct AppState {
     pub agents: Option<agent::standing::AgentRegistry>,
     /// M4: the append-only proposal + audit store.
     pub proposals: Option<Arc<agent::proposals::ProposalStore>>,
+    /// AP-5: the vendored print fonts (OFL TTFs decompressed from the
+    /// console's own woff2 subsets). Compile-time crate path — a demo
+    /// deployment choice, flagged in the AP-5 closeout.
+    pub export_fonts_dir: PathBuf,
+    /// AP-5: fixed-date mode for byte-identical test PDFs. `None` = the
+    /// real clock — the export header is the ONE permitted dated line.
+    pub export_fixed_date: Option<String>,
 }
 
 impl AppState {
@@ -285,7 +293,16 @@ impl AppState {
             usage_out: None,
             agents: None,
             proposals: None,
+            export_fonts_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fonts"),
+            export_fixed_date: None,
         })
+    }
+
+    /// AP-5: fixed-date mode (tests only) — the export's Generated line and
+    /// neutralized PDF metadata use this instead of the clock.
+    pub fn with_export_fixed_date(mut self, date: Option<String>) -> AppState {
+        self.export_fixed_date = date;
+        self
     }
 
     pub fn with_embedder(mut self, embedder: Arc<dyn EmbeddingSource + Send + Sync>) -> AppState {
@@ -448,6 +465,7 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/lens/diff", get(handle_lens_diff))
         .route("/lens/{id}", get(handle_lens))
         .route("/atlas", get(handle_atlas))
+        .route("/export", post(handle_export))
         .route("/proposals", get(handle_proposals_list))
         .route("/proposals/{id}/approve", post(handle_proposal_approve))
         .route("/proposals/{id}/reject", post(handle_proposal_reject))
@@ -576,7 +594,7 @@ async fn handle_lens(
         tokio::task::spawn_blocking(move || lens::lens_view(&blocking_state, &actor, &subject_id))
             .await;
     match result {
-        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(Some((bytes, _act_ordinal)))) => json_bytes_response(StatusCode::OK, bytes),
         Ok(Ok(None)) => doc_not_found(),
         Ok(Err(AskError::BadRequest(message))) => json_bytes_response(
             StatusCode::BAD_REQUEST,
@@ -639,7 +657,7 @@ async fn handle_lens_diff(
     })
     .await;
     match result {
-        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(Some((bytes, _act_ordinal)))) => json_bytes_response(StatusCode::OK, bytes),
         Ok(Ok(None)) => doc_not_found(),
         Ok(Err(AskError::BadRequest(message))) => bad_request(&message),
         Ok(Err(AskError::Internal(err))) => {
@@ -691,6 +709,65 @@ async fn handle_atlas(
         }
         Err(join_error) => {
             eprintln!("atlas task failed: {join_error}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+    }
+}
+
+/// POST /export — Evidence Export (AP-5). THE SERVER DERIVES, NEVER
+/// RECEIVES: the body is parsed strictly by hand (params only; any extra
+/// field is a 400 in OUR shape, never axum's), the named act is performed
+/// fresh through the same seams as the live views, and the PDF carries the
+/// attestation of exactly what was derived.
+async fn handle_export(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+    body: axum::body::Bytes,
+) -> Response {
+    let bad_request = |message: &str| {
+        json_bytes_response(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{{\"demo_identity_mode\":true,\"error\":{}}}\n",
+                serde_json::to_string(message).unwrap_or_else(|_| "\"bad request\"".into())
+            )
+            .into_bytes(),
+        )
+    };
+    let request: export::ExportRequest = match serde_json::from_slice(&body) {
+        Ok(request) => request,
+        Err(err) => {
+            // Strict-parse refusal: the detail goes to the log; the body
+            // names the law, not the offending field.
+            eprintln!("export request refused: {err}");
+            return bad_request("export request fails strict parse (params only)");
+        }
+    };
+    let blocking_state = state.clone();
+    let result =
+        tokio::task::spawn_blocking(move || export::export_view(&blocking_state, &actor, &request))
+            .await;
+    match result {
+        Ok(Ok(Some(bytes))) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/pdf")],
+            bytes,
+        )
+            .into_response(),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => bad_request(&message),
+        Ok(Err(AskError::Internal(err))) => {
+            eprintln!("export failed: {err:#}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+        Err(join_error) => {
+            eprintln!("export task failed: {join_error}");
             json_bytes_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),

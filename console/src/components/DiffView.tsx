@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import * as api from "@/lib/api";
 import type { DiffDocRow, DiffResponse, DiffSection, DiffSharedRow } from "@/lib/api";
 import { COLOR, TYPE } from "@/lib/tokens";
+import { ExportButton } from "./ExportButton";
 import { SensitivityBadge } from "./SensitivityBadge";
 import { Skeleton } from "./Skeleton";
 
@@ -86,10 +87,22 @@ export function DiffView({
         >
           Lens diff
         </h1>
+        <span className="ml-auto">
+          <ExportButton
+            actor={actor}
+            request={{ view: "diff", diff: { left, right } }}
+            filename={
+              diff === null
+                ? null
+                : api.exportFilename("diff", `${left}-${right}`, diff.snapshot_version)
+            }
+            disabled={loading || diff === null}
+          />
+        </span>
         <button
           type="button"
           onClick={onClose}
-          className="ap-washable ap-soft ml-auto rounded px-2 py-0.5"
+          className="ap-washable ap-soft rounded px-2 py-0.5"
           style={{ fontSize: TYPE.scale.xs }}
           data-testid="diff-close"
         >

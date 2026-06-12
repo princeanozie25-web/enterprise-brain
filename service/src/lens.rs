@@ -316,31 +316,39 @@ pub fn build_holdings(
 /// is permitted but audited BEFORE the response renders. In a real
 /// deployment this function becomes an admin-classed permission check
 /// (deny unless the actor holds the lens-admin grant) — swap THIS function
-/// and nothing else moves.
-fn authorize_cross_lens(state: &AppState, actor: &str, subject: &str) -> Result<()> {
+/// and nothing else moves. Returns the audit ordinal of the act (`None`
+/// for a self view, which is not an audited act) — AP-5's attestation
+/// cites it.
+fn authorize_cross_lens(state: &AppState, actor: &str, subject: &str) -> Result<Option<u64>> {
     if actor == subject {
-        return Ok(());
+        return Ok(None);
     }
     let Some(store) = &state.proposals else {
         // No audit sink configured: a cross-lens view cannot be recorded,
         // so it cannot happen. Fail closed.
         bail!("cross-lens viewing requires the audit store (--state-dir); refusing");
     };
-    store.audit("lens_view", actor, subject, "allowed_demo")?;
-    Ok(())
+    let ordinal = store.audit("lens_view", actor, subject, "allowed_demo")?;
+    Ok(Some(ordinal))
 }
 
 // ---------------------------------------------------------------------------
 // The view
 // ---------------------------------------------------------------------------
 
+/// The body bytes plus the audit ordinal of the cross-lens act (`None` for
+/// a self view, which is not an audited act). `None` overall = unknown
+/// subject.
+pub type LensViewOutcome = Option<(Vec<u8>, Option<u64>)>;
+
 /// Builds the lens body for (actor, subject). `Ok(None)` = unknown subject —
 /// the HTTP layer serves THE one 404 (identical for unknown and malformed).
+/// AP-5's evidence export cites the returned ordinal.
 pub fn lens_view(
     state: &AppState,
     actor: &str,
     subject_id: &str,
-) -> Result<Option<Vec<u8>>, AskError> {
+) -> Result<LensViewOutcome, AskError> {
     let entries = load_subject_artifact(state, subject_id).map_err(AskError::Internal)?;
     let Some(entries) = entries else {
         return Ok(None);
@@ -349,7 +357,7 @@ pub fn lens_view(
         load_company(&state.fixtures_dir, &state.company_sha256).map_err(AskError::Internal)?;
 
     // Audit BEFORE anything renders (the act being governed is the look).
-    authorize_cross_lens(state, actor, subject_id).map_err(AskError::Internal)?;
+    let act_ordinal = authorize_cross_lens(state, actor, subject_id).map_err(AskError::Internal)?;
 
     let mut groups_of: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     for group in &company.groups {
@@ -430,6 +438,6 @@ pub fn lens_view(
         subject,
     };
     retrieval::index::canonical_json_bytes(&response)
-        .map(Some)
+        .map(|bytes| Some((bytes, act_ordinal)))
         .map_err(AskError::Internal)
 }

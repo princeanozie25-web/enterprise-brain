@@ -305,3 +305,39 @@ export async function getLensDiff(
   }
   return parse<DiffResponse>(response);
 }
+
+// ---------------------------------------------------------------------------
+// AP-5: POST /export — THE SERVER DERIVES, NEVER RECEIVES. The request
+// names a view in PARAMETERS ONLY; there is no field that could carry
+// content, so the attestation can never bless client bytes. The response
+// is the attested PDF.
+// ---------------------------------------------------------------------------
+
+export interface ExportRequest {
+  view: "lens" | "diff" | "atlas_capability" | "ask";
+  lens?: { subject_id: string };
+  diff?: { left: string; right: string };
+  atlas_capability?: { capability_id: string };
+  ask?: { query: string; hybrid: boolean; judge: boolean };
+}
+
+export async function exportEvidence(actor: string, request: ExportRequest): Promise<Blob> {
+  const response = await fetch(`${SERVICE_URL}/export`, {
+    method: "POST",
+    headers: headers(actor),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(`service error ${response.status}`);
+  }
+  return await response.blob();
+}
+
+/** aperture-<view>-<subject-or-pair-or-cap-or-queryhash8>-<snapshot8>.pdf */
+export function exportFilename(
+  view: ExportRequest["view"],
+  slug: string,
+  snapshotVersion: string,
+): string {
+  return `aperture-${view}-${slug}-${snapshotVersion.slice(0, 8)}.pdf`;
+}
