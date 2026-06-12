@@ -8,6 +8,7 @@ import { AnswerCard } from "./AnswerCard";
 import { DocInspector } from "./DocInspector";
 import { IdentityRail } from "./IdentityRail";
 import { LensBar } from "./LensBar";
+import { LensRoom } from "./LensRoom";
 import { ResultsList } from "./ResultsList";
 import { Skeleton } from "./Skeleton";
 import iris from "./LensBar.module.css";
@@ -27,7 +28,7 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function Console() {
+export function Console({ view = "ask" }: { view?: "ask" | "lens" }) {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
   const [query, setQuery] = useState("");
@@ -117,11 +118,17 @@ export function Console() {
         className={`mx-auto flex max-w-6xl gap-6 p-4 ${irisClass}`}
         data-testid="iris-stage"
       >
-        <aside className="w-72 shrink-0">
-          <IdentityRail principal={principal} scope={scope} />
-        </aside>
+        {view === "lens" ? (
+          <main className="min-w-0 flex-1">
+            <LensRoom actor={principal} />
+          </main>
+        ) : (
+          <>
+            <aside className="w-72 shrink-0">
+              <IdentityRail principal={principal} scope={scope} />
+            </aside>
 
-        <main className="min-w-0 flex-1">
+            <main className="min-w-0 flex-1">
           <header className="mb-3">
             <h1
               className="ap-register-chrome"
@@ -210,7 +217,9 @@ export function Console() {
               </>
             )}
           </div>
-        </main>
+            </main>
+          </>
+        )}
       </div>
 
       <DocInspector

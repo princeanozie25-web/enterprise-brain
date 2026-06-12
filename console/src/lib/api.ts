@@ -125,3 +125,64 @@ export async function getDoc(principal: string, docId: string): Promise<DocCard 
   }
   return parse<DocCard>(response);
 }
+
+// ---------------------------------------------------------------------------
+// AP-2: GET /lens/{subject_id} — mirrored field-for-field from
+// service/src/lens.rs. The actor is the header principal; cross-lens views
+// are audited server-side BEFORE the response renders.
+// ---------------------------------------------------------------------------
+
+export interface LensSubject {
+  band?: number;
+  department?: string;
+  groups: string[];
+  id: string;
+  kind: "human" | "agent";
+  name: string;
+  owner_user_id?: string;
+  sites: string[];
+}
+
+export interface LensDoc {
+  also_via: string[];
+  document_id: string;
+  effective_successor?: string;
+  sensitivity: Sensitivity;
+  superseded?: boolean;
+  title: string;
+}
+
+export interface LensSection {
+  docs: LensDoc[];
+  reason: string;
+  sentence: string;
+}
+
+export interface LensAgent {
+  agent_id: string;
+  grant_groups: string[];
+  name: string;
+}
+
+export interface LensResponse {
+  actor_id: string;
+  agents: LensAgent[];
+  cross_lens: boolean;
+  holdings: LensSection[];
+  snapshot_version: string;
+  subject: LensSubject;
+}
+
+/** GET /lens/{subject}. 404 (unknown/malformed, byte-identical) -> null. */
+export async function getLens(
+  actor: string,
+  subjectId: string,
+): Promise<LensResponse | null> {
+  const response = await fetch(`${SERVICE_URL}/lens/${encodeURIComponent(subjectId)}`, {
+    headers: headers(actor),
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<LensResponse>(response);
+}

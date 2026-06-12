@@ -16,6 +16,7 @@ pub mod cache;
 pub mod cors;
 pub mod generate;
 pub mod identity;
+pub mod lens;
 pub mod scope;
 pub mod sidecar;
 
@@ -133,6 +134,9 @@ struct MosaicTagLite {
 
 pub struct AppState {
     pub artifacts_dir: PathBuf,
+    /// The fixtures directory (AP-2: /lens reads company.json per request,
+    /// hash-verified against the M1 pin).
+    pub fixtures_dir: PathBuf,
     pub engine: Arc<Engine>,
     pub identity: IdentityModel,
     /// doc id -> title/body/sensitivity, hash-verified at startup.
@@ -250,6 +254,7 @@ impl AppState {
         }
         Ok(AppState {
             artifacts_dir: artifacts_dir.to_path_buf(),
+            fixtures_dir: fixtures_dir.to_path_buf(),
             engine: Arc::new(engine),
             identity,
             docs,
@@ -425,6 +430,7 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/scope", get(handle_scope))
         .route("/healthz", get(handle_healthz))
         .route("/agent/{id}/run", post(handle_agent_run))
+        .route("/lens/{id}", get(handle_lens))
         .route("/proposals", get(handle_proposals_list))
         .route("/proposals/{id}/approve", post(handle_proposal_approve))
         .route("/proposals/{id}/reject", post(handle_proposal_reject))
@@ -538,6 +544,46 @@ fn doc_not_found() -> Response {
         StatusCode::NOT_FOUND,
         b"{\"demo_identity_mode\":true,\"error\":\"not found\"}\n".to_vec(),
     )
+}
+
+/// GET /lens/{subject_id} — the Lens room body (AP-2). The actor is the
+/// header principal; cross-lens views audit BEFORE the response renders;
+/// unknown and malformed subjects share THE one 404.
+async fn handle_lens(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+    axum::extract::Path(subject_id): axum::extract::Path<String>,
+) -> Response {
+    let blocking_state = state.clone();
+    let result =
+        tokio::task::spawn_blocking(move || lens::lens_view(&blocking_state, &actor, &subject_id))
+            .await;
+    match result {
+        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => json_bytes_response(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{{\"demo_identity_mode\":true,\"error\":{}}}\n",
+                serde_json::to_string(&message).unwrap_or_else(|_| "\"bad request\"".into())
+            )
+            .into_bytes(),
+        ),
+        Ok(Err(AskError::Internal(err))) => {
+            eprintln!("lens failed: {err:#}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+        Err(join_error) => {
+            eprintln!("lens task failed: {join_error}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+    }
 }
 
 async fn handle_scope(

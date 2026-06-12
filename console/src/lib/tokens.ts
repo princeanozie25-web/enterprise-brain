@@ -61,6 +61,20 @@ export const TYPE = {
   line: { body: 1.45, display: 1.2 },
 } as const;
 
+/** Fixed geometry (AP-2). The emblem and ego-graph are EMBLEMATIC, NOT
+ * PROPORTIONAL — these numbers are identity, and area encodes nothing. */
+export const GEOMETRY = {
+  /** Ego-graph: square viewport, ring radius, node radius, node cap. */
+  egoViewport: 320,
+  egoRingRadius: 110,
+  egoNodeRadius: 7,
+  egoNodeCap: 21,
+  /** Intersection emblem: two fixed fields with 40% overlap. */
+  emblemFieldWidth: 120,
+  emblemFieldHeight: 72,
+  emblemOverlap: 0.4,
+} as const;
+
 /** MOTION BUDGET — tokens, not vibes. Nothing else animates. */
 export const MOTION = {
   /** hover, chip reveal */
