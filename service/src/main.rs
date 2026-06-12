@@ -89,9 +89,12 @@ fn build_state(args: &Args) -> Result<AppState> {
             &state.company_sha256,
         )?;
         let store = service::agent::proposals::ProposalStore::open(state_dir)?;
+        // AP-6: the lane's box store shares the state dir.
+        let boxes = service::lane::BoxStore::open(state_dir)?;
         state = state
             .with_agents(registry)
-            .with_proposals(std::sync::Arc::new(store));
+            .with_proposals(std::sync::Arc::new(store))
+            .with_lane_boxes(std::sync::Arc::new(boxes));
     }
     Ok(state)
 }

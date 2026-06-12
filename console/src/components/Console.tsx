@@ -9,6 +9,7 @@ import { AtlasRoom } from "./AtlasRoom";
 import { DocInspector } from "./DocInspector";
 import { ExportButton } from "./ExportButton";
 import { IdentityRail } from "./IdentityRail";
+import { LaneRoom } from "./LaneRoom";
 import { LensBar } from "./LensBar";
 import { LensRoom } from "./LensRoom";
 import { ResultsList } from "./ResultsList";
@@ -44,7 +45,7 @@ function entryDoorActor(search: string): string | null {
   return as.length > 0 ? as : null;
 }
 
-export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
+export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" | "lane" }) {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
   const [query, setQuery] = useState("");
@@ -172,6 +173,7 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
           <ViewDoor label="Ask" href="/" active={view === "ask"} principal={principal} />
           <ViewDoor label="Lens" href="/lens" active={view === "lens"} principal={principal} />
           <ViewDoor label="Atlas" href="/atlas" active={view === "atlas"} principal={principal} />
+          <ViewDoor label="Lane" href="/lane" active={view === "lane"} principal={principal} />
           {/* THE RESERVED DOOR — flagged in the AP-3 closeout: "Ledger —
               reserved" is placeholder copy for a room that does not exist
               yet. Disabled, not hidden: the shell states its own shape. */}
@@ -198,6 +200,10 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
         ) : view === "atlas" ? (
           <main className="min-w-0 flex-1">
             <AtlasRoom actor={principal} entryCapability={entryCapability} />
+          </main>
+        ) : view === "lane" ? (
+          <main className="min-w-0 flex-1">
+            <LaneRoom actor={principal} />
           </main>
         ) : (
           <>

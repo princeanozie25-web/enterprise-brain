@@ -39,48 +39,50 @@ use crate::{AppState, DocMeta};
 // BRM fixture mirror (strict — unknown fields refuse)
 // ---------------------------------------------------------------------------
 
+// Fields are crate-visible since AP-6: the Lane derives assignments from
+// the same validated graph.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BrmLite {
-    capabilities: Vec<BrmCapability>,
-    initiatives: Vec<BrmInitiative>,
-    strategies: Vec<BrmStrategy>,
-    workflows: Vec<BrmWorkflow>,
+    pub(crate) capabilities: Vec<BrmCapability>,
+    pub(crate) initiatives: Vec<BrmInitiative>,
+    pub(crate) strategies: Vec<BrmStrategy>,
+    pub(crate) workflows: Vec<BrmWorkflow>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BrmStrategy {
-    id: String,
-    initiative_ids: Vec<String>,
-    name: String,
+pub(crate) struct BrmStrategy {
+    pub(crate) id: String,
+    pub(crate) initiative_ids: Vec<String>,
+    pub(crate) name: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BrmInitiative {
-    id: String,
-    name: String,
-    strategy_id: String,
-    workflow_ids: Vec<String>,
+pub(crate) struct BrmInitiative {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) strategy_id: String,
+    pub(crate) workflow_ids: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BrmWorkflow {
-    capability_ids: Vec<String>,
-    id: String,
-    initiative_id: String,
-    name: String,
+pub(crate) struct BrmWorkflow {
+    pub(crate) capability_ids: Vec<String>,
+    pub(crate) id: String,
+    pub(crate) initiative_id: String,
+    pub(crate) name: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BrmCapability {
-    document_ids: Vec<String>,
-    id: String,
-    name: String,
-    workflow_id: String,
+pub(crate) struct BrmCapability {
+    pub(crate) document_ids: Vec<String>,
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) workflow_id: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -202,11 +204,12 @@ pub(crate) fn validate_brm(brm: &BrmLite, docs: &BTreeMap<String, DocMeta>) -> R
 /// Startup entry: read, strictly parse, validate, and pin brm.json.
 /// `Ok(None)` = the file does not exist — a world without an atlas (the
 /// /atlas route answers THE one 404). Any present-but-wrong file refuses
-/// startup.
+/// startup. Returns the validated graph alongside the pin — AP-6's lane
+/// derivation consumes the SAME bytes the pin certifies.
 pub(crate) fn pin_brm(
     fixtures_dir: &Path,
     docs: &BTreeMap<String, DocMeta>,
-) -> Result<Option<String>> {
+) -> Result<Option<(String, BrmLite)>> {
     let path = fixtures_dir.join("brm.json");
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
@@ -219,7 +222,7 @@ pub(crate) fn pin_brm(
         .with_context(|| format!("{} fails strict parse", path.display()))?;
     validate_brm(&brm, docs)
         .with_context(|| format!("{} fails integrity validation", path.display()))?;
-    Ok(Some(sha256_hex(&bytes)))
+    Ok(Some((sha256_hex(&bytes), brm)))
 }
 
 // ---------------------------------------------------------------------------

@@ -341,3 +341,119 @@ export function exportFilename(
 ): string {
   return `aperture-${view}-${slug}-${snapshotVersion.slice(0, 8)}.pdf`;
 }
+
+// ---------------------------------------------------------------------------
+// AP-6: the Lane — mirrored field-for-field from service/src/lane.rs.
+// v4a, DISPLAY ONLY: effect_class carries the full vocabulary so the v4b
+// door stays visible, but the service can never construct the amber class
+// (AW-3) and the console renders none (U-28).
+// ---------------------------------------------------------------------------
+
+export interface ProvenanceNode {
+  id: string;
+  name: string;
+}
+
+export interface LaneBox {
+  blocked_by: string[];
+  blocks: string[];
+  box_id: string;
+  capability: ProvenanceNode;
+  derived: boolean;
+  deviation?: { kind: string };
+  effect_class: "read_only" | "side_effecting";
+  evidence: DiffDocRow[];
+  honesty: ScopeStatement;
+  provenance: {
+    initiative: ProvenanceNode;
+    strategy: ProvenanceNode;
+    workflow: ProvenanceNode;
+  };
+  snapshot_version: string;
+  sop_state: "current" | "blocked_superseded";
+  status: "candidate" | "active" | "done" | "dismissed" | "blocked";
+  why: string;
+}
+
+export interface LaneResponse {
+  actor_id: string;
+  boxes: LaneBox[];
+  snapshot_version: string;
+}
+
+export interface InboxPreview {
+  agent_id: string;
+  citations: string[];
+  proposal_id: string;
+  standing_query: string;
+}
+
+export interface InboxResponse {
+  actor_id: string;
+  proposals: InboxPreview[];
+  snapshot_version: string;
+}
+
+export interface RollupRow {
+  capability_id: string;
+  status_counts: Record<string, number>;
+}
+
+export interface RollupResponse {
+  capabilities: RollupRow[];
+  honesty: string;
+  snapshot_version: string;
+}
+
+/** GET /lane — SELF-ONLY: the actor header is the only input. */
+export async function getLane(actor: string): Promise<LaneResponse | null> {
+  const response = await fetch(`${SERVICE_URL}/lane`, { headers: headers(actor) });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<LaneResponse>(response);
+}
+
+export async function postBoxStatus(
+  actor: string,
+  boxId: string,
+  to: "active" | "done" | "dismissed",
+): Promise<void> {
+  const response = await fetch(
+    `${SERVICE_URL}/lane/box/${encodeURIComponent(boxId)}/status`,
+    { method: "POST", headers: headers(actor), body: JSON.stringify({ to }) },
+  );
+  if (!response.ok) {
+    throw new Error(`service error ${response.status}`);
+  }
+}
+
+export async function getInbox(actor: string): Promise<InboxResponse | null> {
+  const response = await fetch(`${SERVICE_URL}/lane/inbox`, { headers: headers(actor) });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<InboxResponse>(response);
+}
+
+export async function postInboxDecision(
+  actor: string,
+  proposalId: string,
+  decision: "accept" | "dismiss",
+): Promise<void> {
+  const response = await fetch(
+    `${SERVICE_URL}/lane/inbox/${encodeURIComponent(proposalId)}/${decision}`,
+    { method: "POST", headers: headers(actor) },
+  );
+  if (!response.ok) {
+    throw new Error(`service error ${response.status}`);
+  }
+}
+
+export async function getRollup(actor: string): Promise<RollupResponse | null> {
+  const response = await fetch(`${SERVICE_URL}/lane/rollup`, { headers: headers(actor) });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<RollupResponse>(response);
+}

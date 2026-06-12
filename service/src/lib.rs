@@ -19,6 +19,7 @@ pub mod diff;
 pub mod export;
 pub mod generate;
 pub mod identity;
+pub mod lane;
 pub mod lens;
 pub mod scope;
 pub mod sidecar;
@@ -96,6 +97,9 @@ struct DocLite {
     title: String,
     body: String,
     sensitivity: String,
+    /// AP-6: the lane's derivation rule matches capabilities to people by
+    /// their realizing documents' departments.
+    department: String,
 }
 
 /// What the service knows about one corpus document. Full bodies never leave
@@ -105,6 +109,7 @@ pub struct DocMeta {
     pub title: String,
     pub body: String,
     pub sensitivity: String,
+    pub department: String,
 }
 
 /// Artifact slice the service consumes: per-entry mosaic pass-through tags
@@ -179,6 +184,15 @@ pub struct AppState {
     /// AP-5: fixed-date mode for byte-identical test PDFs. `None` = the
     /// real clock — the export header is the ONE permitted dated line.
     pub export_fixed_date: Option<String>,
+    /// AP-6: the lane's graph view, converted from the SAME validated BRM
+    /// the atlas pinned. `None` = a world without a BRM has no lane.
+    pub lane_graph: Option<lane::LaneGraph>,
+    /// AP-6: the derived assignments, computed once at startup from
+    /// verified inputs only (humans with non-empty lanes).
+    pub lane_seeds: BTreeMap<String, Vec<lane::BoxSeed>>,
+    /// AP-6: the append-only box store (status changes + accepted boxes);
+    /// None = transitions and accepts refuse, the lane stays readable.
+    pub lane_boxes: Option<Arc<lane::BoxStore>>,
 }
 
 impl AppState {
@@ -225,6 +239,7 @@ impl AppState {
                         title: d.title,
                         body: d.body,
                         sensitivity: d.sensitivity,
+                        department: d.department,
                     },
                 )
             })
@@ -235,18 +250,13 @@ impl AppState {
             bail!("retrieval index was built from a different corpus; refusing");
         }
 
-        // AP-3: brm.json joins the hash-verified input set here — validated
-        // against the verified corpus, then byte-pinned for the life of the
-        // process. Missing file = a world without an atlas (fail closed at
-        // the route); present-but-wrong file = no service.
-        let brm_sha256 = atlas::pin_brm(fixtures_dir, &docs)?;
-
         // Harvest the mosaic pairs from the compiled artifacts (verified
         // byte-for-byte against the M1 index) — the only non-test source of
         // the tags, exactly as M1 intended pass-through to be used. The same
         // sweep records each principal's (file, sha) row for `/doc`.
         let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();
         let mut artifact_rows: BTreeMap<String, (String, String)> = BTreeMap::new();
+        let mut lane_entries: BTreeMap<String, Vec<lane::LaneEntryFacts>> = BTreeMap::new();
         for row in &m1_index.principals {
             let artifact_path = artifacts_dir.join(&row.artifact_file);
             let artifact_bytes = std::fs::read(&artifact_path)
@@ -259,6 +269,19 @@ impl AppState {
             }
             let artifact: ArtifactLite = serde_json::from_slice(&artifact_bytes)
                 .with_context(|| format!("artifact {} fails parse", artifact_path.display()))?;
+            // AP-6: the lane derives from the same verified sweep.
+            lane_entries.insert(
+                row.principal_id.clone(),
+                artifact
+                    .entries
+                    .iter()
+                    .map(|entry| lane::LaneEntryFacts {
+                        document_id: entry.document_id.clone(),
+                        superseded: entry.superseded,
+                        effective_successor: entry.effective_successor.clone(),
+                    })
+                    .collect(),
+            );
             for entry in artifact.entries {
                 for tag in entry.mosaic_tags.unwrap_or_default() {
                     let pair = if tag.doc_a <= tag.doc_b {
@@ -274,6 +297,31 @@ impl AppState {
                 (row.artifact_file.clone(), row.artifact_sha256.clone()),
             );
         }
+
+        // AP-3: brm.json joins the hash-verified input set here — validated
+        // against the verified corpus, then byte-pinned for the life of the
+        // process. Missing file = a world without an atlas (fail closed at
+        // the route); present-but-wrong file = no service.
+        // AP-6: the lane derives its assignments from the SAME validated
+        // graph and the SAME verified artifact sweep, deterministically,
+        // at startup.
+        let pinned_brm = atlas::pin_brm(fixtures_dir, &docs)?;
+        let (brm_sha256, lane_graph, lane_seeds) = match pinned_brm {
+            Some((sha, brm)) => {
+                let graph = lane::LaneGraph::from_brm(&brm);
+                let seeds = lane::derive_lanes(
+                    fixtures_dir,
+                    company_sha,
+                    &docs,
+                    &graph,
+                    &lane_entries,
+                    &m1_index.snapshot_version,
+                )?;
+                (Some(sha), Some(graph), seeds)
+            }
+            None => (None, None, BTreeMap::new()),
+        };
+
         Ok(AppState {
             artifacts_dir: artifacts_dir.to_path_buf(),
             fixtures_dir: fixtures_dir.to_path_buf(),
@@ -295,7 +343,17 @@ impl AppState {
             proposals: None,
             export_fonts_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fonts"),
             export_fixed_date: None,
+            lane_graph,
+            lane_seeds,
+            lane_boxes: None,
         })
+    }
+
+    /// AP-6: wires the append-only box store (status changes + accepted
+    /// boxes) — opened from the same state dir as the audit store.
+    pub fn with_lane_boxes(mut self, store: Arc<lane::BoxStore>) -> AppState {
+        self.lane_boxes = Some(store);
+        self
     }
 
     /// AP-5: fixed-date mode (tests only) — the export's Generated line and
@@ -466,6 +524,12 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/lens/{id}", get(handle_lens))
         .route("/atlas", get(handle_atlas))
         .route("/export", post(handle_export))
+        .route("/lane", get(handle_lane))
+        .route("/lane/box/{id}/status", post(handle_box_status))
+        .route("/lane/inbox", get(handle_inbox))
+        .route("/lane/inbox/{id}/accept", post(handle_inbox_accept))
+        .route("/lane/inbox/{id}/dismiss", post(handle_inbox_dismiss))
+        .route("/lane/rollup", get(handle_rollup))
         .route("/proposals", get(handle_proposals_list))
         .route("/proposals/{id}/approve", post(handle_proposal_approve))
         .route("/proposals/{id}/reject", post(handle_proposal_reject))
@@ -773,6 +837,172 @@ async fn handle_export(
                 b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
             )
         }
+    }
+}
+
+fn lane_bad_request(message: &str) -> Response {
+    json_bytes_response(
+        StatusCode::BAD_REQUEST,
+        format!(
+            "{{\"demo_identity_mode\":true,\"error\":{}}}\n",
+            serde_json::to_string(message).unwrap_or_else(|_| "\"bad request\"".into())
+        )
+        .into_bytes(),
+    )
+}
+
+fn lane_conflict(message: &str) -> Response {
+    json_bytes_response(
+        StatusCode::CONFLICT,
+        format!(
+            "{{\"demo_identity_mode\":true,\"error\":{}}}\n",
+            serde_json::to_string(message).unwrap_or_else(|_| "\"conflict\"".into())
+        )
+        .into_bytes(),
+    )
+}
+
+fn lane_internal(err: anyhow::Error, what: &str) -> Response {
+    eprintln!("{what} failed: {err:#}");
+    json_bytes_response(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+    )
+}
+
+/// GET /lane — the v4a Workflow Surface, SELF-ONLY BY CONSTRUCTION
+/// (invariant 2): no subject parameter exists; query strings are ignored
+/// as everywhere in axum. Agents and unknowns get the same empty shape.
+async fn handle_lane(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+) -> Response {
+    let blocking_state = state.clone();
+    let result =
+        tokio::task::spawn_blocking(move || lane::lane_view(&blocking_state, &actor)).await;
+    match result {
+        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => lane_bad_request(&message),
+        Ok(Err(AskError::Internal(err))) => lane_internal(err, "lane"),
+        Err(join_error) => lane_internal(anyhow::anyhow!("{join_error}"), "lane task"),
+    }
+}
+
+/// POST /lane/box/{id}/status — a human act on the actor's own box,
+/// audited before effect; illegal transitions and blocked boxes refuse
+/// ROWLESS (AW-8).
+async fn handle_box_status(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+    axum::extract::Path(box_id): axum::extract::Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct StatusRequest {
+        to: String,
+    }
+    let request: StatusRequest = match serde_json::from_slice(&body) {
+        Ok(request) => request,
+        Err(err) => {
+            eprintln!("box status request refused: {err}");
+            return lane_bad_request("status request fails strict parse");
+        }
+    };
+    let blocking_state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        lane::status_change(&blocking_state, &actor, &box_id, &request.to)
+    })
+    .await;
+    match result {
+        Ok(Ok(lane::StatusOutcome::Applied(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(lane::StatusOutcome::NotFound)) => doc_not_found(),
+        Ok(Ok(lane::StatusOutcome::Refused(message))) => lane_conflict(&message),
+        Ok(Err(AskError::BadRequest(message))) => lane_bad_request(&message),
+        Ok(Err(AskError::Internal(err))) => lane_internal(err, "box status"),
+        Err(join_error) => lane_internal(anyhow::anyhow!("{join_error}"), "box status task"),
+    }
+}
+
+/// GET /lane/inbox — the actor's agents' pending proposals as candidate
+/// previews (a read-only join over the M4 store).
+async fn handle_inbox(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+) -> Response {
+    let blocking_state = state.clone();
+    let result =
+        tokio::task::spawn_blocking(move || lane::inbox_view(&blocking_state, &actor)).await;
+    match result {
+        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => lane_bad_request(&message),
+        Ok(Err(AskError::Internal(err))) => lane_internal(err, "inbox"),
+        Err(join_error) => lane_internal(anyhow::anyhow!("{join_error}"), "inbox task"),
+    }
+}
+
+async fn handle_inbox_decision(
+    state: Arc<AppState>,
+    actor: String,
+    proposal_id: String,
+    accept: bool,
+) -> Response {
+    let result = tokio::task::spawn_blocking(move || {
+        lane::inbox_decide(&state, &actor, &proposal_id, accept)
+    })
+    .await;
+    match result {
+        Ok(Ok(lane::InboxOutcome::Done(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(lane::InboxOutcome::NotFound)) => doc_not_found(),
+        Ok(Ok(lane::InboxOutcome::Forbidden)) => json_bytes_response(
+            StatusCode::FORBIDDEN,
+            b"{\"demo_identity_mode\":true,\"error\":\"forbidden\"}\n".to_vec(),
+        ),
+        Ok(Ok(lane::InboxOutcome::Conflict(message))) => lane_conflict(&message),
+        Ok(Err(AskError::BadRequest(message))) => lane_bad_request(&message),
+        Ok(Err(AskError::Internal(err))) => lane_internal(err, "inbox decision"),
+        Err(join_error) => lane_internal(anyhow::anyhow!("{join_error}"), "inbox decision task"),
+    }
+}
+
+/// POST /lane/inbox/{id}/accept — owner-only, human-only (M4's authority
+/// pattern, audited refusals); accept materializes a candidate box and
+/// approves the proposal through the existing M4 machinery.
+async fn handle_inbox_accept(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+    axum::extract::Path(proposal_id): axum::extract::Path<String>,
+) -> Response {
+    handle_inbox_decision(state, actor, proposal_id, true).await
+}
+
+/// POST /lane/inbox/{id}/dismiss — the symmetric refusal: the proposal is
+/// rejected through the same machinery; no box materializes.
+async fn handle_inbox_dismiss(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+    axum::extract::Path(proposal_id): axum::extract::Path<String>,
+) -> Response {
+    handle_inbox_decision(state, actor, proposal_id, false).await
+}
+
+/// GET /lane/rollup — the structurally anonymous manager view (invariant
+/// 3): status counts by capability at the N=5 floor, the fixed honesty
+/// statement, nothing else.
+async fn handle_rollup(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(_actor): DemoPrincipal,
+) -> Response {
+    let blocking_state = state.clone();
+    let result = tokio::task::spawn_blocking(move || lane::rollup_view(&blocking_state)).await;
+    match result {
+        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => lane_bad_request(&message),
+        Ok(Err(AskError::Internal(err))) => lane_internal(err, "rollup"),
+        Err(join_error) => lane_internal(anyhow::anyhow!("{join_error}"), "rollup task"),
     }
 }
 

@@ -37,7 +37,7 @@ pub struct DiffPassport {
     pub name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DocRow {
     pub document_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
