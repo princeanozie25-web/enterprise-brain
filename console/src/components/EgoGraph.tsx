@@ -13,15 +13,22 @@ import type { LensResponse } from "@/lib/api";
 type RingNode = {
   id: string;
   label: string;
-  kind: "group" | "site" | "agent" | "owner";
+  kind: "group" | "site" | "agent" | "owner" | "capability";
 };
 
 export function EgoGraph({
   lens,
   onGroupClick,
+  capabilities = [],
+  onCapabilityClick,
 }: {
   lens: LensResponse;
   onGroupClick: (groupId: string) => void;
+  /** AP-3: capability ids where the SUBJECT's visible evidence is
+   * non-empty (computed by the caller, fail closed). They join the ring
+   * and count against the same hard cap. */
+  capabilities?: string[];
+  onCapabilityClick?: (capabilityId: string) => void;
 }) {
   const ring: RingNode[] = [
     ...lens.subject.groups.map((g) => ({ id: g, label: g, kind: "group" as const })),
@@ -31,6 +38,7 @@ export function EgoGraph({
       : lens.subject.owner_user_id
         ? [{ id: lens.subject.owner_user_id, label: lens.subject.owner_user_id, kind: "owner" as const }]
         : []),
+    ...capabilities.map((c) => ({ id: c, label: c, kind: "capability" as const })),
   ].sort((a, b) => a.id.localeCompare(b.id));
 
   const total = ring.length + 1;
@@ -68,11 +76,18 @@ export function EgoGraph({
         const angle = (-90 + (index * 360) / ring.length) * (Math.PI / 180);
         const x = center + radius * Math.cos(angle);
         const y = center + radius * Math.sin(angle);
-        const interactive = node.kind === "group";
+        const interactive =
+          node.kind === "group" || (node.kind === "capability" && onCapabilityClick !== undefined);
+        const onClick =
+          node.kind === "group"
+            ? () => onGroupClick(node.id)
+            : node.kind === "capability" && onCapabilityClick !== undefined
+              ? () => onCapabilityClick(node.id)
+              : undefined;
         return (
           <g
             key={node.id}
-            onClick={interactive ? () => onGroupClick(node.id) : undefined}
+            onClick={onClick}
             style={interactive ? { cursor: "pointer" } : undefined}
             data-testid={`ego-node-${node.kind}`}
           >

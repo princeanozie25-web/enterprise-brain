@@ -186,3 +186,62 @@ export async function getLens(
   }
   return parse<LensResponse>(response);
 }
+
+// ---------------------------------------------------------------------------
+// AP-3: GET /atlas — mirrored field-for-field from service/src/atlas.rs.
+// STRUCTURE IS INTERNAL-GRADE; EVIDENCE IS GOVERNED: the types carry id,
+// name, nesting, and the viewer's OWN docs, and nothing else. They are
+// structurally incapable of expressing totals, hidden counts, or coverage —
+// a capability with no visible evidence is an empty docs array, full stop.
+// ---------------------------------------------------------------------------
+
+export interface AtlasDoc {
+  document_id: string;
+  effective_successor?: string;
+  sensitivity: Sensitivity;
+  superseded?: boolean;
+  title: string;
+}
+
+export interface AtlasCapability {
+  /** VIEWER-SCOPED: empty when none of the mapped docs are the viewer's. */
+  docs: AtlasDoc[];
+  id: string;
+  name: string;
+}
+
+export interface AtlasWorkflow {
+  capabilities: AtlasCapability[];
+  id: string;
+  name: string;
+}
+
+export interface AtlasInitiative {
+  id: string;
+  name: string;
+  workflows: AtlasWorkflow[];
+}
+
+export interface AtlasStrategy {
+  id: string;
+  initiatives: AtlasInitiative[];
+  name: string;
+}
+
+export interface AtlasResponse {
+  actor_id: string;
+  snapshot_version: string;
+  /** `[]` = the actor has no standing (the empty atlas, their own produce). */
+  strategies: AtlasStrategy[];
+}
+
+/** GET /atlas. 404 (this world has no BRM) -> null. */
+export async function getAtlas(actor: string): Promise<AtlasResponse | null> {
+  const response = await fetch(`${SERVICE_URL}/atlas`, {
+    headers: headers(actor),
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<AtlasResponse>(response);
+}

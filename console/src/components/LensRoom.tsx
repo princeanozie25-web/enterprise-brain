@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
-import type { DocCard, LensDoc, LensResponse, LensSection } from "@/lib/api";
+import type { AtlasResponse, DocCard, LensDoc, LensResponse, LensSection } from "@/lib/api";
 import { PRINCIPALS } from "@/lib/principals";
 import { COLOR, TYPE } from "@/lib/tokens";
 import { AgentEmblem } from "./AgentEmblem";
@@ -21,6 +21,7 @@ import { Skeleton } from "./Skeleton";
 export function LensRoom({ actor }: { actor: string | null }) {
   const [subject, setSubject] = useState<string | null>(actor);
   const [lens, setLens] = useState<LensResponse | null>(null);
+  const [atlas, setAtlas] = useState<AtlasResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
   const [subjectSearch, setSubjectSearch] = useState("");
@@ -67,6 +68,32 @@ export function LensRoom({ actor }: { actor: string | null }) {
     };
   }, [actor, subject]);
 
+  // AP-3: the actor's own atlas, fetched alongside the lens. It feeds the
+  // ego-graph's capability ring and nothing else in this room.
+  useEffect(() => {
+    if (actor === null) {
+      setAtlas(null);
+      return;
+    }
+    let cancelled = false;
+    setAtlas(null);
+    api
+      .getAtlas(actor)
+      .then((response) => {
+        if (!cancelled) {
+          setAtlas(response);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAtlas(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [actor]);
+
   const openDoc = useCallback(
     async (docId: string) => {
       if (actor === null) {
@@ -79,6 +106,45 @@ export function LensRoom({ actor }: { actor: string | null }) {
       } catch {
         setInspector({ open: true, loading: false, card: null });
       }
+    },
+    [actor],
+  );
+
+  // AP-3 RING DOCTRINE: capability nodes render where the SUBJECT's visible
+  // evidence is non-empty. The join uses only what this room already
+  // legitimately holds — the audited lens body (the subject's docs) and the
+  // ACTOR's own /atlas (the actor's visible docs per capability). On a self
+  // view the join is exact; on a cross view it under-renders to
+  // capabilities where BOTH lenses see evidence — fail closed, never a
+  // signal about documents the actor cannot see.
+  const ringCapabilities = useMemo(() => {
+    if (lens === null || atlas === null) {
+      return [];
+    }
+    const subjectDocs = new Set(
+      lens.holdings.flatMap((section) => section.docs.map((doc) => doc.document_id)),
+    );
+    const out: string[] = [];
+    for (const strategy of atlas.strategies) {
+      for (const initiative of strategy.initiatives) {
+        for (const workflow of initiative.workflows) {
+          for (const capability of workflow.capabilities) {
+            if (capability.docs.some((doc) => subjectDocs.has(doc.document_id))) {
+              out.push(capability.id);
+            }
+          }
+        }
+      }
+    }
+    return out;
+  }, [lens, atlas]);
+
+  const openAtlasCapability = useCallback(
+    (capabilityId: string) => {
+      // Full-page door into the Atlas room, sheet opened on the capability,
+      // same lens carried through.
+      const carry = actor === null ? "" : `&as=${encodeURIComponent(actor)}`;
+      window.location.href = `/atlas?cap=${encodeURIComponent(capabilityId)}${carry}`;
     },
     [actor],
   );
@@ -229,7 +295,12 @@ export function LensRoom({ actor }: { actor: string | null }) {
               >
                 Connections
               </h3>
-              <EgoGraph lens={lens} onGroupClick={scrollToSection} />
+              <EgoGraph
+                lens={lens}
+                onGroupClick={scrollToSection}
+                capabilities={ringCapabilities}
+                onCapabilityClick={openAtlasCapability}
+              />
             </section>
 
             {lens.agents.length > 0 && (

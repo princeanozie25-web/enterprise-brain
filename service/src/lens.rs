@@ -217,7 +217,12 @@ pub struct LensEntry {
     pub effective_successor: Option<String>,
 }
 
-fn load_subject_artifact(state: &AppState, subject_id: &str) -> Result<Option<Vec<LensEntry>>> {
+/// Crate-visible since AP-3: /atlas loads the ACTOR's standing through the
+/// same verified path (one loader, one hash discipline).
+pub(crate) fn load_subject_artifact(
+    state: &AppState,
+    subject_id: &str,
+) -> Result<Option<Vec<LensEntry>>> {
     let Some((artifact_file, artifact_sha)) = state.artifact_rows.get(subject_id) else {
         return Ok(None);
     };

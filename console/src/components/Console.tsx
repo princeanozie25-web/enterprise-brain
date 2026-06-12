@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import * as api from "@/lib/api";
 import type { AnswerEnvelope, DocCard, ScopeStatement } from "@/lib/api";
-import { TYPE } from "@/lib/tokens";
+import { DERIVED, TYPE } from "@/lib/tokens";
 import { AnswerCard } from "./AnswerCard";
+import { AtlasRoom } from "./AtlasRoom";
 import { DocInspector } from "./DocInspector";
 import { IdentityRail } from "./IdentityRail";
 import { LensBar } from "./LensBar";
@@ -28,7 +29,7 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function Console({ view = "ask" }: { view?: "ask" | "lens" }) {
+export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" }) {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
   const [query, setQuery] = useState("");
@@ -36,6 +37,7 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" }) {
   const [judge, setJudge] = useState(false);
   const [envelope, setEnvelope] = useState<AnswerEnvelope | null>(null);
   const [asking, setAsking] = useState(false);
+  const [entryCapability, setEntryCapability] = useState<string | null>(null);
   const [inspector, setInspector] = useState<{
     open: boolean;
     loading: boolean;
@@ -49,6 +51,25 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" }) {
     setScope(null);
     setEnvelope(null);
     setInspector({ open: false, loading: false, card: null });
+    // The entry door is spent: a lens switch never re-opens a sheet.
+    setEntryCapability(null);
+  }, []);
+
+  // AP-3 ENTRY DOORS: /atlas?cap=… opens the capability sheet once the
+  // atlas loads; ?as=… carries the lens across a room change (the rooms are
+  // separate static pages, so the door is how the ego-ring click-through
+  // arrives still wearing its lens). Read once on mount; absent in tests
+  // and direct visits, so nothing changes without them.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const as = (params.get("as") ?? "").trim();
+    if (as.length > 0) {
+      setPrincipal(as);
+    }
+    const cap = (params.get("cap") ?? "").trim();
+    if (cap.length > 0) {
+      setEntryCapability(cap);
+    }
   }, []);
 
   useEffect(() => {
@@ -113,6 +134,25 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" }) {
     <div className="min-h-screen">
       <LensBar principal={principal} onSwitch={switchPrincipal} />
 
+      <nav className="ap-card border-x-0 border-t-0" aria-label="Rooms" data-testid="view-switcher">
+        <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-1.5">
+          <ViewDoor label="Ask" href="/" active={view === "ask"} principal={principal} />
+          <ViewDoor label="Lens" href="/lens" active={view === "lens"} principal={principal} />
+          <ViewDoor label="Atlas" href="/atlas" active={view === "atlas"} principal={principal} />
+          {/* THE RESERVED DOOR — flagged in the AP-3 closeout: "Ledger —
+              reserved" is placeholder copy for a room that does not exist
+              yet. Disabled, not hidden: the shell states its own shape. */}
+          <span
+            className="ap-soft ml-2 cursor-default"
+            style={{ fontSize: TYPE.scale.xs }}
+            aria-disabled="true"
+            data-testid="ledger-door"
+          >
+            Ledger — reserved
+          </span>
+        </div>
+      </nav>
+
       <div
         key={principal ?? "no-lens"}
         className={`mx-auto flex max-w-6xl gap-6 p-4 ${irisClass}`}
@@ -121,6 +161,10 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" }) {
         {view === "lens" ? (
           <main className="min-w-0 flex-1">
             <LensRoom actor={principal} />
+          </main>
+        ) : view === "atlas" ? (
+          <main className="min-w-0 flex-1">
+            <AtlasRoom actor={principal} entryCapability={entryCapability} />
           </main>
         ) : (
           <>
@@ -230,5 +274,47 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" }) {
         onOpenDoc={openDoc}
       />
     </div>
+  );
+}
+
+/**
+ * One door in the shell's view switcher. The active door is a quiet fact,
+ * not a link; the others carry the current lens through `?as=` so a room
+ * change keeps the same eyes.
+ */
+function ViewDoor({
+  label,
+  href,
+  active,
+  principal,
+}: {
+  label: string;
+  href: string;
+  active: boolean;
+  principal: string | null;
+}) {
+  const testid = `view-door-${label.toLowerCase()}`;
+  if (active) {
+    return (
+      <span
+        className="ap-register-chrome rounded px-2 py-0.5"
+        style={{ fontSize: TYPE.scale.xs, fontWeight: 600, backgroundColor: DERIVED.wash }}
+        aria-current="page"
+        data-testid={testid}
+      >
+        {label}
+      </span>
+    );
+  }
+  const carry = principal === null ? "" : `?as=${encodeURIComponent(principal)}`;
+  return (
+    <a
+      href={`${href}${carry}`}
+      className="ap-washable ap-register-chrome rounded px-2 py-0.5"
+      style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
+      data-testid={testid}
+    >
+      {label}
+    </a>
   );
 }

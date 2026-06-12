@@ -12,6 +12,7 @@
 
 pub mod agent;
 pub mod answer;
+pub mod atlas;
 pub mod cache;
 pub mod cors;
 pub mod generate;
@@ -150,6 +151,12 @@ pub struct AppState {
     /// sha256 of company.json as pinned by the M1 compile (the agent
     /// registry re-verifies against it).
     pub company_sha256: String,
+    /// AP-3: sha256 of brm.json, pinned by THIS service at startup after
+    /// strict parse + referential closure against the M1-verified corpus
+    /// (the frozen M1 manifest cannot pin it). Every /atlas request
+    /// re-verifies against this pin. `None` = the world has no BRM and
+    /// /atlas answers THE one 404.
+    pub brm_sha256: Option<String>,
     pub snapshot_version: String,
     /// Globally harvested mosaic pairs (sorted, deduplicated). The bound is
     /// applied conservatively to ANY tagged pair co-present in one context.
@@ -219,6 +226,12 @@ impl AppState {
             bail!("retrieval index was built from a different corpus; refusing");
         }
 
+        // AP-3: brm.json joins the hash-verified input set here — validated
+        // against the verified corpus, then byte-pinned for the life of the
+        // process. Missing file = a world without an atlas (fail closed at
+        // the route); present-but-wrong file = no service.
+        let brm_sha256 = atlas::pin_brm(fixtures_dir, &docs)?;
+
         // Harvest the mosaic pairs from the compiled artifacts (verified
         // byte-for-byte against the M1 index) — the only non-test source of
         // the tags, exactly as M1 intended pass-through to be used. The same
@@ -261,6 +274,7 @@ impl AppState {
             artifact_rows,
             judge_timeout_ms: 2000,
             company_sha256: company_sha.clone(),
+            brm_sha256,
             snapshot_version: m1_index.snapshot_version,
             mosaic_pairs: pairs.into_iter().collect(),
             embedder: None,
@@ -431,6 +445,7 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/healthz", get(handle_healthz))
         .route("/agent/{id}/run", post(handle_agent_run))
         .route("/lens/{id}", get(handle_lens))
+        .route("/atlas", get(handle_atlas))
         .route("/proposals", get(handle_proposals_list))
         .route("/proposals/{id}/approve", post(handle_proposal_approve))
         .route("/proposals/{id}/reject", post(handle_proposal_reject))
@@ -578,6 +593,46 @@ async fn handle_lens(
         }
         Err(join_error) => {
             eprintln!("lens task failed: {join_error}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+    }
+}
+
+/// GET /atlas — the capability surface (AP-3). STRUCTURE IS INTERNAL-GRADE;
+/// EVIDENCE IS GOVERNED: the whole BRM renders for any principal with
+/// standing, and each capability carries only the actor's own visible
+/// documents. An actor with no standing receives the empty atlas; a world
+/// with no brm.json answers THE one 404.
+async fn handle_atlas(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+) -> Response {
+    let blocking_state = state.clone();
+    let result =
+        tokio::task::spawn_blocking(move || atlas::atlas_view(&blocking_state, &actor)).await;
+    match result {
+        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => json_bytes_response(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{{\"demo_identity_mode\":true,\"error\":{}}}\n",
+                serde_json::to_string(&message).unwrap_or_else(|_| "\"bad request\"".into())
+            )
+            .into_bytes(),
+        ),
+        Ok(Err(AskError::Internal(err))) => {
+            eprintln!("atlas failed: {err:#}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+        Err(join_error) => {
+            eprintln!("atlas task failed: {join_error}");
             json_bytes_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),

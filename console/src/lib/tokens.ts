@@ -73,6 +73,12 @@ export const GEOMETRY = {
   emblemFieldWidth: 120,
   emblemFieldHeight: 72,
   emblemOverlap: 0.4,
+  /** AP-3 ADDITIONS (flagged in the AP-3 closeout): the Atlas room.
+   * Capability sheet width (same anatomy as the doc inspector), the
+   * card's evidence preview row cap, and the initiative column minimum. */
+  atlasSheetWidth: 420,
+  atlasPreviewRows: 3,
+  atlasColumnMin: 260,
 } as const;
 
 /** MOTION BUDGET — tokens, not vibes. Nothing else animates. */
