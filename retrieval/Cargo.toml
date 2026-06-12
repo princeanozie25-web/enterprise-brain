@@ -1,0 +1,28 @@
+[package]
+name = "retrieval"
+version = "0.1.0"
+edition = "2021"
+description = "Enterprise Brain M2a: governed lexical (BM25) retrieval strictly inside M1 compiled allowlists"
+publish = false
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tantivy = "0.26"
+
+[dev-dependencies]
+# Tests compile fresh M1 artifacts into a temp dir (and reuse the canonical
+# artifact types). Runtime code does NOT depend on the compiler crate; the
+# governance harness does. M1 source stays frozen.
+scope-compiler = { path = "../compiler" }
+
+[lib]
+name = "retrieval"
+path = "src/lib.rs"
+
+[[bin]]
+name = "retrieval"
+path = "src/main.rs"
