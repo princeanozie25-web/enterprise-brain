@@ -1,0 +1,45 @@
+{
+  "video": { "width": 1920, "height": 1080, "fps": 30, "crf": 18 },
+  "pacing": {
+    "keystrokeMs": 40,
+    "mouseSteps": 25,
+    "clickSettleMs": 80,
+    "stateHoldMs": 600,
+    "scrollPxPerS": 400,
+    "tailFreezeS": 0.5,
+    "interBeatGapS": 0.4,
+    "cursorRingPx": 14,
+    "cursorStrokePx": 2,
+    "voLufs": -16
+  },
+  "beats": [
+    {
+      "id": "B0",
+      "kind": "card",
+      "card": "title",
+      "target_s": 8,
+      "text": "Enterprise Brain — AI that checks your keys before it opens any drawer."
+    },
+    { "id": "B1", "kind": "capture", "scene": "ask", "target_s": 35 },
+    { "id": "B2", "kind": "capture", "scene": "lens", "target_s": 50 },
+    { "id": "B2a", "kind": "card", "card": "audit-lens", "target_s": 6 },
+    { "id": "B3", "kind": "capture", "scene": "diff-hr", "target_s": 50 },
+    { "id": "B4", "kind": "capture", "scene": "diff-agent", "target_s": 30 },
+    { "id": "B5", "kind": "capture", "scene": "export", "target_s": 40 },
+    { "id": "B5a", "kind": "card", "card": "audit-export", "target_s": 6 },
+    {
+      "id": "B6",
+      "kind": "card",
+      "card": "numbers",
+      "target_s": 8,
+      "text": "74,400-pair access conformance — 0 false allows, 0 false denies · every cross-lens look audited before render · every export attested to the byte"
+    },
+    {
+      "id": "B7",
+      "kind": "card",
+      "card": "close",
+      "target_s": 8,
+      "text": "Enterprise Brain — designed and built by Prince Anozie · princeanozie25@gmail.com · Demonstration uses a fictional company; no real organisation's data."
+    }
+  ]
+}

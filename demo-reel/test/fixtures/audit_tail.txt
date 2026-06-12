@@ -1,0 +1,2 @@
+{"action":"lens_diff","actor_principal":"p061","left":"p060","ordinal":0,"outcome":"allowed_demo","right":"agent_finance_analyst","target":"p060|agent_finance_analyst"}
+{"action":"evidence_export","actor_principal":"p061","ordinal":1,"outcome":"allowed_demo","target":"diff:p060|agent_finance_analyst"}

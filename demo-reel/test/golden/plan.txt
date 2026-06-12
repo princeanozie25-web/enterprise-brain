@@ -1,0 +1,14 @@
+# beat B0: card, silence, 8.9s
+ffmpeg -y -loop 1 -framerate 30 -i cards/B0.png -f lavfi -t 8.9 -i anullsrc=r=48000:cl=stereo -filter_complex [0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0xFAFAF7,fps=30,drawtext=fontfile='../service/fonts/Inter-Regular.ttf':text='VO PENDING':x=48:y=h-72:fontsize=40:fontcolor=0x5C5C54,format=yuv420p[v];[1:a]anull[a] -map [v] -map [a] -t 8.9 -c:v libx264 -profile:v high -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000 segments/B0.mp4
+# beat B1: capture, vo, 37.1s
+ffmpeg -y -i takes/B1.webm -i vo/vo-B1.wav -filter_complex [0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0xFAFAF7,fps=30,tpad=stop_mode=clone:stop_duration=3.7,format=yuv420p[v];[1:a]loudnorm=I=-16:TP=-1.5:LRA=11,aformat=channel_layouts=stereo,apad[a] -map [v] -map [a] -t 37.1 -c:v libx264 -profile:v high -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000 segments/B1.mp4
+# beat B2: capture, silence, 52s
+ffmpeg -y -i takes/B2.webm -f lavfi -t 52 -i anullsrc=r=48000:cl=stereo -filter_complex [0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0xFAFAF7,fps=30,drawtext=fontfile='../service/fonts/Inter-Regular.ttf':text='VO PENDING':x=48:y=h-72:fontsize=40:fontcolor=0x5C5C54,format=yuv420p[v];[1:a]anull[a] -map [v] -map [a] -t 52 -c:v libx264 -profile:v high -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000 segments/B2.mp4
+# concat: hard cuts only
+ffmpeg -y -f concat -safe 0 -i segments.txt -c copy master-2026-01-05.mp4
+== segments.txt ==
+file 'segments/B0.mp4'
+file 'segments/B1.mp4'
+file 'segments/B2.mp4'
+== master ==
+master-2026-01-05.mp4
