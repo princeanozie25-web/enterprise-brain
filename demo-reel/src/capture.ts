@@ -376,6 +376,37 @@ async function sceneLens(page: Page, args: Args): Promise<BeatFacts> {
   };
 }
 
+async function sceneLane(page: Page, args: Args): Promise<BeatFacts> {
+  await page.goto(`${args.console}/lane?as=p060`);
+  await page.getByTestId("lane-box").first().waitFor({ state: "visible", timeout: 60_000 });
+  await sleep(PACING.stateHoldMs);
+
+  // Scroll the boxes slowly, down and partly back (the contract's 400px/s).
+  await smoothScrollBy(page, 1200);
+  await sleep(PACING.stateHoldMs);
+  await smoothScrollBy(page, -1200);
+  await sleep(PACING.stateHoldMs);
+
+  // Explain the first card: the provenance path lights.
+  const first = page.getByTestId("lane-box").first();
+  await settleClick(page, first.getByTestId("box-explain"));
+
+  // Follow the capability crumb through the AP-3 entry door into Atlas —
+  // a real full-page navigation; the sheet opens on arrival.
+  await settleClick(page, first.getByTestId("crumb-atlas"));
+  await page
+    .getByTestId("capability-sheet")
+    .waitFor({ state: "visible", timeout: 60_000 });
+  await sleep(4_000);
+
+  return {
+    id: "B2b",
+    kind: "capture",
+    scene: "lane",
+    notes: "explain-this-box -> /atlas?cap=… entry door; the sheet opened on arrival",
+  };
+}
+
 async function sceneDiffHr(page: Page, args: Args): Promise<BeatFacts> {
   await page.goto(`${args.console}/lens?as=p016`);
   await page.getByTestId("masthead").waitFor({ state: "visible" });
@@ -558,6 +589,9 @@ async function main(): Promise<void> {
           break;
         case "lens":
           fact = await sceneLens(take.page, args);
+          break;
+        case "lane":
+          fact = await sceneLane(take.page, args);
           break;
         case "diff-hr":
           fact = await sceneDiffHr(take.page, args);

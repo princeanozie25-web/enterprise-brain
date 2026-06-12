@@ -58,8 +58,10 @@ service, no ffmpeg execution (the plan is golden-filed, not run).
 
 ## The VO contract
 
-- Files land in `vo/` named `vo-B0.wav` … `vo-B7.wav`, one per beat,
-  recorded off the video script **against the take-report's facts** — the
+- Files land in `vo/` named `vo-<beat id>.wav` (`vo-B0.wav` … `vo-B7.wav`,
+  including the card and lane beats `vo-B2a.wav`, `vo-B2b.wav`,
+  `vo-B5a.wav`), one per beat, recorded off the video script **against the
+  take-report's facts** — the
   report says per beat whether the judge APPLIED or was ELIDED, the
   retrieval mode, and any degradation, so the recorded line matches what
   actually happened on screen.

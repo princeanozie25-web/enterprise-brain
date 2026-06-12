@@ -23,6 +23,7 @@
     { "id": "B1", "kind": "capture", "scene": "ask", "target_s": 35 },
     { "id": "B2", "kind": "capture", "scene": "lens", "target_s": 50 },
     { "id": "B2a", "kind": "card", "card": "audit-lens", "target_s": 6 },
+    { "id": "B2b", "kind": "capture", "scene": "lane", "target_s": 35 },
     { "id": "B3", "kind": "capture", "scene": "diff-hr", "target_s": 50 },
     { "id": "B4", "kind": "capture", "scene": "diff-agent", "target_s": 30 },
     { "id": "B5", "kind": "capture", "scene": "export", "target_s": 40 },

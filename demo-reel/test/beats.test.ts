@@ -24,10 +24,14 @@ describe("T-R3: beats.json schema and budget", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("script targets sum to 3:30–4:30", () => {
+  it("script targets stay within the amended budget", () => {
+    // The original B0–B7 plan budgeted 3:30–4:30 (241s at targets); the
+    // B2b lane beat (+35s) amends the script to 276s, so the ceiling
+    // grows by one beat. Flagged in the B2b closeout.
     const total = beatsJson.beats.reduce((sum, b) => sum + b.target_s, 0);
     expect(total).toBeGreaterThanOrEqual(210);
-    expect(total).toBeLessThanOrEqual(270);
+    expect(total).toBeLessThanOrEqual(300);
+    expect(total).toBe(276);
   });
 
   it("the pacing numbers match the contract", () => {
