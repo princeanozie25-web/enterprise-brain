@@ -1,0 +1,17 @@
+{
+  "agents": [
+    {
+      "agent_id": "agent_finance_analyst",
+      "standing_queries": [
+        "payroll salary review",
+        "customer account credit terms",
+        "aggregate financial position",
+        "site stock value report",
+        "supplier invoice payment terms",
+        "quarterly budget summary"
+      ],
+      "hybrid": false,
+      "judge": false
+    }
+  ]
+}

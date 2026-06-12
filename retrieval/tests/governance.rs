@@ -31,11 +31,21 @@ fn fixtures_dir() -> PathBuf {
 
 fn scratch(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
-    if dir.exists() {
-        fs::remove_dir_all(&dir).expect("clear scratch dir");
+    // Windows deletion is asynchronous: a remove_dir_all can return while the
+    // entries are still delete-pending, making the fresh dir look non-empty.
+    // Retry, bounded, until the directory is really empty.
+    for attempt in 0u64..50 {
+        let _ = fs::remove_dir_all(&dir);
+        if fs::create_dir_all(&dir).is_ok()
+            && fs::read_dir(&dir)
+                .map(|mut entries| entries.next().is_none())
+                .unwrap_or(false)
+        {
+            return dir;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20 * (attempt.min(5) + 1)));
     }
-    fs::create_dir_all(&dir).expect("create scratch dir");
-    dir
+    panic!("scratch dir {name} could not be reset");
 }
 
 struct Setup {

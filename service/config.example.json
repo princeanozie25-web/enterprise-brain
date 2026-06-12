@@ -1,0 +1,9 @@
+{
+  "profile": "production — judge timeout 2000ms is the production default",
+  "endpoint": "http://127.0.0.1:11434",
+  "embed_model": "nomic-embed-text",
+  "embed_dim": 768,
+  "judge_model": "llama3.2:3b",
+  "generate_model": "llama3.2:3b",
+  "judge_timeout_ms": 2000
+}

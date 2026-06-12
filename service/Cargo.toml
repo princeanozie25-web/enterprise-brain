@@ -1,0 +1,31 @@
+[package]
+name = "service"
+version = "0.1.0"
+edition = "2021"
+description = "Enterprise Brain M3a: the Ask Brain answer service — loopback HTTP over governed retrieval"
+publish = false
+
+# Async is permitted in THIS crate only; the core crates stay sync.
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+retrieval = { path = "../retrieval" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
+
+[dev-dependencies]
+# The A-suite compiles fresh M1 artifacts (frozen compiler crate) and drives
+# the axum router in-memory via tower::ServiceExt — no sockets. sha2 powers
+# the synthetic embedding fixture generator (same projection as M2b's).
+scope-compiler = { path = "../compiler" }
+sha2 = "0.10"
+tower = { version = "0.5", features = ["util"] }
+
+[lib]
+name = "service"
+path = "src/lib.rs"
+
+[[bin]]
+name = "service"
+path = "src/main.rs"
