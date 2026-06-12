@@ -3,17 +3,30 @@
 import { useCallback, useEffect, useState } from "react";
 import * as api from "@/lib/api";
 import type { AnswerEnvelope, DocCard, ScopeStatement } from "@/lib/api";
+import { TYPE } from "@/lib/tokens";
 import { AnswerCard } from "./AnswerCard";
 import { DocInspector } from "./DocInspector";
 import { IdentityRail } from "./IdentityRail";
+import { LensBar } from "./LensBar";
 import { ResultsList } from "./ResultsList";
 import { Skeleton } from "./Skeleton";
+import iris from "./LensBar.module.css";
 
 /**
- * The console: one screen, three regions. Identity rail (left), ask column
- * (center), doc inspector (side sheet). Switching principals clears the
- * answer view entirely — no cross-principal residue on screen (U-4).
+ * The Aperture shell: lens bar on top (the navigation primitive), the Ask
+ * view beneath. Switching lenses fires the IRIS — a circular clip-path wipe
+ * centered on the lens bar — during which the answer/results state clears
+ * (the M3b residue rule, now with a face). prefers-reduced-motion swaps the
+ * iris for fade-view.
  */
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    // No way to ask: choose the calmer path.
+    return true;
+  }
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 export function Console() {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
@@ -30,7 +43,8 @@ export function Console() {
 
   const switchPrincipal = useCallback((next: string) => {
     setPrincipal(next);
-    // Clear EVERYTHING the previous principal saw, before any fetch.
+    // Clear EVERYTHING the previous lens saw, before any fetch: the iris
+    // reveals a clean world.
     setScope(null);
     setEnvelope(null);
     setInspector({ open: false, loading: false, card: null });
@@ -92,82 +106,112 @@ export function Console() {
     [principal],
   );
 
+  const irisClass = prefersReducedMotion() ? iris.fadeIn : iris.irisIn;
+
   return (
-    <div className="mx-auto flex min-h-screen max-w-6xl gap-4 p-4">
-      <aside className="w-72 shrink-0">
-        <IdentityRail principal={principal} scope={scope} onSwitch={switchPrincipal} />
-      </aside>
+    <div className="min-h-screen">
+      <LensBar principal={principal} onSwitch={switchPrincipal} />
 
-      <main className="min-w-0 flex-1">
-        <header className="mb-3">
-          <h1 className="text-base font-semibold text-stone-800">Ask Brain</h1>
-          <p className="text-xs text-stone-500">
-            Governed retrieval console — scope, provenance, and honest degradation, at a glance.
-          </p>
-        </header>
+      <div
+        key={principal ?? "no-lens"}
+        className={`mx-auto flex max-w-6xl gap-6 p-4 ${irisClass}`}
+        data-testid="iris-stage"
+      >
+        <aside className="w-72 shrink-0">
+          <IdentityRail principal={principal} scope={scope} />
+        </aside>
 
-        <div className="rounded-lg border border-stone-200 bg-white p-3">
-          <textarea
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={
-              principal === null ? "Select a principal first" : "Ask within your scope…"
-            }
-            disabled={principal === null}
-            rows={2}
-            className="w-full resize-none rounded border border-stone-200 px-2 py-1.5 text-sm"
-            data-testid="query-input"
-          />
-          <div className="mt-2 flex items-center gap-4">
-            <label className="flex items-center gap-1.5 text-xs text-stone-600">
-              <input
-                type="checkbox"
-                checked={hybrid}
-                onChange={(e) => setHybrid(e.target.checked)}
-                data-testid="toggle-hybrid"
-              />
-              hybrid
-            </label>
-            <label className="flex items-center gap-1.5 text-xs text-stone-600">
-              <input
-                type="checkbox"
-                checked={judge}
-                onChange={(e) => setJudge(e.target.checked)}
-                data-testid="toggle-judge"
-              />
-              judge
-            </label>
-            <button
-              type="button"
-              onClick={submitAsk}
-              disabled={principal === null || asking}
-              className="ml-auto rounded bg-stone-800 px-3 py-1 text-xs font-medium text-white hover:bg-stone-700 disabled:opacity-40"
-              data-testid="ask-button"
+        <main className="min-w-0 flex-1">
+          <header className="mb-3">
+            <h1
+              className="ap-register-chrome"
+              style={{
+                fontSize: TYPE.scale.lg,
+                lineHeight: TYPE.line.display,
+                fontWeight: 600,
+              }}
             >
               Ask
-            </button>
-          </div>
-        </div>
+            </h1>
+            <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+              Scope, provenance, and honest degradation, at a glance.
+            </p>
+          </header>
 
-        <div className="mt-3 space-y-3">
-          {asking && (
-            <div className="rounded-lg border border-stone-200 bg-white p-4">
-              <Skeleton lines={3} />
+          <div className="ap-card rounded p-3">
+            <textarea
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={
+                principal === null ? "Select a lens first" : "Ask within your scope…"
+              }
+              disabled={principal === null}
+              rows={2}
+              className="w-full resize-none rounded px-2 py-1.5"
+              style={{ fontSize: TYPE.scale.sm }}
+              data-testid="query-input"
+            />
+            <div className="mt-2 flex items-center gap-4">
+              <label
+                className="ap-soft flex items-center gap-1.5"
+                style={{ fontSize: TYPE.scale.xs }}
+              >
+                <input
+                  type="checkbox"
+                  checked={hybrid}
+                  onChange={(e) => setHybrid(e.target.checked)}
+                  data-testid="toggle-hybrid"
+                />
+                hybrid
+              </label>
+              <label
+                className="ap-soft flex items-center gap-1.5"
+                style={{ fontSize: TYPE.scale.xs }}
+              >
+                <input
+                  type="checkbox"
+                  checked={judge}
+                  onChange={(e) => setJudge(e.target.checked)}
+                  data-testid="toggle-judge"
+                />
+                judge
+              </label>
+              <button
+                type="button"
+                onClick={submitAsk}
+                disabled={principal === null || asking}
+                className="ap-affordance-button ml-auto rounded px-3 py-1"
+                style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
+                data-testid="ask-button"
+              >
+                Ask
+              </button>
             </div>
-          )}
-          {envelope && (
-            <>
-              <AnswerCard envelope={envelope} onOpenDoc={openDoc} />
-              <section className="rounded-lg border border-stone-200 bg-white p-2">
-                <h2 className="px-2 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-stone-500">
-                  Results
-                </h2>
-                <ResultsList results={envelope.results} onOpenDoc={openDoc} />
-              </section>
-            </>
-          )}
-        </div>
-      </main>
+          </div>
+
+          <div className="mt-4 space-y-4">
+            {asking && (
+              <div className="ap-card rounded p-4">
+                <Skeleton lines={3} />
+              </div>
+            )}
+            {envelope && (
+              <>
+                <AnswerCard envelope={envelope} onOpenDoc={openDoc} />
+                <section className="ap-card rounded p-2">
+                  <h2
+                    className="ap-soft px-2 pb-1 pt-1 uppercase tracking-wide"
+                    style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+                  >
+                    Results
+                  </h2>
+                  <ResultsList results={envelope.results} onOpenDoc={openDoc} />
+                </section>
+              </>
+            )}
+          </div>
+        </main>
+      </div>
 
       <DocInspector
         open={inspector.open}

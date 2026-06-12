@@ -1,15 +1,17 @@
 import type { AnswerEnvelope } from "@/lib/api";
+import { TYPE } from "@/lib/tokens";
 
 /**
- * The provenance strip: four factual badges from the envelope, always
- * rendered. Badge states are labels, never warnings — an elided judge or a
- * lexical fallback is the system being honest, and honesty is not styled as
- * failure (neutral tones only; no red for degradation states).
+ * The provenance strip: factual badges in the neutral language — ink-soft
+ * outlines, no fills, no icons-as-alarm. An elided judge or a lexical
+ * fallback is the system being honest; honesty is never styled as failure,
+ * and "aggregation rule applied" gets the same calm treatment as "hybrid".
  */
 function Badge({ children, testid }: { children: string; testid: string }) {
   return (
     <span
-      className="inline-block rounded border border-stone-300 bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-700"
+      className="ap-hairline ap-register-chrome ap-soft inline-block rounded border px-2 py-0.5"
+      style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
       data-testid={testid}
     >
       {children}

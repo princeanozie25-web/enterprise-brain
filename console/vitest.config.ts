@@ -8,6 +8,11 @@ export default defineConfig({
     environment: "jsdom",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     setupFiles: ["tests/setup.ts"],
+    css: {
+      // CSS-module class names resolve to their source names so the iris
+      // classes are assertable (U-7).
+      modules: { classNameStrategy: "non-scoped" },
+    },
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },

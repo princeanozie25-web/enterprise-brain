@@ -1,19 +1,5 @@
 @import "tailwindcss";
 
-/* System font stack — no remote fonts, ever. */
-:root {
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Helvetica Neue",
-    Arial,
-    sans-serif;
-}
-
-body {
-  background-color: #fafaf9;
-  color: #1c1917;
-}
+/* Aperture: all colors, fonts, and durations are CSS variables generated
+   from src/lib/tokens.ts in layout.tsx — no literals here (U-6). Tailwind
+   supplies layout/spacing utilities only. */

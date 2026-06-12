@@ -1,12 +1,16 @@
 import type { DocCard } from "@/lib/api";
 import { INSPECTOR_WIDTH } from "@/lib/constants";
+import { TYPE } from "@/lib/tokens";
 import { SensitivityBadge } from "./SensitivityBadge";
 import { Skeleton } from "./Skeleton";
 
 /**
- * The doc inspector side sheet (420px). A 404 — which the service guarantees
- * is byte-identical for out-of-scope and nonexistent ids — renders ONE empty
- * state; the console cannot know more, so it cannot say more (U-5).
+ * The doc inspector side sheet (420px). Restyled into the Aperture language
+ * (hairline elevation — the shadow is gone; whitespace and the 1px rule do
+ * the work). A 404 — byte-identical for out-of-scope and nonexistent —
+ * renders ONE empty state (U-5). Flagged in the AP-1 closeout: this file
+ * was not on the restyle list, but the color law binds every visual
+ * decision and its old shadow + off-palette grays violated it.
  */
 export function DocInspector({
   open,
@@ -27,16 +31,22 @@ export function DocInspector({
   }
   return (
     <aside
-      className="fixed inset-y-0 right-0 z-20 flex flex-col border-l border-stone-200 bg-white shadow-xl"
+      className="ap-card fixed inset-y-0 right-0 z-20 flex flex-col border-y-0 border-r-0"
       style={{ width: INSPECTOR_WIDTH }}
       data-testid="doc-inspector"
     >
-      <div className="flex items-center justify-between border-b border-stone-200 px-4 py-3">
-        <h2 className="text-sm font-semibold text-stone-700">Document</h2>
+      <div className="ap-hairline flex items-center justify-between border-b px-4 py-3">
+        <h2
+          className="ap-register-chrome ap-soft"
+          style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
+        >
+          Document
+        </h2>
         <button
           type="button"
           onClick={onClose}
-          className="rounded px-2 py-0.5 text-sm text-stone-500 hover:bg-stone-100"
+          className="ap-washable ap-soft rounded px-2 py-0.5"
+          style={{ fontSize: TYPE.scale.sm }}
           data-testid="inspector-close"
         >
           Close
@@ -48,13 +58,24 @@ export function DocInspector({
         ) : card ? (
           <div className="space-y-3" data-testid="inspector-card">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="text-sm font-medium text-stone-900">{card.title}</h3>
+              <h3
+                className="ap-register-chrome"
+                style={{ fontSize: TYPE.scale.sm, fontWeight: 500 }}
+              >
+                {card.title}
+              </h3>
               <SensitivityBadge sensitivity={card.sensitivity} />
             </div>
-            <p className="font-mono text-[11px] text-stone-400">{card.document_id}</p>
+            <p
+              className="ap-register-evidence ap-soft"
+              style={{ fontSize: TYPE.scale.xs }}
+            >
+              {card.document_id}
+            </p>
             {card.superseded && (
               <div
-                className="rounded border border-stone-300 bg-stone-50 px-3 py-2 text-xs text-stone-600"
+                className="ap-card ap-soft rounded px-3 py-2"
+                style={{ fontSize: TYPE.scale.xs }}
                 data-testid="superseded-notice"
               >
                 This version is superseded.
@@ -65,7 +86,7 @@ export function DocInspector({
                     <button
                       type="button"
                       onClick={() => onOpenDoc(card.effective_successor!)}
-                      className="font-mono underline hover:text-stone-900"
+                      className="ap-register-evidence ap-affordance-text underline"
                       data-testid="successor-link"
                     >
                       {card.effective_successor}
@@ -74,10 +95,16 @@ export function DocInspector({
                 )}
               </div>
             )}
-            <p className="text-sm leading-relaxed text-stone-700">{card.snippet}</p>
+            <p style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
+              {card.snippet}
+            </p>
           </div>
         ) : (
-          <p className="py-8 text-center text-sm text-stone-500" data-testid="inspector-empty">
+          <p
+            className="ap-soft py-8 text-center"
+            style={{ fontSize: TYPE.scale.sm }}
+            data-testid="inspector-empty"
+          >
             This document isn&apos;t available.
           </p>
         )}

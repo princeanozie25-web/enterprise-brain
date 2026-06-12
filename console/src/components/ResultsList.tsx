@@ -1,10 +1,12 @@
 import type { EnrichedResult } from "@/lib/api";
+import { COLOR, DERIVED, TYPE } from "@/lib/tokens";
 import { SensitivityBadge } from "./SensitivityBadge";
 
 /**
- * The results list. Empty scope renders a plain statement of fact — no
- * counts, no hints, no suggestions that imply hidden content. Unknown fields
- * on a result are simply never read (the no-dark-counts rule at runtime).
+ * The results table: chrome register for titles, evidence register for
+ * ranks and doc ids, sensitivity badges from tokens, hairline dividers.
+ * Empty scope is a plain statement of fact — no counts, no hints, no
+ * suggestions that imply hidden content.
  */
 export function ResultsList({
   results,
@@ -15,27 +17,47 @@ export function ResultsList({
 }) {
   if (results.length === 0) {
     return (
-      <p className="py-6 text-center text-sm text-stone-500" data-testid="empty-results">
+      <p
+        className="ap-soft py-6 text-center"
+        style={{ fontSize: TYPE.scale.sm }}
+        data-testid="empty-results"
+      >
         Nothing in your scope matches
       </p>
     );
   }
   return (
-    <ol className="divide-y divide-stone-100" data-testid="results-list">
-      {results.map((result) => (
-        <li key={result.document_id}>
+    <ol data-testid="results-list">
+      {results.map((result, index) => (
+        <li
+          key={result.document_id}
+          style={index > 0 ? { borderTop: `1px solid ${DERIVED.hairline}` } : undefined}
+        >
           <button
             type="button"
             onClick={() => onOpenDoc(result.document_id)}
-            className="flex w-full items-center gap-3 px-2 py-2 text-left hover:bg-stone-50"
+            className="ap-washable flex w-full items-center gap-3 px-2 py-2 text-left"
             data-testid="result-row"
           >
-            <span className="w-6 shrink-0 text-right font-mono text-[11px] text-stone-400">
+            <span
+              className="ap-register-evidence w-6 shrink-0 text-right"
+              style={{ fontSize: TYPE.scale.xs, color: COLOR.inkSoft }}
+            >
               {result.score_rank}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm text-stone-800">{result.title}</span>
-              <span className="font-mono text-[11px] text-stone-400">{result.document_id}</span>
+              <span
+                className="ap-register-chrome block truncate"
+                style={{ fontSize: TYPE.scale.sm }}
+              >
+                {result.title}
+              </span>
+              <span
+                className="ap-register-evidence"
+                style={{ fontSize: TYPE.scale.xs, color: COLOR.inkSoft }}
+              >
+                {result.document_id}
+              </span>
             </span>
             <SensitivityBadge sensitivity={result.sensitivity} />
           </button>

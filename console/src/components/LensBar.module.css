@@ -1,0 +1,38 @@
+/* THE IRIS — the one choreographed motion in the product. A circular
+   clip-path wipe centered on the lens bar: old world out (state clears
+   synchronously — the M3b residue rule), new world in over 220ms. All
+   timing comes from token-generated CSS variables; no literals (U-6).
+   prefers-reduced-motion swaps the iris for fade-view (the component
+   chooses the class; the media query below is belt-and-braces). */
+
+.irisIn {
+  animation: iris-in var(--dur-iris) var(--ease-iris) both;
+}
+
+.fadeIn {
+  animation: fade-in var(--dur-view) var(--ease-out) both;
+}
+
+@keyframes iris-in {
+  from {
+    clip-path: circle(0% at 50% 0%);
+  }
+  to {
+    clip-path: circle(141% at 50% 0%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .irisIn {
+    animation: fade-in var(--dur-view) var(--ease-out) both;
+  }
+}
