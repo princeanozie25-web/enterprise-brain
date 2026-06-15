@@ -82,6 +82,16 @@ describe("U-6: color discipline", () => {
         "#D55E00",
         "#F6EAF1",
         "#CC79A7",
+        // The dark theme (Org Brain surface): a designed palette, not an
+        // inversion — paper, ink, ink-soft, affordance, hairline, wash.
+        "#14130E",
+        "#F4F3EE",
+        "#9A9A90",
+        "#7AA0CE",
+        "#33322C",
+        "#222019",
+        // The one reserved warm accent — lit path + core glow.
+        "#C77F3A",
       ].map((h) => h.toUpperCase()),
     );
     expect([...hexes].sort()).toEqual([...expected].sort());

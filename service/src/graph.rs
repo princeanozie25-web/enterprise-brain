@@ -68,6 +68,16 @@ pub struct GraphTool {
     pub label: String,
 }
 
+/// A system of record the org runs (company.json `sources`): docstore, wiki,
+/// mail_lite, hr_system, quality_system. Real entities, NOT invented — the
+/// documents the corpus governs originate in these. Carries no holding.
+#[derive(Debug, Serialize)]
+pub struct GraphSource {
+    pub id: String,
+    pub kind: String,
+    pub label: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct GraphEdge {
     pub from: String,
@@ -83,6 +93,7 @@ pub struct GraphResponse {
     pub edges: Vec<GraphEdge>,
     pub people: Vec<GraphPerson>,
     pub snapshot_version: String,
+    pub sources: Vec<GraphSource>,
     pub tools: Vec<GraphTool>,
 }
 
@@ -98,6 +109,8 @@ struct GraphCompany {
     departments: Vec<String>,
     people: Vec<GraphCompanyPerson>,
     agents: Vec<GraphCompanyAgent>,
+    #[serde(default)]
+    sources: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -118,6 +131,19 @@ struct GraphCompanyAgent {
     id: String,
     name: String,
     owner_user_id: String,
+}
+
+/// A readable label for a source id — a fixed table over the corpus's five
+/// systems; an unknown id falls back to its raw id (we never invent a name).
+fn source_label(id: &str) -> String {
+    match id {
+        "docstore" => "Document store".to_string(),
+        "wiki" => "Wiki".to_string(),
+        "mail_lite" => "Mail".to_string(),
+        "hr_system" => "HR system".to_string(),
+        "quality_system" => "Quality system".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn load_company(fixtures_dir: &Path, expected_sha256: &str) -> Result<GraphCompany> {
@@ -211,6 +237,21 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
         .collect();
     tools.sort_by(|a, b| a.id.cmp(&b.id));
 
+    // Sources: the org's real systems of record (company.json `sources`). These
+    // are first-class entities in the corpus — NOT invented for density. A
+    // source carries no holding (which documents live in it stays out of the
+    // graph; that is the lens's job).
+    let mut sources: Vec<GraphSource> = company
+        .sources
+        .iter()
+        .map(|s| GraphSource {
+            id: s.clone(),
+            kind: "source".to_string(),
+            label: source_label(s),
+        })
+        .collect();
+    sources.sort_by(|a, b| a.id.cmp(&b.id));
+
     // Edges: reporting lines, department membership (person->dept->org), and
     // agent ownership. No "uses" edges exist — there are no tools in the
     // corpus, only owned agents; absence is honest (we never invent an edge).
@@ -245,6 +286,16 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
             to: agent.id.clone(),
         });
     }
+    // Each source is a system the whole org runs — a true structural edge to
+    // the core, never to a person (the corpus models no person->source usage,
+    // and we never invent an edge).
+    for source in &sources {
+        edges.push(GraphEdge {
+            from: source.id.clone(),
+            kind: "system_of".to_string(),
+            to: ORG_NODE_ID.to_string(),
+        });
+    }
 
     let response = GraphResponse {
         actor_id: actor.to_string(),
@@ -253,6 +304,7 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
         edges,
         people: graph_people,
         snapshot_version: state.snapshot_version.clone(),
+        sources,
         tools,
     };
     canonical_json_bytes(&response)

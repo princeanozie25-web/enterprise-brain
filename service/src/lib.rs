@@ -23,6 +23,7 @@ pub mod humanize;
 pub mod identity;
 pub mod lane;
 pub mod lens;
+pub mod node_summary;
 pub mod scope;
 pub mod sidecar;
 
@@ -555,6 +556,7 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/lane/inbox/{id}/dismiss", post(handle_inbox_dismiss))
         .route("/lane/rollup", get(handle_rollup))
         .route("/graph", get(handle_graph))
+        .route("/node/{id}/summary", get(handle_node_summary))
         .route("/people", get(handle_people))
         .route("/proposals", get(handle_proposals_list))
         .route("/proposals/{id}/approve", post(handle_proposal_approve))
@@ -1063,6 +1065,46 @@ async fn handle_graph(
         }
         Err(join_error) => {
             eprintln!("graph task failed: {join_error}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+    }
+}
+
+/// GET /node/{id}/summary — the org-graph inspector's data. Org core -> the
+/// corpus cardinalities; a person/agent -> compiled scope + reason-grouped
+/// access COUNTS (never the documents); a non-principal -> the one 404.
+/// Metadata only: it can name no document (GR-7 enforces it).
+async fn handle_node_summary(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(_actor): DemoPrincipal,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response {
+    let blocking_state = state.clone();
+    let result =
+        tokio::task::spawn_blocking(move || node_summary::node_summary(&blocking_state, &id)).await;
+    match result {
+        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => json_bytes_response(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{{\"demo_identity_mode\":true,\"error\":{}}}\n",
+                serde_json::to_string(&message).unwrap_or_else(|_| "\"bad request\"".into())
+            )
+            .into_bytes(),
+        ),
+        Ok(Err(AskError::Internal(err))) => {
+            eprintln!("node summary failed: {err:#}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+        Err(join_error) => {
+            eprintln!("node summary task failed: {join_error}");
             json_bytes_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),

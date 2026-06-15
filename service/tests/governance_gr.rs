@@ -347,3 +347,166 @@ async fn gr4_is_self_marks_only_the_actor_and_unknown_is_404() {
     assert_eq!(status, StatusCode::NOT_FOUND, "unknown actor -> 404");
     println!("GR-4: is_self marks only the actor; unknown actor -> the one 404");
 }
+
+// ---------------------------------------------------------------------------
+// GR-6 SOURCES: the 5 real systems ride the graph, and still nothing leaks
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn gr6_graph_carries_the_real_sources_and_still_no_leak() {
+    let router = app(Arc::new(gr_state()));
+    let (status, bytes) = get(&router, "/graph", "p060").await;
+    assert_eq!(status, StatusCode::OK);
+    let graph: Value = serde_json::from_slice(&bytes).unwrap();
+
+    // The five real systems of record (company.json sources[]), nothing else.
+    let sources: BTreeSet<&str> = graph["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
+    let expected: BTreeSet<&str> = ["docstore", "wiki", "mail_lite", "hr_system", "quality_system"]
+        .into_iter()
+        .collect();
+    assert_eq!(sources, expected, "graph sources == company.json sources");
+    for s in graph["sources"].as_array().unwrap() {
+        assert_eq!(s["kind"], "source", "a source declares its kind");
+        assert!(!s["label"].as_str().unwrap().is_empty(), "a source is labelled");
+    }
+
+    // One system_of edge per source, to the org core — never to a person.
+    let system_edges: Vec<&Value> = graph["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["kind"] == "system_of")
+        .collect();
+    assert_eq!(system_edges.len(), 5, "one system_of edge per source");
+    for e in system_edges {
+        assert_eq!(e["to"], "org", "a source is a system of the org");
+        assert!(expected.contains(e["from"].as_str().unwrap()), "edge from a real source");
+    }
+
+    // Adding sources introduced NO holding: still zero document ids, still no
+    // forbidden key anywhere in the payload (GR-3's law, re-proven).
+    let mut strings = Vec::new();
+    collect_strings(&graph, &mut strings);
+    assert!(!strings.iter().any(|s| is_doc_id(s)), "sources carry no document id");
+    let mut keys = BTreeSet::new();
+    collect_keys(&graph, &mut keys);
+    for forbidden in ["sensitivity", "document_id", "documents", "holdings", "count", "docs"] {
+        assert!(!keys.contains(forbidden), "no {forbidden:?} field after sources");
+    }
+    println!("GR-6: 5 real sources + 5 system_of edges; zero leak preserved");
+}
+
+// ---------------------------------------------------------------------------
+// GR-7 NODE SUMMARY: the inspector is REAL, scope-respecting, metadata-only
+// ---------------------------------------------------------------------------
+
+fn index_entry_count(id: &str) -> usize {
+    let v: Value = serde_json::from_slice(
+        &fs::read(repo_root().join("compiler").join("artifacts").join("index.json")).unwrap(),
+    )
+    .unwrap();
+    v["principals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["principal_id"] == id)
+        .map(|p| p["entry_count"].as_u64().unwrap() as usize)
+        .unwrap_or_else(|| panic!("{id} missing from index"))
+}
+
+fn assert_metadata_only(summary: &Value, who: &str) {
+    let mut strings = Vec::new();
+    collect_strings(summary, &mut strings);
+    assert!(
+        !strings.iter().any(|s| is_doc_id(s)),
+        "{who}: node summary names no document id"
+    );
+    let mut keys = BTreeSet::new();
+    collect_keys(summary, &mut keys);
+    for forbidden in ["sensitivity", "document_id", "documents", "holdings", "count", "docs"] {
+        assert!(!keys.contains(forbidden), "{who}: no {forbidden:?} field");
+    }
+}
+
+#[tokio::test]
+async fn gr7_node_summary_is_real_scoped_and_metadata_only() {
+    let router = app(Arc::new(gr_state()));
+
+    // ORG: the corpus cardinalities, every one matching the real fixtures.
+    let (status, bytes) = get(&router, "/node/org/summary", "p060").await;
+    assert_eq!(status, StatusCode::OK);
+    let org: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(org["kind"], "org");
+    let stats = &org["stats"];
+    assert_eq!(stats["people"], 120, "people");
+    assert_eq!(stats["departments"], 8, "departments");
+    assert_eq!(stats["document_total"], 600, "documents");
+    assert_eq!(stats["workflows"], 40, "workflows");
+    assert_eq!(stats["capabilities"], 90, "capabilities");
+    assert_eq!(stats["agents"], 4, "agents");
+    assert_eq!(stats["sources"], 5, "sources");
+    assert_eq!(stats["groups"], 14, "groups");
+    assert_eq!(stats["sites"], 2, "sites");
+    assert_eq!(stats["permission_edges"], 16881, "compiled allow edges");
+    assert_eq!(stats["principals"], 124, "principals");
+    assert_eq!(stats["total_decisions"], 74400, "the conformance total");
+    assert_metadata_only(&org, "org");
+
+    // PERSON: scope + reason-grouped COUNTS that sum to the compiled allowlist.
+    let (status, bytes) = get(&router, "/node/p060/summary", "p060").await;
+    assert_eq!(status, StatusCode::OK);
+    let person: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(person["kind"], "human");
+    assert_eq!(person["corpus_documents"], 600);
+    let visible = person["visible_documents"].as_u64().unwrap() as usize;
+    assert_eq!(visible, index_entry_count("p060"), "visible == compiled allowlist");
+    let reason_sum: usize = person["access_by_reason"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g["granted"].as_u64().unwrap() as usize)
+        .sum();
+    assert_eq!(reason_sum, visible, "every visible doc is grouped under exactly one reason");
+    assert!(person["access_by_reason"].as_array().unwrap().iter().all(|g| {
+        !g["sentence"].as_str().unwrap().is_empty()
+    }), "each reason carries its human sentence");
+    assert!(person["groups"].as_array().unwrap().len() > 0, "person carries scope groups");
+    assert_metadata_only(&person, "p060");
+
+    // AGENT: the M4 authority, stated from real fixtures.
+    let (status, bytes) = get(&router, "/node/agent_finance_analyst/summary", "p061").await;
+    assert_eq!(status, StatusCode::OK);
+    let agent: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(agent["kind"], "agent");
+    assert_eq!(agent["owner_user_id"], "p061");
+    assert_eq!(
+        agent["visible_documents"].as_u64().unwrap() as usize,
+        index_entry_count("agent_finance_analyst")
+    );
+    let permitted: Vec<&str> = agent["permitted_actions"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect();
+    let blocked: Vec<&str> = agent["blocked_actions"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect();
+    assert!(permitted.iter().any(|a| a.contains("retrieve")), "agent may retrieve");
+    assert!(permitted.iter().any(|a| a.contains("propose")), "agent may propose");
+    assert!(blocked.iter().any(|a| a.contains("approve")), "agent cannot approve/reject");
+    assert!(blocked.iter().any(|a| a.contains("mutate")), "agent cannot mutate");
+    assert_metadata_only(&agent, "agent");
+
+    // A person who owns an agent surfaces it (real ownership edge).
+    let (_s, bytes) = get(&router, "/node/p061/summary", "p061").await;
+    let owner: Value = serde_json::from_slice(&bytes).unwrap();
+    let owned: Vec<&str> = owner["agents_owned"].as_array().unwrap().iter().map(|a| a["id"].as_str().unwrap()).collect();
+    assert!(owned.contains(&"agent_finance_analyst"), "p061 owns the finance agent");
+
+    // NON-PRINCIPALS are summarised on the client, never here: a department, a
+    // source, and an unknown id each get the one 404.
+    for id in ["Finance", "docstore", "p_ghost_404"] {
+        let (status, _) = get(&router, &format!("/node/{id}/summary"), "p060").await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{id} -> the one 404");
+    }
+    println!("GR-7: node summary is real (counts == compiled), scope-respecting, metadata-only");
+}

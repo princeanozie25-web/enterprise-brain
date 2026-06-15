@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { COLOR, DERIVED, FONT, MOTION, TYPE } from "@/lib/tokens";
+import { ACCENT, COLOR, DARK, DERIVED, FONT, MOTION, TYPE } from "@/lib/tokens";
 import "@/fonts/fonts.css";
 import "./globals.css";
 
@@ -12,14 +12,30 @@ export const metadata: Metadata = {
 // duration, or font literal exists in this file or anywhere under src/app
 // and src/components (U-6 enforces it). Whitespace is the elevation system;
 // the hairline is the only shadow-like device.
+//
+// THEME: the console defaults to DARK (the Org Brain command surface). Colour
+// vars live in two theme blocks keyed on [data-theme]; everything else (fonts,
+// type, motion) is theme-independent. data-theme is set before paint by the
+// init script below (default dark, light remembered per browser).
 const apertureBase = `
 :root {
+  --paper: ${DARK.paper};
+  --ink: ${DARK.ink};
+  --ink-soft: ${DARK.inkSoft};
+  --affordance: ${DARK.affordance};
+  --hairline: ${DARK.hairline};
+  --wash: ${DARK.wash};
+  --accent-warm: ${ACCENT.warm};
+}
+:root[data-theme="light"] {
   --paper: ${COLOR.paper};
   --ink: ${COLOR.ink};
   --ink-soft: ${COLOR.inkSoft};
   --affordance: ${COLOR.affordance};
   --hairline: ${DERIVED.hairline};
   --wash: ${DERIVED.wash};
+}
+:root {
   --font-chrome: ${FONT.chrome};
   --font-answer: ${FONT.answer};
   --font-evidence: ${FONT.evidence};
@@ -74,12 +90,17 @@ input, textarea {
 @keyframes ap-pulse { from { opacity: 0.45; } to { opacity: 0.9; } }
 `;
 
+// Set the theme attribute before first paint (no flash): remembered choice,
+// else the dark default. The console ships dark; light is one click away.
+const themeInit = `try{var t=localStorage.getItem('ap-theme');document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');}catch(e){}`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
         <style dangerouslySetInnerHTML={{ __html: apertureBase }} />
       </head>
       <body>{children}</body>

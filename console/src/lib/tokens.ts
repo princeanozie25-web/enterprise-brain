@@ -30,6 +30,33 @@ export const DERIVED = {
 } as const;
 
 /**
+ * DARK THEME (the org-graph command surface defaults to it). A designed dark
+ * palette — NOT an inversion: a warm near-black paper, warm off-white ink, a
+ * lifted affordance blue legible on dark, and SOLID hairline/wash (dark can't
+ * reuse the ink-soft alphas — they vanish on near-black). The five labeled
+ * sensitivity hues are shared across themes (they read as luminous chips on
+ * dark, soft tints on light). Selected via [data-theme="dark"] in layout.tsx;
+ * U-6 still sees every literal HERE and nowhere else.
+ */
+export const DARK = {
+  paper: "#14130E",
+  ink: "#F4F3EE",
+  inkSoft: "#9A9A90",
+  affordance: "#7AA0CE",
+  hairline: "#33322C",
+  wash: "#222019",
+} as const;
+
+/**
+ * The ONE warm accent — reserved for the lit connection path and the org
+ * core's glow, nothing decorative. Shared by both themes (it carries on paper
+ * and on near-black). A deliberate new hue, declared here so U-6 stays clean.
+ */
+export const ACCENT = {
+  warm: "#C77F3A",
+} as const;
+
+/**
  * The five sensitivity hues — moved unchanged from the M3b console scale
  * (labeled, colorblind-safe Okabe–Ito). Labels always accompany color.
  */
@@ -129,51 +156,41 @@ export const GEOMETRY = {
   atlasSheetWidth: 420,
   atlasPreviewRows: 3,
   atlasColumnMin: 260,
-  /** AR-2 — the Org Graph (rebuilt). A force-directed company map: the org at
-   * the still center, department "districts" as soft tinted fields, the
-   * humanized people settled by a REAL simulation (charge + reporting links +
-   * a pull toward each district's centroid + collision sized to the LABEL, not
-   * just the disc), tools beside the cluster that owns them. The layout runs
-   * once to equilibrium and is FROZEN — deterministic (seeded spiral, no
-   * Math.random), no perpetual jitter. PROPORTIONAL, not emblematic: a
-   * department's footprint (district radius + hub weight) grows with its
-   * headcount — here, area DOES encode how many people work there. */
-  graphViewport: 820,
-  graphMargin: 40,
-  /** Department hubs sit on this ring; their people cluster organically about
-   * the hub. The hubs are radial (a sensible org skeleton); the PEOPLE are
-   * not snapped to any arc — the simulation places them. */
-  graphRingDept: 215,
-  graphCenterRadius: 30,
-  graphHubRadius: 15,
-  graphAnchorAvatar: 34,
-  graphMemberAvatar: 18,
-  graphToolSize: 13,
-  /** The force model (tokens, not vibes): repulsion strength, reporting-link
-   * rest length + strength, the pull toward a node's district centroid,
-   * collision padding around a node's footprint, solver iterations, and the
-   * total settle ticks run before the layout freezes. */
-  graphCharge: -94,
-  graphLinkDistance: 48,
-  graphLinkStrength: 0.3,
-  graphClusterStrength: 0.16,
-  graphCollidePad: 7,
-  graphCollideIters: 4,
-  graphForceTicks: 320,
-  /** Level of detail: members reveal their name once the view zooms past this
-   * scale (anchors are always named); below it, members are avatars only. */
-  graphLodReveal: 1.8,
-  /** Label legibility: a paper halo (stroke painted under the fill) of this
-   * width keeps a name readable over edges and discs. */
+  /** THE ORG BRAIN — true CONCENTRIC RINGS, deterministic polar layout (no
+   * force-scatter). From the still center outward: the org core; the 8
+   * department hubs; the 4 agents; the 5 systems-of-record (sources); and ONE
+   * continuous outer circle of all 120 people, ordered so each department owns
+   * an unbroken arc whose angular WIDTH is proportional to its headcount —
+   * area encodes how many people work there. Every node is a real entity. */
+  graphViewport: 920,
+  graphMargin: 60,
+  /** The org sits slightly BELOW exact center (the still point, weighted). */
+  graphCenterOffsetY: 16,
+  graphCoreRadius: 30,
+  /** Concentric ring radii (center outward). */
+  graphRingDept: 150,
+  graphRingAgents: 232,
+  graphRingSources: 300,
+  graphRingPeople: 396,
+  /** Node sizes. Anchors (leadership) are prominent; members secondary. */
+  graphHubRadius: 16,
+  graphAgentSize: 12,
+  graphSourceSize: 13,
+  graphAnchorAvatar: 30,
+  graphMemberAvatar: 15,
+  /** A small angular gap (radians) between adjacent department arcs so the
+   * colored arcs read as distinct sectors. */
+  graphArcGap: 0.05,
+  /** Zoom limits; member names appear once the view zooms past the reveal
+   * scale (anchors are always named). */
+  graphScaleMin: 0.45,
+  graphScaleMax: 4,
+  graphLodReveal: 1.7,
+  /** Label legibility: a paper halo (stroke painted under the fill). */
   graphLabelHalo: 3,
-  /** District field: the soft dept-tinted disc behind a cluster — radius
-   * derived from headcount (this base + per-head growth, the √-scaled
-   * footprint), drawn at low alpha so names sit legibly on top. */
-  graphDistrictBase: 40,
-  graphDistrictPerHead: 12,
-  graphDistrictOpacity: 0.5,
-  /** Focus de-emphasis: unrelated nodes drop to this opacity on hover/focus. */
-  graphDimOpacity: 0.16,
+  /** Hover de-emphasis (~20%) and focus-mode ghost (deeper). */
+  graphDimOpacity: 0.2,
+  graphGhostOpacity: 0.1,
 } as const;
 
 /** MOTION BUDGET — tokens, not vibes. Nothing else animates. */

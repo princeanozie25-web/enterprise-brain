@@ -220,9 +220,16 @@ export interface GraphTool {
   label: string;
 }
 
+/** A real system of record (company.json sources): docstore, wiki, etc. */
+export interface GraphSource {
+  id: string;
+  kind: "source";
+  label: string;
+}
+
 export interface GraphEdge {
   from: string;
-  kind: "reports_to" | "member_of" | "uses" | "owns_agent";
+  kind: "reports_to" | "member_of" | "uses" | "owns_agent" | "system_of";
   to: string;
 }
 
@@ -233,6 +240,7 @@ export interface GraphResponse {
   edges: GraphEdge[];
   people: GraphPerson[];
   snapshot_version: string;
+  sources: GraphSource[];
   tools: GraphTool[];
 }
 
@@ -243,6 +251,74 @@ export async function getGraph(actor: string): Promise<GraphResponse | null> {
     return null;
   }
   return parse<GraphResponse>(response);
+}
+
+// ---------------------------------------------------------------------------
+// GET /node/{id}/summary — the org-graph inspector's REAL governance data.
+// Org core -> corpus cardinalities; person/agent -> compiled scope + reason-
+// grouped access COUNTS (never documents). Metadata only; 404 for non-nodes.
+// ---------------------------------------------------------------------------
+
+export interface NodeReasonGroup {
+  granted: number;
+  reason: string;
+  sentence: string;
+}
+
+export interface NodeAgentRef {
+  id: string;
+  name: string;
+}
+
+export interface OrgStats {
+  agents: number;
+  capabilities: number;
+  departments: number;
+  document_total: number;
+  groups: number;
+  initiatives: number;
+  people: number;
+  permission_edges: number;
+  principals: number;
+  sites: number;
+  sources: number;
+  strategies: number;
+  total_decisions: number;
+  workflows: number;
+}
+
+export interface NodeSummary {
+  access_by_reason?: NodeReasonGroup[];
+  agents_owned?: NodeAgentRef[];
+  band?: number;
+  blocked_actions?: string[];
+  corpus_documents?: number;
+  demo_identity_mode: boolean;
+  department?: string;
+  grant_groups?: string[];
+  groups?: string[];
+  id: string;
+  kind: "org" | "human" | "agent";
+  manages?: number;
+  name: string;
+  owner_user_id?: string;
+  permitted_actions?: string[];
+  reports_to?: string;
+  sites?: string[];
+  stats?: OrgStats;
+  title?: string;
+  visible_documents?: number;
+}
+
+/** GET /node/{id}/summary. 404 (dept/source/unknown) -> null. */
+export async function getNodeSummary(actor: string, id: string): Promise<NodeSummary | null> {
+  const response = await fetch(`${SERVICE_URL}/node/${encodeURIComponent(id)}/summary`, {
+    headers: headers(actor),
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<NodeSummary>(response);
 }
 
 // ---------------------------------------------------------------------------
