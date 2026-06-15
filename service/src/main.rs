@@ -74,6 +74,9 @@ fn parse_args() -> Result<Args> {
 
 fn build_state(args: &Args) -> Result<AppState> {
     let mut state = AppState::build(&args.fixtures, &args.artifacts, &args.idx)?;
+    // AR-1: load + prove the humanization layer (display only; fails closed
+    // if people.json disagrees with what the live skeleton derives).
+    state = state.with_people()?;
     if let Some(config_path) = &args.config {
         let config = ServiceConfig::load(config_path)?;
         state = config.apply(state)?;

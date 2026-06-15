@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::answer::AskError;
 use crate::lens::{display_reason, load_subject_artifact, reason_class, sentence_for, LensEntry};
-use crate::{AppState, DocMeta};
+use crate::{humanize, AppState, DocMeta};
 
 // ---------------------------------------------------------------------------
 // Response shapes (canonical JSON, sorted keys)
@@ -68,10 +68,20 @@ pub struct SharedRow {
 
 #[derive(Debug, Serialize)]
 pub struct DiffResponse {
+    /// AR-1: the viewer's own directory card (display only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<humanize::PersonCard>,
     pub actor_id: String,
     pub left: DiffPassport,
+    /// AR-1: the left principal's directory card (name/title/department/avatar
+    /// — org-structural, no evidence). Absent with no humanization layer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub left_human: Option<humanize::PersonCard>,
     pub left_only: Vec<DiffSection>,
     pub right: DiffPassport,
+    /// AR-1: the right principal's directory card.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub right_human: Option<humanize::PersonCard>,
     pub right_only: Vec<DiffSection>,
     /// Sorted by document_id ascending (the console leads with divergent
     /// rows; the SERVICE order is the neutral one).
@@ -332,7 +342,15 @@ pub fn diff_view(
     else {
         return Ok(None);
     };
-    let (left, right) = load_passports(state, left_id, right_id).map_err(AskError::Internal)?;
+    let (mut left, mut right) =
+        load_passports(state, left_id, right_id).map_err(AskError::Internal)?;
+    // AR-1: humanized passports show the generated display name on both sides.
+    if let Some(record) = state.people.as_deref().and_then(|l| l.get(left_id)) {
+        left.name = record.display_name.clone();
+    }
+    if let Some(record) = state.people.as_deref().and_then(|l| l.get(right_id)) {
+        right.name = record.display_name.clone();
+    }
 
     // ONE audited act, before anything renders.
     let act_ordinal =
@@ -342,9 +360,12 @@ pub fn diff_view(
         build_diff_columns(&left_entries, &right_entries, &state.docs)
             .map_err(AskError::Internal)?;
     let response = DiffResponse {
+        actor: humanize::card_for(state.people.as_deref(), actor),
         actor_id: actor.to_string(),
+        left_human: humanize::card_for(state.people.as_deref(), left_id),
         left,
         left_only,
+        right_human: humanize::card_for(state.people.as_deref(), right_id),
         right,
         right_only,
         shared,

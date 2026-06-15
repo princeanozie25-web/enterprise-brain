@@ -2,10 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "@/lib/api";
-import type { AtlasResponse, DocCard, LensDoc, LensResponse, LensSection } from "@/lib/api";
+import type {
+  AtlasResponse,
+  DocCard,
+  HumanRecord,
+  LensDoc,
+  LensResponse,
+  LensSection,
+} from "@/lib/api";
 import { PRINCIPALS } from "@/lib/principals";
 import { COLOR, TYPE } from "@/lib/tokens";
 import { AgentEmblem } from "./AgentEmblem";
+import { PersonAvatar } from "./PersonAvatar";
 import { DiffView } from "./DiffView";
 import { DocInspector } from "./DocInspector";
 import { EgoGraph } from "./EgoGraph";
@@ -324,7 +332,13 @@ export function LensRoom({
         <>
           {/* MASTHEAD — the passport page. */}
           <section className="ap-card rounded p-4" data-testid="masthead">
-            <div className="flex flex-wrap items-baseline gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <PersonAvatar
+                principalId={lens.subject.id}
+                displayName={lens.subject.name}
+                department={lens.subject.department ?? null}
+                size={40}
+              />
               <h2
                 className="ap-register-chrome"
                 style={{
@@ -336,6 +350,11 @@ export function LensRoom({
               >
                 {lens.subject.name}
               </h2>
+              {lens.subject_human && (
+                <span className="ap-soft" style={{ fontSize: TYPE.scale.sm }} data-testid="masthead-title">
+                  {lens.subject_human.title}
+                </span>
+              )}
               <span
                 className="ap-register-evidence ap-soft"
                 style={{ fontSize: TYPE.scale.sm }}
@@ -407,6 +426,7 @@ export function LensRoom({
                 <MastheadChip value={`owner ${lens.subject.owner_user_id}`} />
               )}
             </div>
+            {lens.subject_human && <MastheadHuman human={lens.subject_human} />}
           </section>
 
           <div className="mt-4 flex flex-wrap items-start gap-4">
@@ -458,6 +478,82 @@ export function LensRoom({
         onClose={() => setInspector({ open: false, loading: false, card: null })}
         onOpenDoc={openDoc}
       />
+    </div>
+  );
+}
+
+/**
+ * AR-1: the subject's human masthead detail — bio, location · work style,
+ * reporting lines, and projects (each project DERIVED from the same Lane rule,
+ * so the evidence behind it is inside the holdings shown below; the capability
+ * id stays in the evidence register). Rendered only when the humanization
+ * layer is present.
+ */
+function MastheadHuman({ human }: { human: HumanRecord }) {
+  return (
+    <div className="mt-3" data-testid="masthead-human">
+      <p
+        className="ap-soft"
+        style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}
+        data-testid="masthead-bio"
+      >
+        {human.bio}
+      </p>
+      <div
+        className="ap-soft mt-2 flex flex-wrap gap-x-4 gap-y-1"
+        style={{ fontSize: TYPE.scale.xs }}
+      >
+        <span data-testid="masthead-location">
+          {human.location} · {human.work_style}
+        </span>
+        {human.reports_to && (
+          <span data-testid="masthead-reports-to">Reports to {human.reports_to}</span>
+        )}
+        {human.manages.length > 0 && (
+          <span data-testid="masthead-manages">
+            Manages {human.manages.length}
+          </span>
+        )}
+        <span>{human.personality_tag}</span>
+      </div>
+      {human.projects.length > 0 && (
+        <div className="mt-3" data-testid="masthead-projects">
+          <h3
+            className="ap-soft uppercase tracking-wide"
+            style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+          >
+            Projects
+          </h3>
+          <ul className="mt-1 space-y-1">
+            {human.projects.map((project) => (
+              <li
+                key={project.capability_id}
+                className="flex flex-wrap items-baseline gap-2"
+                data-testid="masthead-project"
+              >
+                <span className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm }}>
+                  {project.capability_name}
+                </span>
+                <span
+                  className="ap-hairline ap-register-chrome ap-soft rounded border px-1 py-0.5"
+                  style={{ fontSize: TYPE.scale.xs }}
+                >
+                  {project.role}
+                </span>
+                <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+                  {project.status}
+                </span>
+                <span
+                  className="ap-register-evidence ap-soft"
+                  style={{ fontSize: TYPE.scale.xs }}
+                >
+                  {project.capability_id}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

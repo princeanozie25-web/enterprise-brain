@@ -127,6 +127,66 @@ export async function getDoc(principal: string, docId: string): Promise<DocCard 
 }
 
 // ---------------------------------------------------------------------------
+// AR-1: the humanization layer — mirrored field-for-field from
+// service/src/humanize.rs. DISPLAY ONLY: a card carries name + title +
+// department + avatar (org-structural, the Atlas-BRM tier), NEVER a holding
+// or document id. The masthead record adds bio / location / reporting lines /
+// projects; projects are DERIVED from the same Lane rule, so a project's
+// evidence is always inside the subject's own holdings.
+// ---------------------------------------------------------------------------
+
+export interface PersonCard {
+  avatar_ref: string;
+  department_label: string;
+  display_name: string;
+  id: string;
+  title: string;
+}
+
+export interface ProjectRecord {
+  capability_id: string;
+  capability_name: string;
+  initiative_name: string;
+  role: string;
+  status: string;
+  strategy_name: string;
+  workflow_name: string;
+}
+
+export interface HumanRecord {
+  avatar_ref: string;
+  bio: string;
+  department_label: string;
+  display_name: string;
+  id: string;
+  location: string;
+  manages: string[];
+  personality_tag: string;
+  projects: ProjectRecord[];
+  reports_to: string | null;
+  seniority: string;
+  title: string;
+  work_style: string;
+}
+
+export interface PeopleResponse {
+  demo_identity_mode: boolean;
+  people: PersonCard[];
+}
+
+/**
+ * GET /people — the org-structural directory (names + titles, NOT holdings).
+ * Internal-grade, demo-open here; in production the roster is itself a
+ * permissioned resource (the service comments the swap point). Returns `[]`
+ * when this world has no humanization layer.
+ */
+export async function getPeople(actor: string): Promise<PersonCard[]> {
+  const response = await fetch(`${SERVICE_URL}/people`, { headers: headers(actor) });
+  const data = await parse<PeopleResponse>(response);
+  return data.people ?? [];
+}
+
+// ---------------------------------------------------------------------------
 // AP-2: GET /lens/{subject_id} — mirrored field-for-field from
 // service/src/lens.rs. The actor is the header principal; cross-lens views
 // are audited server-side BEFORE the response renders.
@@ -165,12 +225,16 @@ export interface LensAgent {
 }
 
 export interface LensResponse {
+  /** AR-1: the viewer's own directory card (absent with no humanization layer). */
+  actor?: PersonCard;
   actor_id: string;
   agents: LensAgent[];
   cross_lens: boolean;
   holdings: LensSection[];
   snapshot_version: string;
   subject: LensSubject;
+  /** AR-1: the subject's masthead — bio, location, reporting lines, projects. */
+  subject_human?: HumanRecord;
 }
 
 /** GET /lens/{subject}. 404 (unknown/malformed, byte-identical) -> null. */
@@ -229,6 +293,8 @@ export interface AtlasStrategy {
 }
 
 export interface AtlasResponse {
+  /** AR-1: the viewer's own directory card (the BRM names no other principal). */
+  actor?: PersonCard;
   actor_id: string;
   snapshot_version: string;
   /** `[]` = the actor has no standing (the empty atlas, their own produce). */
@@ -281,10 +347,16 @@ export interface DiffSharedRow {
 }
 
 export interface DiffResponse {
+  /** AR-1: the viewer's own directory card. */
+  actor?: PersonCard;
   actor_id: string;
   left: DiffPassport;
+  /** AR-1: the left principal's directory card (name/title/department/avatar). */
+  left_human?: PersonCard;
   left_only: DiffSection[];
   right: DiffPassport;
+  /** AR-1: the right principal's directory card. */
+  right_human?: PersonCard;
   right_only: DiffSection[];
   shared: DiffSharedRow[];
   snapshot_version: string;
@@ -376,6 +448,8 @@ export interface LaneBox {
 }
 
 export interface LaneResponse {
+  /** AR-1: the worker's own directory card (the lane is self-only). */
+  actor?: PersonCard;
   actor_id: string;
   boxes: LaneBox[];
   snapshot_version: string;

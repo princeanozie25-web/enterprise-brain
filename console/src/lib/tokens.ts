@@ -44,6 +44,56 @@ export const SENSITIVITY_SCALE: Record<
   special_category: { label: "special category", background: "#F6EAF1", border: "#CC79A7" },
 };
 
+/**
+ * AR-1: department → avatar disc tint, drawn ENTIRELY from the reserved
+ * sensitivity palette above. No new hue enters the system (U-6 still sees
+ * exactly the 14 hexes — these are references, not literals), avatars group
+ * visually by department, and the palette is colorblind-safe by construction.
+ * Eight departments over five hues: three hues each serve two departments —
+ * this is grouping, not unique identity. Initials always render in ink.
+ */
+export const DEPARTMENT_TINT: Record<string, { background: string; border: string }> = {
+  "Quality & Compliance": {
+    background: SENSITIVITY_SCALE.internal.background,
+    border: SENSITIVITY_SCALE.internal.border,
+  },
+  "Pharmacy Services": {
+    background: SENSITIVITY_SCALE.public.background,
+    border: SENSITIVITY_SCALE.public.border,
+  },
+  "Warehouse Operations": {
+    background: SENSITIVITY_SCALE.confidential.background,
+    border: SENSITIVITY_SCALE.confidential.border,
+  },
+  Finance: {
+    background: SENSITIVITY_SCALE.restricted.background,
+    border: SENSITIVITY_SCALE.restricted.border,
+  },
+  Executive: {
+    background: SENSITIVITY_SCALE.special_category.background,
+    border: SENSITIVITY_SCALE.special_category.border,
+  },
+  IT: {
+    background: SENSITIVITY_SCALE.public.background,
+    border: SENSITIVITY_SCALE.public.border,
+  },
+  HR: {
+    background: SENSITIVITY_SCALE.special_category.background,
+    border: SENSITIVITY_SCALE.special_category.border,
+  },
+  "Sales & Accounts": {
+    background: SENSITIVITY_SCALE.confidential.background,
+    border: SENSITIVITY_SCALE.confidential.border,
+  },
+} as const;
+
+/** The neutral disc for a principal with no known department (the fallback —
+ * ink-soft wash + hairline, both already derived from the reserved palette). */
+export const AVATAR_FALLBACK_TINT = {
+  background: DERIVED.wash,
+  border: DERIVED.hairline,
+} as const;
+
 /** Type registers (bundled woff2; see src/fonts). */
 export const FONT = {
   /** chrome/data: UI, tables, labels, scope chips. */

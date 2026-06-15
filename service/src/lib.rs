@@ -18,6 +18,7 @@ pub mod cors;
 pub mod diff;
 pub mod export;
 pub mod generate;
+pub mod humanize;
 pub mod identity;
 pub mod lane;
 pub mod lens;
@@ -193,6 +194,12 @@ pub struct AppState {
     /// AP-6: the append-only box store (status changes + accepted boxes);
     /// None = transitions and accepts refuse, the lane stays readable.
     pub lane_boxes: Option<Arc<lane::BoxStore>>,
+    /// AR-1: the humanization layer (fixtures/people.json), DISPLAY ONLY,
+    /// loaded and proved against the live skeleton by `with_people`. `None` =
+    /// a world without a humanization layer — surfaces fall back to the
+    /// frozen company.json names and carry no human cards. It never sources
+    /// an authorization fact.
+    pub people: Option<Arc<humanize::PeopleLayer>>,
 }
 
 impl AppState {
@@ -346,6 +353,7 @@ impl AppState {
             lane_graph,
             lane_seeds,
             lane_boxes: None,
+            people: None,
         })
     }
 
@@ -354,6 +362,21 @@ impl AppState {
     pub fn with_lane_boxes(mut self, store: Arc<lane::BoxStore>) -> AppState {
         self.lane_boxes = Some(store);
         self
+    }
+
+    /// AR-1: loads and PROVES `fixtures/people.json` against the live
+    /// skeleton — regenerate from the frozen inputs + this state's own lane
+    /// seeds and require byte agreement (a stale or hand-edited layer fails
+    /// closed). Absent file = `None`, the frozen names stand. Display only:
+    /// the humanization layer is consulted for labels, never authorization.
+    pub fn with_people(mut self) -> Result<AppState> {
+        self.people = humanize::load_and_verify(
+            &self.fixtures_dir,
+            &self.company_sha256,
+            &self.lane_seeds,
+        )?
+        .map(Arc::new);
+        Ok(self)
     }
 
     /// AP-5: fixed-date mode (tests only) — the export's Generated line and
@@ -530,6 +553,7 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/lane/inbox/{id}/accept", post(handle_inbox_accept))
         .route("/lane/inbox/{id}/dismiss", post(handle_inbox_dismiss))
         .route("/lane/rollup", get(handle_rollup))
+        .route("/people", get(handle_people))
         .route("/proposals", get(handle_proposals_list))
         .route("/proposals/{id}/approve", post(handle_proposal_approve))
         .route("/proposals/{id}/reject", post(handle_proposal_reject))
@@ -1003,6 +1027,43 @@ async fn handle_rollup(
         Ok(Err(AskError::BadRequest(message))) => lane_bad_request(&message),
         Ok(Err(AskError::Internal(err))) => lane_internal(err, "rollup"),
         Err(join_error) => lane_internal(anyhow::anyhow!("{join_error}"), "rollup task"),
+    }
+}
+
+/// GET /people — the org-structural directory (AR-1). Returns every humanized
+/// principal's card: id, display name, title, department, avatar ref —
+/// NEVER a holding or document id. INTERNAL-GRADE, the same tier the Atlas
+/// BRM structure already publishes (names and titles, not private evidence),
+/// and demo-open like every surface here. PRODUCTION SWAP POINT: in a real
+/// deployment the roster is itself a permissioned resource (admin-classed, or
+/// a self-plus-reports view) — gate THIS handler and nothing else moves. A
+/// world without a humanization layer returns an empty roster.
+async fn handle_people(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(_principal): DemoPrincipal,
+) -> Response {
+    #[derive(serde::Serialize)]
+    struct PeopleResponse {
+        demo_identity_mode: bool,
+        people: Vec<humanize::PersonCard>,
+    }
+    let people: Vec<humanize::PersonCard> = state
+        .people
+        .as_ref()
+        .map(|layer| layer.roster().map(humanize::PersonCard::from_record).collect())
+        .unwrap_or_default();
+    match retrieval::index::canonical_json_bytes(&PeopleResponse {
+        demo_identity_mode: true,
+        people,
+    }) {
+        Ok(bytes) => json_bytes_response(StatusCode::OK, bytes),
+        Err(err) => {
+            eprintln!("people serialization failed: {err:#}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
     }
 }
 

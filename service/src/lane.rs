@@ -41,7 +41,7 @@ use crate::answer::AskError;
 use crate::atlas::BrmLite;
 use crate::diff::DocRow;
 use crate::lens::load_subject_artifact;
-use crate::{AppState, DocMeta};
+use crate::{humanize, AppState, DocMeta};
 
 /// The rollup's fixed honesty statement, byte-exact (AW-5).
 pub const ROLLUP_HONESTY: &str = "This view shows assignment status by capability. \
@@ -265,6 +265,11 @@ impl LaneBox {
 
 #[derive(Debug, Serialize)]
 pub struct LaneResponse {
+    /// AR-1: the worker's own directory card (the lane is self-only, so this
+    /// is the actor's identity header; display only). Absent with no
+    /// humanization layer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<humanize::PersonCard>,
     pub actor_id: String,
     pub boxes: Vec<LaneBox>,
     pub snapshot_version: String,
@@ -880,6 +885,7 @@ pub fn lane_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskEr
         }
     }
     let response = LaneResponse {
+        actor: humanize::card_for(state.people.as_deref(), actor),
         actor_id: actor.to_string(),
         boxes,
         snapshot_version: state.snapshot_version.clone(),

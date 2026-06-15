@@ -2,9 +2,16 @@
 
 import { useEffect, useState } from "react";
 import * as api from "@/lib/api";
-import type { DiffDocRow, DiffResponse, DiffSection, DiffSharedRow } from "@/lib/api";
+import type {
+  DiffDocRow,
+  DiffResponse,
+  DiffSection,
+  DiffSharedRow,
+  PersonCard,
+} from "@/lib/api";
 import { COLOR, TYPE } from "@/lib/tokens";
 import { ExportButton } from "./ExportButton";
+import { PersonAvatar } from "./PersonAvatar";
 import { SensitivityBadge } from "./SensitivityBadge";
 import { Skeleton } from "./Skeleton";
 
@@ -126,12 +133,19 @@ export function DiffView({
         <>
           {/* Two passports, side by side; the audited line spans both. */}
           <div className="flex flex-wrap items-stretch gap-4">
-            <Passport side="left" id={diff.left.id} kind={diff.left.kind} name={diff.left.name} />
+            <Passport
+              side="left"
+              id={diff.left.id}
+              kind={diff.left.kind}
+              name={diff.left.name}
+              human={diff.left_human}
+            />
             <Passport
               side="right"
               id={diff.right.id}
               kind={diff.right.kind}
               name={diff.right.name}
+              human={diff.right_human}
             />
           </div>
           <p
@@ -192,15 +206,23 @@ function Passport({
   id,
   kind,
   name,
+  human,
 }: {
   side: "left" | "right";
   id: string;
   kind: string;
   name: string;
+  human?: PersonCard;
 }) {
   return (
     <section className="ap-card min-w-0 flex-1 rounded p-4" data-testid={`diff-passport-${side}`}>
-      <div className="flex flex-wrap items-baseline gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <PersonAvatar
+          principalId={id}
+          displayName={name}
+          department={human?.department_label ?? null}
+          size={32}
+        />
         <h2
           className="ap-register-chrome"
           style={{ fontSize: TYPE.scale.md, lineHeight: TYPE.line.display, fontWeight: 600 }}
@@ -208,6 +230,11 @@ function Passport({
         >
           {name}
         </h2>
+        {human && (
+          <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }} data-testid={`diff-title-${side}`}>
+            {human.title}
+          </span>
+        )}
         <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.sm }}>
           {id}
         </span>

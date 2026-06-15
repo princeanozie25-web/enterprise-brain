@@ -13,6 +13,7 @@ import type {
 } from "@/lib/api";
 import { COLOR, DERIVED, TYPE } from "@/lib/tokens";
 import { DocInspector } from "./DocInspector";
+import { RoomActor } from "./PersonAvatar";
 import { SensitivityBadge } from "./SensitivityBadge";
 import { Skeleton } from "./Skeleton";
 
@@ -243,6 +244,9 @@ export function LaneRoom({ actor }: { actor: string | null }) {
           </button>
         </span>
       </div>
+
+      {/* AR-1: the worker's identity (the lane is self-only; display only). */}
+      <RoomActor card={lane?.actor ?? null} />
 
       {showRollup && rollup && (
         <section className="ap-card mb-4 rounded p-3" data-testid="rollup-panel">

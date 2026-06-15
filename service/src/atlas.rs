@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::answer::AskError;
 use crate::lens::{load_subject_artifact, LensEntry};
-use crate::{AppState, DocMeta};
+use crate::{humanize, AppState, DocMeta};
 
 // ---------------------------------------------------------------------------
 // BRM fixture mirror (strict — unknown fields refuse)
@@ -272,6 +272,10 @@ pub struct AtlasStrategy {
 
 #[derive(Debug, Serialize)]
 pub struct AtlasResponse {
+    /// AR-1: the viewer's own directory card (display only; the BRM structure
+    /// names no other principal — per-viewer org names arrive in AR-2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<humanize::PersonCard>,
     pub actor_id: String,
     pub snapshot_version: String,
     pub strategies: Vec<AtlasStrategy>,
@@ -432,6 +436,7 @@ pub fn atlas_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
         build_structure(&brm, &entries, &allowlist, &state.docs).map_err(AskError::Internal)?
     };
     let response = AtlasResponse {
+        actor: humanize::card_for(state.people.as_deref(), actor),
         actor_id: actor.to_string(),
         snapshot_version: state.snapshot_version.clone(),
         strategies,

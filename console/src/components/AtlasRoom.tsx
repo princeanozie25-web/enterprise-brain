@@ -6,6 +6,7 @@ import type { AtlasCapability, AtlasDoc, AtlasResponse, DocCard } from "@/lib/ap
 import { COLOR, GEOMETRY, TYPE } from "@/lib/tokens";
 import { DocInspector } from "./DocInspector";
 import { ExportButton } from "./ExportButton";
+import { RoomActor } from "./PersonAvatar";
 import { SensitivityBadge } from "./SensitivityBadge";
 import { Skeleton } from "./Skeleton";
 
@@ -138,6 +139,9 @@ export function AtlasRoom({
           The capability surface — structure whole, evidence through your lens.
         </p>
       </header>
+
+      {/* AR-1: who you are viewing as (display only; absent with no layer). */}
+      <RoomActor card={atlas?.actor ?? null} />
 
       {loading && (
         <div className="ap-card rounded p-4">

@@ -18,7 +18,7 @@ use retrieval::index::sha256_hex;
 use serde::{Deserialize, Serialize};
 
 use crate::answer::AskError;
-use crate::AppState;
+use crate::{humanize, AppState};
 
 /// Reason priority classes: SUBJECT > REBAC > ABAC > AGENT > PUBLIC,
 /// lexicographic within a class. Crate-visible since AP-4: the diff applies
@@ -139,12 +139,22 @@ pub struct LensAgent {
 
 #[derive(Debug, Serialize)]
 pub struct LensResponse {
+    /// AR-1: the viewer's own directory card (display only; absent when no
+    /// humanization layer is loaded).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<humanize::PersonCard>,
     pub actor_id: String,
     pub agents: Vec<LensAgent>,
     pub cross_lens: bool,
     pub holdings: Vec<LensSection>,
     pub snapshot_version: String,
     pub subject: LensSubject,
+    /// AR-1: the subject's masthead — bio, location, reporting lines, projects
+    /// (DERIVED from the same Lane rule, so every project's evidence is inside
+    /// the subject's own holdings shown above). Absent for agents and when no
+    /// humanization layer is loaded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject_human: Option<humanize::HumanRecord>,
 }
 
 // ---------------------------------------------------------------------------
@@ -369,7 +379,7 @@ pub fn lens_view(
         }
     }
 
-    let subject = if let Some(person) = company.people.iter().find(|p| p.id == subject_id) {
+    let mut subject = if let Some(person) = company.people.iter().find(|p| p.id == subject_id) {
         let mut groups = groups_of.remove(person.id.as_str()).unwrap_or_default();
         groups.sort();
         LensSubject {
@@ -403,6 +413,13 @@ pub fn lens_view(
         )));
     };
 
+    // AR-1: a humanized subject shows their generated display name on every
+    // surface; agents and worlds with no humanization layer keep the frozen
+    // company.json name. Display only — holdings below are unchanged.
+    if let Some(record) = state.people.as_deref().and_then(|l| l.get(subject_id)) {
+        subject.name = record.display_name.clone();
+    }
+
     let allowlist: std::collections::BTreeSet<String> =
         entries.iter().map(|e| e.document_id.clone()).collect();
     let holdings = build_holdings(&entries, &state.docs, &allowlist).map_err(AskError::Internal)?;
@@ -430,11 +447,13 @@ pub fn lens_view(
     agents.sort_by(|a, b| a.agent_id.cmp(&b.agent_id));
 
     let response = LensResponse {
+        actor: humanize::card_for(state.people.as_deref(), actor),
         actor_id: actor.to_string(),
         agents,
         cross_lens: actor != subject_id,
         holdings,
         snapshot_version: state.snapshot_version.clone(),
+        subject_human: humanize::masthead_for(state.people.as_deref(), subject_id),
         subject,
     };
     retrieval::index::canonical_json_bytes(&response)
