@@ -18,6 +18,7 @@ pub mod cors;
 pub mod diff;
 pub mod export;
 pub mod generate;
+pub mod graph;
 pub mod humanize;
 pub mod identity;
 pub mod lane;
@@ -553,6 +554,7 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/lane/inbox/{id}/accept", post(handle_inbox_accept))
         .route("/lane/inbox/{id}/dismiss", post(handle_inbox_dismiss))
         .route("/lane/rollup", get(handle_rollup))
+        .route("/graph", get(handle_graph))
         .route("/people", get(handle_people))
         .route("/proposals", get(handle_proposals_list))
         .route("/proposals/{id}/approve", post(handle_proposal_approve))
@@ -1027,6 +1029,45 @@ async fn handle_rollup(
         Ok(Err(AskError::BadRequest(message))) => lane_bad_request(&message),
         Ok(Err(AskError::Internal(err))) => lane_internal(err, "rollup"),
         Err(join_error) => lane_internal(anyhow::anyhow!("{join_error}"), "rollup task"),
+    }
+}
+
+/// GET /graph — the Org Graph (AR-2): the org's shape as nodes + edges,
+/// INTERNAL-GRADE and consistent with /people (no holding, no count, no
+/// document id ever appears). An unknown actor or a world with no humanization
+/// layer answers THE one 404 (the no-standing discipline).
+async fn handle_graph(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+) -> Response {
+    let blocking_state = state.clone();
+    let result =
+        tokio::task::spawn_blocking(move || graph::graph_view(&blocking_state, &actor)).await;
+    match result {
+        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => json_bytes_response(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{{\"demo_identity_mode\":true,\"error\":{}}}\n",
+                serde_json::to_string(&message).unwrap_or_else(|_| "\"bad request\"".into())
+            )
+            .into_bytes(),
+        ),
+        Ok(Err(AskError::Internal(err))) => {
+            eprintln!("graph failed: {err:#}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+        Err(join_error) => {
+            eprintln!("graph task failed: {join_error}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
     }
 }
 

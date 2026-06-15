@@ -187,6 +187,65 @@ export async function getPeople(actor: string): Promise<PersonCard[]> {
 }
 
 // ---------------------------------------------------------------------------
+// AR-2: GET /graph — the Org Graph, mirrored field-for-field from
+// service/src/graph.rs. INTERNAL-GRADE structure (consistent with /people),
+// NO holding/count/document id can appear. Anchors are the Leadership tier.
+// ---------------------------------------------------------------------------
+
+export interface GraphCenter {
+  id: string;
+  label: string;
+}
+
+export interface GraphDept {
+  id: string;
+  label: string;
+  tint_key: string;
+}
+
+export interface GraphPerson {
+  avatar_ref: string;
+  department_id: string;
+  display_name: string;
+  id: string;
+  is_self: boolean;
+  ring: "anchor" | "member";
+  title: string;
+}
+
+export interface GraphTool {
+  department_id?: string;
+  id: string;
+  kind: "tool" | "agent";
+  label: string;
+}
+
+export interface GraphEdge {
+  from: string;
+  kind: "reports_to" | "member_of" | "uses" | "owns_agent";
+  to: string;
+}
+
+export interface GraphResponse {
+  actor_id: string;
+  center: GraphCenter;
+  departments: GraphDept[];
+  edges: GraphEdge[];
+  people: GraphPerson[];
+  snapshot_version: string;
+  tools: GraphTool[];
+}
+
+/** GET /graph. 404 (unknown actor / no humanization layer) -> null. */
+export async function getGraph(actor: string): Promise<GraphResponse | null> {
+  const response = await fetch(`${SERVICE_URL}/graph`, { headers: headers(actor) });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<GraphResponse>(response);
+}
+
+// ---------------------------------------------------------------------------
 // AP-2: GET /lens/{subject_id} — mirrored field-for-field from
 // service/src/lens.rs. The actor is the header principal; cross-lens views
 // are audited server-side BEFORE the response renders.

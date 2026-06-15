@@ -9,6 +9,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "d3-force": "^3.0.0",
+    "d3-selection": "^3.0.0",
+    "d3-zoom": "^3.0.0",
     "next": "^15",
     "react": "^19",
     "react-dom": "^19"
@@ -16,6 +19,9 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@testing-library/react": "^16",
+    "@types/d3-force": "^3.0.10",
+    "@types/d3-selection": "^3.0.11",
+    "@types/d3-zoom": "^3.0.8",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",

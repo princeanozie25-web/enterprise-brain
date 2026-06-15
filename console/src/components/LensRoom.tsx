@@ -31,10 +31,14 @@ import { Skeleton } from "./Skeleton";
 export function LensRoom({
   actor,
   entryDiff = null,
+  entrySubject = null,
 }: {
   actor: string | null;
   /** /lens?diff=… — the compare entry door; opens the diff view once. */
   entryDiff?: string | null;
+  /** /lens?subject=… — the AR-2 click-to-lens door; views that subject once
+   * (cross-lens, audited). */
+  entrySubject?: string | null;
 }) {
   const [subject, setSubject] = useState<string | null>(actor);
   const [lens, setLens] = useState<LensResponse | null>(null);
@@ -45,6 +49,7 @@ export function LensRoom({
   const [diffRight, setDiffRight] = useState<string | null>(null);
   const [compareSearch, setCompareSearch] = useState("");
   const entryDiffSpent = useRef(false);
+  const entrySubjectSpent = useRef(false);
   const [inspector, setInspector] = useState<{
     open: boolean;
     loading: boolean;
@@ -54,6 +59,17 @@ export function LensRoom({
   useEffect(() => {
     setSubject(actor);
   }, [actor]);
+
+  // AR-2: the click-to-lens door. Viewing a graph-clicked principal is a
+  // cross-lens act (actor stays, subject becomes the clicked person); spent
+  // once, so a later lens switch doesn't re-open it.
+  useEffect(() => {
+    if (entrySubjectSpent.current || entrySubject === null) {
+      return;
+    }
+    entrySubjectSpent.current = true;
+    setSubject(entrySubject);
+  }, [entrySubject]);
 
   // The entry door is spent on first use; an actor switch remounts the room
   // (key={principal}) and Console drops the door, so a diff never survives

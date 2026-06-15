@@ -8,6 +8,7 @@ import { AnswerCard } from "./AnswerCard";
 import { AtlasRoom } from "./AtlasRoom";
 import { DocInspector } from "./DocInspector";
 import { ExportButton } from "./ExportButton";
+import { GraphRoom } from "./GraphRoom";
 import { IdentityRail } from "./IdentityRail";
 import { LaneRoom } from "./LaneRoom";
 import { LensBar } from "./LensBar";
@@ -45,7 +46,11 @@ function entryDoorActor(search: string): string | null {
   return as.length > 0 ? as : null;
 }
 
-export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" | "lane" }) {
+export function Console({
+  view = "ask",
+}: {
+  view?: "graph" | "ask" | "lens" | "atlas" | "lane";
+}) {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
   const [query, setQuery] = useState("");
@@ -62,6 +67,9 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" | "l
   } | null>(null);
   const [entryCapability, setEntryCapability] = useState<string | null>(null);
   const [entryDiff, setEntryDiff] = useState<string | null>(null);
+  /** AR-2: ?subject=… — the click-to-lens door from the Org Graph; opens the
+   * subject's lens (cross-lens, audited) once on the /lens page. */
+  const [entrySubject, setEntrySubject] = useState<string | null>(null);
   const [inspector, setInspector] = useState<{
     open: boolean;
     loading: boolean;
@@ -77,9 +85,10 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" | "l
     setSubmitted(null);
     setInspector({ open: false, loading: false, card: null });
     // The entry doors are spent: a lens switch never re-opens a sheet and
-    // never re-enters a diff (the residue rule).
+    // never re-enters a diff or a graph-borne subject (the residue rule).
     setEntryCapability(null);
     setEntryDiff(null);
+    setEntrySubject(null);
   }, []);
 
   // ENTRY DOORS (AP-3/AP-4): /atlas?cap=… opens the capability sheet once
@@ -101,6 +110,10 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" | "l
     const diff = (params.get("diff") ?? "").trim();
     if (diff.length > 0) {
       setEntryDiff(diff);
+    }
+    const subject = (params.get("subject") ?? "").trim();
+    if (subject.length > 0) {
+      setEntrySubject(subject);
     }
   }, []);
 
@@ -162,7 +175,8 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" | "l
     [principal],
   );
 
-  const irisClass = prefersReducedMotion() ? iris.fadeIn : iris.irisIn;
+  const reduced = prefersReducedMotion();
+  const irisClass = reduced ? iris.fadeIn : iris.irisIn;
 
   return (
     <div className="min-h-screen">
@@ -170,7 +184,8 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" | "l
 
       <nav className="ap-card border-x-0 border-t-0" aria-label="Rooms" data-testid="view-switcher">
         <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-1.5">
-          <ViewDoor label="Ask" href="/" active={view === "ask"} principal={principal} />
+          <ViewDoor label="Graph" href="/" active={view === "graph"} principal={principal} />
+          <ViewDoor label="Ask" href="/ask" active={view === "ask"} principal={principal} />
           <ViewDoor label="Lens" href="/lens" active={view === "lens"} principal={principal} />
           <ViewDoor label="Atlas" href="/atlas" active={view === "atlas"} principal={principal} />
           <ViewDoor label="Lane" href="/lane" active={view === "lane"} principal={principal} />
@@ -193,9 +208,13 @@ export function Console({ view = "ask" }: { view?: "ask" | "lens" | "atlas" | "l
         className={`mx-auto flex max-w-6xl gap-6 p-4 ${irisClass}`}
         data-testid="iris-stage"
       >
-        {view === "lens" ? (
+        {view === "graph" ? (
           <main className="min-w-0 flex-1">
-            <LensRoom actor={principal} entryDiff={entryDiff} />
+            <GraphRoom actor={principal} reducedMotion={reduced} />
+          </main>
+        ) : view === "lens" ? (
+          <main className="min-w-0 flex-1">
+            <LensRoom actor={principal} entryDiff={entryDiff} entrySubject={entrySubject} />
           </main>
         ) : view === "atlas" ? (
           <main className="min-w-0 flex-1">

@@ -129,6 +129,22 @@ export const GEOMETRY = {
   atlasSheetWidth: 420,
   atlasPreviewRows: 3,
   atlasColumnMin: 260,
+  /** AR-2 ADDITIONS (flagged in the AR-2 closeout): the Org Graph. A square
+   * SVG viewport; three concentric rings (department hubs, people, tools);
+   * node sizes — anchors prominent, members secondary. EMBLEMATIC: these are
+   * layout constants, area encodes nothing. */
+  graphViewport: 760,
+  graphRingDept: 150,
+  graphRingPeople: 300,
+  graphRingTools: 350,
+  graphCenterRadius: 34,
+  graphDeptRadius: 20,
+  graphAnchorAvatar: 36,
+  graphMemberAvatar: 16,
+  graphToolRadius: 11,
+  /** Focus de-emphasis: unrelated nodes drop to this opacity on hover/focus. */
+  graphDimOpacity: 0.16,
+  graphForceTicks: 160,
 } as const;
 
 /** MOTION BUDGET — tokens, not vibes. Nothing else animates. */
