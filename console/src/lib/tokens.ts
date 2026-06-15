@@ -129,22 +129,51 @@ export const GEOMETRY = {
   atlasSheetWidth: 420,
   atlasPreviewRows: 3,
   atlasColumnMin: 260,
-  /** AR-2 ADDITIONS (flagged in the AR-2 closeout): the Org Graph. A square
-   * SVG viewport; three concentric rings (department hubs, people, tools);
-   * node sizes — anchors prominent, members secondary. EMBLEMATIC: these are
-   * layout constants, area encodes nothing. */
-  graphViewport: 760,
-  graphRingDept: 150,
-  graphRingPeople: 300,
-  graphRingTools: 350,
-  graphCenterRadius: 34,
-  graphDeptRadius: 20,
-  graphAnchorAvatar: 36,
-  graphMemberAvatar: 16,
-  graphToolRadius: 11,
+  /** AR-2 — the Org Graph (rebuilt). A force-directed company map: the org at
+   * the still center, department "districts" as soft tinted fields, the
+   * humanized people settled by a REAL simulation (charge + reporting links +
+   * a pull toward each district's centroid + collision sized to the LABEL, not
+   * just the disc), tools beside the cluster that owns them. The layout runs
+   * once to equilibrium and is FROZEN — deterministic (seeded spiral, no
+   * Math.random), no perpetual jitter. PROPORTIONAL, not emblematic: a
+   * department's footprint (district radius + hub weight) grows with its
+   * headcount — here, area DOES encode how many people work there. */
+  graphViewport: 820,
+  graphMargin: 40,
+  /** Department hubs sit on this ring; their people cluster organically about
+   * the hub. The hubs are radial (a sensible org skeleton); the PEOPLE are
+   * not snapped to any arc — the simulation places them. */
+  graphRingDept: 215,
+  graphCenterRadius: 30,
+  graphHubRadius: 15,
+  graphAnchorAvatar: 34,
+  graphMemberAvatar: 18,
+  graphToolSize: 13,
+  /** The force model (tokens, not vibes): repulsion strength, reporting-link
+   * rest length + strength, the pull toward a node's district centroid,
+   * collision padding around a node's footprint, solver iterations, and the
+   * total settle ticks run before the layout freezes. */
+  graphCharge: -94,
+  graphLinkDistance: 48,
+  graphLinkStrength: 0.3,
+  graphClusterStrength: 0.16,
+  graphCollidePad: 7,
+  graphCollideIters: 4,
+  graphForceTicks: 320,
+  /** Level of detail: members reveal their name once the view zooms past this
+   * scale (anchors are always named); below it, members are avatars only. */
+  graphLodReveal: 1.8,
+  /** Label legibility: a paper halo (stroke painted under the fill) of this
+   * width keeps a name readable over edges and discs. */
+  graphLabelHalo: 3,
+  /** District field: the soft dept-tinted disc behind a cluster — radius
+   * derived from headcount (this base + per-head growth, the √-scaled
+   * footprint), drawn at low alpha so names sit legibly on top. */
+  graphDistrictBase: 40,
+  graphDistrictPerHead: 12,
+  graphDistrictOpacity: 0.5,
   /** Focus de-emphasis: unrelated nodes drop to this opacity on hover/focus. */
   graphDimOpacity: 0.16,
-  graphForceTicks: 160,
 } as const;
 
 /** MOTION BUDGET — tokens, not vibes. Nothing else animates. */

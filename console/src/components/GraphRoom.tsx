@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import * as api from "@/lib/api";
 import type { GraphResponse } from "@/lib/api";
-import { TYPE } from "@/lib/tokens";
+import { COLOR, DERIVED, FONT, TYPE } from "@/lib/tokens";
 import { OrgGraph } from "./OrgGraph";
 import { Skeleton } from "./Skeleton";
 
@@ -79,16 +79,20 @@ export function GraphRoom({
 
   if (actor === null) {
     return (
-      <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="graph-room-empty">
-        Select a lens to begin.
-      </p>
+      <GraphEmpty
+        testid="graph-room-empty"
+        headline="Select a lens to begin."
+        sub="Choose a principal from the bar above to see the company through their lens."
+      />
     );
   }
 
   const quiet = (testid: string) => (
-    <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid={testid}>
-      No organizational view in your scope.
-    </p>
+    <GraphEmpty
+      testid={testid}
+      headline="No organizational view in your scope."
+      sub="This lens doesn't include a company graph. Nothing is withheld here — there is simply nothing to draw."
+    />
   );
 
   return (
@@ -123,6 +127,67 @@ export function GraphRoom({
             </div>
           )
         : null}
+    </div>
+  );
+}
+
+/**
+ * The designed empty state — a quiet card with a resting org glyph, not a bare
+ * sentence. HONEST DARK: it states plainly that nothing is withheld; a small
+ * (or absent) permitted world simply has little to draw.
+ */
+function GraphEmpty({
+  testid,
+  headline,
+  sub,
+}: {
+  testid: string;
+  headline: string;
+  sub: string;
+}) {
+  // A faint org mark at rest: a ring, a weighted center, three dim satellites.
+  const satellites = [-Math.PI / 2, Math.PI / 6, (5 * Math.PI) / 6];
+  return (
+    <div
+      className="ap-card flex flex-col items-center gap-3 rounded px-6 py-12 text-center"
+      data-testid={testid}
+    >
+      <svg width={64} height={64} viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx={32} cy={32} r={26} fill="none" stroke={DERIVED.hairline} strokeWidth={1} />
+        {satellites.map((a, i) => (
+          <line
+            key={i}
+            x1={32}
+            y1={32}
+            x2={32 + 26 * Math.cos(a)}
+            y2={32 + 26 * Math.sin(a)}
+            stroke={DERIVED.hairline}
+            strokeWidth={1}
+            strokeOpacity={0.6}
+          />
+        ))}
+        {satellites.map((a, i) => (
+          <circle
+            key={`s${i}`}
+            cx={32 + 26 * Math.cos(a)}
+            cy={32 + 26 * Math.sin(a)}
+            r={4}
+            fill={DERIVED.wash}
+            stroke={DERIVED.hairline}
+            strokeWidth={1}
+          />
+        ))}
+        <circle cx={32} cy={32} r={10} fill={COLOR.ink} opacity={0.55} />
+      </svg>
+      <p
+        className="ap-register-chrome"
+        style={{ fontFamily: FONT.chrome, fontSize: TYPE.scale.sm, fontWeight: 600 }}
+      >
+        {headline}
+      </p>
+      <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, maxWidth: 300, lineHeight: TYPE.line.body }}>
+        {sub}
+      </p>
     </div>
   );
 }

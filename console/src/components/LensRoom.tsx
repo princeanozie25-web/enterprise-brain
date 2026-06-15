@@ -40,7 +40,12 @@ export function LensRoom({
    * (cross-lens, audited). */
   entrySubject?: string | null;
 }) {
-  const [subject, setSubject] = useState<string | null>(actor);
+  // Subject defaults to the actor (self-view); a click-to-lens arrival
+  // (?subject=) opens that subject immediately at mount — set in the
+  // initializer, NOT a post-mount effect, so nothing can clobber it back to
+  // self (the StrictMode double-invoke bug). An actor switch remounts the room
+  // (Console's key={principal}) and clears the door, so this re-inits cleanly.
+  const [subject, setSubject] = useState<string | null>(entrySubject ?? actor);
   const [lens, setLens] = useState<LensResponse | null>(null);
   const [atlas, setAtlas] = useState<AtlasResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -49,27 +54,16 @@ export function LensRoom({
   const [diffRight, setDiffRight] = useState<string | null>(null);
   const [compareSearch, setCompareSearch] = useState("");
   const entryDiffSpent = useRef(false);
-  const entrySubjectSpent = useRef(false);
   const [inspector, setInspector] = useState<{
     open: boolean;
     loading: boolean;
     card: DocCard | null;
   }>({ open: false, loading: false, card: null });
 
-  useEffect(() => {
-    setSubject(actor);
-  }, [actor]);
-
-  // AR-2: the click-to-lens door. Viewing a graph-clicked principal is a
-  // cross-lens act (actor stays, subject becomes the clicked person); spent
-  // once, so a later lens switch doesn't re-open it.
-  useEffect(() => {
-    if (entrySubjectSpent.current || entrySubject === null) {
-      return;
-    }
-    entrySubjectSpent.current = true;
-    setSubject(entrySubject);
-  }, [entrySubject]);
+  // AR-2: the click-to-lens door is consumed in the useState initializer
+  // above (subject = entrySubject ?? actor) — a cross-lens act, audited
+  // server-side. No post-mount effect touches the subject, so the StrictMode
+  // double-invoke can't reset it to self.
 
   // The entry door is spent on first use; an actor switch remounts the room
   // (key={principal}) and Console drops the door, so a diff never survives

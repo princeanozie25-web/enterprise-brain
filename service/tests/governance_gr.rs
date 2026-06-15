@@ -249,6 +249,78 @@ async fn gr3_graph_carries_no_holding_or_document_id() {
 }
 
 // ---------------------------------------------------------------------------
+// GR-5 NAMES: every node is a real, humanized person — no placeholder labels
+// ---------------------------------------------------------------------------
+
+fn people_display() -> BTreeMap<String, (String, String)> {
+    let v: Value =
+        serde_json::from_slice(&fs::read(common::repo_fixtures_dir().join("people.json")).unwrap())
+            .unwrap();
+    v["people"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                p["id"].as_str().unwrap().to_string(),
+                (
+                    p["display_name"].as_str().unwrap().to_string(),
+                    p["title"].as_str().unwrap().to_string(),
+                ),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn gr5_every_person_carries_a_real_humanized_name_no_placeholder() {
+    let router = app(Arc::new(gr_state()));
+    let (status, bytes) = get(&router, "/graph", "p060").await;
+    assert_eq!(status, StatusCode::OK);
+    let graph: Value = serde_json::from_slice(&bytes).unwrap();
+    let expected = people_display();
+
+    // The renderer must never have to invent a label: the payload carries a
+    // real name + title for EVERY node. Guards against a regression to the
+    // "anonymous team member" graph the rebuild replaced.
+    let placeholders = [
+        "", "member", "anchor", "team member", "teammate", "unknown", "person", "n/a", "tbd",
+    ];
+
+    let mut checked = 0usize;
+    for p in graph["people"].as_array().unwrap() {
+        let id = p["id"].as_str().unwrap();
+        let name = p["display_name"].as_str().unwrap_or("");
+        let title = p["title"].as_str().unwrap_or("");
+
+        let trimmed = name.trim();
+        assert!(!trimmed.is_empty(), "{id}: display_name is empty");
+        let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+        assert!(
+            tokens.len() >= 2 && tokens.iter().all(|t| !t.is_empty()),
+            "{id}: display_name {name:?} is not a real (multi-token) name"
+        );
+        assert!(
+            !placeholders.contains(&trimmed.to_ascii_lowercase().as_str()),
+            "{id}: display_name {name:?} is a placeholder"
+        );
+        assert_ne!(trimmed, id, "{id}: display_name must not be the principal id");
+        assert!(!title.trim().is_empty(), "{id}: title is empty");
+
+        // Baked at source: the graph's name + title equal the humanization
+        // layer exactly (no fabrication in the endpoint).
+        let (exp_name, exp_title) = expected.get(id).expect("graph id exists in people.json");
+        assert_eq!(name, exp_name, "{id}: graph name == people.json display_name");
+        assert_eq!(title, exp_title, "{id}: graph title == people.json title");
+        checked += 1;
+    }
+    assert_eq!(checked, 120, "all 120 people carry a real name + title");
+    println!(
+        "GR-5: all {checked} people carry a real 2-token humanized name + title; zero placeholders"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // GR-4 SELF + 404
 // ---------------------------------------------------------------------------
 

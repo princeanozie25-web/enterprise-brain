@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { GraphResponse } from "@/lib/api";
-import { OrgGraph } from "@/components/OrgGraph";
+import { OrgGraph, declutterAnchorLabels, nameVisible } from "@/components/OrgGraph";
 import { lensHref } from "@/components/GraphRoom";
 
 afterEach(() => {
@@ -158,5 +158,115 @@ describe("U-37: the actor's own node is marked 'you are here'", () => {
       expect(node.getAttribute("data-self")).toBe("false");
       expect(within(node).queryByTestId("graph-self-marker")).toBeNull();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U-38 PAN/ZOOM + FIT/RESET
+// ---------------------------------------------------------------------------
+
+describe("U-38: pan/zoom transforms the scene and Fit/reset restores it", () => {
+  it("a wheel zoom changes the scene transform; reset returns to identity", () => {
+    render(<OrgGraph graph={GRAPH} onSelectPerson={() => {}} />);
+    const svg = screen.getByLabelText("Organization graph");
+    const scene = screen.getByTestId("graph-scene");
+    expect(scene.getAttribute("transform")).toBe("translate(0,0) scale(1)");
+
+    // d3-zoom is attached to the svg; a wheel changes the held transform.
+    fireEvent.wheel(svg, { deltaY: -400, clientX: 400, clientY: 400 });
+    const zoomed = screen.getByTestId("graph-scene").getAttribute("transform") ?? "";
+    expect(zoomed).not.toBe("translate(0,0) scale(1)");
+    expect(zoomed).toMatch(/scale\(/);
+
+    // Fit / reset drives the SAME behavior instance back to identity.
+    fireEvent.click(screen.getByTestId("graph-reset"));
+    expect(screen.getByTestId("graph-scene").getAttribute("transform")).toBe(
+      "translate(0,0) scale(1)",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U-39 LEVEL-OF-DETAIL NAME RULE (pure)
+// ---------------------------------------------------------------------------
+
+describe("U-39: the LOD name rule", () => {
+  it("names anchors always; members only on focus or past the reveal scale", () => {
+    expect(nameVisible("anchor", false, 1)).toBe(true);
+    expect(nameVisible("anchor", false, 0.5)).toBe(true);
+    expect(nameVisible("member", false, 1)).toBe(false);
+    expect(nameVisible("member", true, 1)).toBe(true); // hover/focus
+    expect(nameVisible("member", false, 1.79)).toBe(false); // just below reveal
+    expect(nameVisible("member", false, 1.8)).toBe(true); // at the reveal
+    expect(nameVisible("member", false, 3)).toBe(true); // zoomed in
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U-40 ZOOM-IN REVEALS REAL MEMBER NAMES
+// ---------------------------------------------------------------------------
+
+describe("U-40: zooming in reveals members' real names", () => {
+  it("a member shows its true display_name once zoomed past the reveal scale", () => {
+    render(<OrgGraph graph={GRAPH} onSelectPerson={() => {}} />);
+    const svg = screen.getByLabelText("Organization graph");
+    // Hidden at rest (k = 1).
+    expect(within(personNode("p061")).queryByTestId("graph-person-name")).toBeNull();
+    // Zoom well past the reveal (k -> ~2.3): the real name appears, not a stub.
+    fireEvent.wheel(svg, { deltaY: -600, clientX: 400, clientY: 400 });
+    expect(within(personNode("p061")).getByTestId("graph-person-name").textContent).toBe(
+      "Ana Flores",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U-41 EDGES: CURVED PATHS, RANKED BY KIND
+// ---------------------------------------------------------------------------
+
+describe("U-41: edges are curved paths ranked by kind", () => {
+  it("renders every edge as a quadratic path carrying its kind", () => {
+    render(<OrgGraph graph={GRAPH} onSelectPerson={() => {}} />);
+    const edges = screen.getAllByTestId("graph-edge");
+    expect(edges.length).toBe(GRAPH.edges.length);
+    for (const e of edges) {
+      expect(e.tagName.toLowerCase()).toBe("path"); // curved, not a straight line
+      expect((e.getAttribute("d") ?? "")).toMatch(/^M.*Q/); // quadratic bezier
+    }
+    const kinds = new Set(edges.map((e) => e.getAttribute("data-kind")));
+    expect(kinds.has("reports_to")).toBe(true);
+    expect(kinds.has("member_of")).toBe(true);
+    expect(kinds.has("owns_agent")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U-42 ANCHOR LABEL DECLUTTER (pure)
+// ---------------------------------------------------------------------------
+
+describe("U-42: anchor labels never overlap", () => {
+  it("separates stacked anchor name bands by at least a line height", () => {
+    const orig: Record<string, number> = { a: 100, b: 102, c: 99 };
+    const dy = declutterAnchorLabels(
+      [
+        { id: "a", x: 100, y: orig.a, name: "Felix Osei" },
+        { id: "b", x: 104, y: orig.b, name: "Yuki Moreau" },
+        { id: "c", x: 98, y: orig.c, name: "Ana Flores" },
+      ],
+      { lineHeight: 26, charWidth: 6.2 },
+    );
+    const ys = ["a", "b", "c"].map((id) => orig[id] + (dy.get(id) ?? 0));
+    const sorted = [...ys].sort((p, q) => p - q);
+    expect(sorted[1] - sorted[0]).toBeGreaterThanOrEqual(26);
+    expect(sorted[2] - sorted[1]).toBeGreaterThanOrEqual(26);
+  });
+
+  it("leaves well-separated labels untouched", () => {
+    const dy = declutterAnchorLabels([
+      { id: "a", x: 0, y: 0, name: "Felix Osei" },
+      { id: "b", x: 0, y: 400, name: "Yuki Moreau" },
+    ]);
+    expect(dy.get("a")).toBe(0);
+    expect(dy.get("b")).toBe(0);
   });
 });
