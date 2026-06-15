@@ -16,7 +16,7 @@ import json
 import random
 from pathlib import Path
 
-from synth import banks, constants
+from synth import banks, constants, humanized_names
 from synth.model import (
     AclRule,
     AgentGrant,
@@ -156,6 +156,19 @@ def build_people(rng: random.Random) -> list[Person]:
             start_date=iso_day(45),
         )
     )
+
+    # AR-1b: humanized names baked in AT SOURCE. The legacy next_name() draws
+    # above are deliberately PRESERVED so the one seeded RNG stream — and thus
+    # every governance fact (bands, sites, groups, ACLs, the whole document
+    # set) — stays byte-identical; this pure post-pass consumes NO rng and only
+    # swaps the display strings. Every name is two tokens (first + surname),
+    # exactly as the legacy pool, so the word-count-driven body templating in
+    # banks.render_body is unperturbed too. The result is identical to the
+    # service's humanize.rs assignment (test/test_humanized_names.py proves it),
+    # so people.json and the corpus agree on every name.
+    name_map = humanized_names.assign([p.id for p in people])
+    for p in people:
+        p.name = name_map[p.id]
     return people
 
 

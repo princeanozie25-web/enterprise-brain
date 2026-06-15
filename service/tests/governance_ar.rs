@@ -290,9 +290,17 @@ async fn ar4_display_name_overrides_the_frozen_name_on_every_surface() {
             .unwrap()
             .to_string()
     };
-    assert_ne!(name("p060"), frozen("p060"), "the name was regenerated");
+    // AR-1b baked the humanized names into the corpus, so the frozen
+    // company.json name now EQUALS the display name (consistency at source).
+    // Pre-AR-1b these differed; the masthead override renders the same either
+    // way — the display name on every surface.
+    assert_eq!(
+        name("p060"),
+        frozen("p060"),
+        "post-AR-1b the corpus carries the humanized name"
+    );
 
-    // /lens masthead shows the generated name, not the frozen one.
+    // /lens masthead shows the humanized display name.
     let (_, bytes) = get(&router, "/lens/p060", "p060").await;
     let lens: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(lens["subject"]["name"], name("p060").as_str());
@@ -308,10 +316,8 @@ async fn ar4_display_name_overrides_the_frozen_name_on_every_surface() {
     assert_eq!(diff["left_human"]["display_name"], name("p016").as_str());
     assert_eq!(diff["right_human"]["display_name"], name("p087").as_str());
     println!(
-        "AR-4: p060 '{}' -> '{}' on lens + diff (was '{}')",
-        frozen("p060"),
-        name("p060"),
-        frozen("p060")
+        "AR-4: p060 masthead + diff show '{}' (corpus + humanization layer agree post-AR-1b)",
+        name("p060")
     );
 }
 
@@ -329,9 +335,26 @@ async fn ar5_without_the_layer_names_fall_back_and_no_human_fields_appear() {
     let (status, bytes) = get(&router, "/lens/p060", "p060").await;
     assert_eq!(status, StatusCode::OK);
     let lens: Value = serde_json::from_slice(&bytes).unwrap();
+    // Post-AR-1b the frozen company.json name IS the humanized name; without
+    // the layer the masthead shows exactly that frozen name (no override path).
+    let frozen_p060 = {
+        let company: Value = serde_json::from_slice(
+            &fs::read(common::repo_fixtures_dir().join("company.json")).unwrap(),
+        )
+        .unwrap();
+        company["people"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == "p060")
+            .unwrap()["name"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
     assert_eq!(
-        lens["subject"]["name"], "Kerensa Pellbrook",
-        "without the layer, the frozen name stands (every prior suite's path)"
+        lens["subject"]["name"], frozen_p060.as_str(),
+        "without the layer, the frozen company.json name stands"
     );
     assert!(lens.get("actor").is_none(), "no actor card without the layer");
     assert!(
@@ -345,4 +368,72 @@ async fn ar5_without_the_layer_names_fall_back_and_no_human_fields_appear() {
     let people: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(people["people"].as_array().unwrap().len(), 0);
     println!("AR-5: layer-absent path is byte-compatible with the pre-AR-1 surfaces");
+}
+
+// ---------------------------------------------------------------------------
+// AR-1b DECISION INVARIANCE — the regenerated corpus yields the SAME matrix
+// (governance unchanged; only names differ). The golden is the allow-set
+// recorded from the M1 artifacts BEFORE AR-1b regenerated the corpus.
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct ArtifactAllow {
+    principal_id: String,
+    entries: Vec<ArtifactEntry>,
+}
+
+#[derive(serde::Deserialize)]
+struct ArtifactEntry {
+    document_id: String,
+}
+
+#[test]
+fn ar1b_decision_matrix_unchanged_vs_recorded_golden() {
+    let golden: std::collections::BTreeMap<String, Vec<String>> = serde_json::from_slice(
+        &fs::read(common::service_fixture_dir().join("decision_matrix.golden.json"))
+            .expect("read decision-matrix golden"),
+    )
+    .expect("parse golden");
+
+    let mut current: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for entry in fs::read_dir(artifacts_dir()).expect("read artifacts dir") {
+        let path = entry.expect("dir entry").path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !name.ends_with(".json") || name == "index.json" {
+            continue;
+        }
+        let art: ArtifactAllow = serde_json::from_slice(&fs::read(&path).expect("read artifact"))
+            .expect("parse artifact");
+        let mut docs: Vec<String> = art.entries.into_iter().map(|e| e.document_id).collect();
+        docs.sort();
+        current.insert(art.principal_id, docs);
+    }
+
+    // Report the exact (principal, doc) pairs whose decision flipped, if any.
+    let mut flips: Vec<String> = Vec::new();
+    let all: BTreeSet<&String> = golden.keys().chain(current.keys()).collect();
+    for pid in all {
+        let g: BTreeSet<&String> = golden.get(pid).into_iter().flatten().collect();
+        let c: BTreeSet<&String> = current.get(pid).into_iter().flatten().collect();
+        for d in g.difference(&c) {
+            flips.push(format!("{pid}/{d}: ALLOW->DENY"));
+        }
+        for d in c.difference(&g) {
+            flips.push(format!("{pid}/{d}: DENY->ALLOW"));
+        }
+    }
+    assert!(
+        flips.is_empty(),
+        "decision matrix flipped on {} pair(s): {:?}",
+        flips.len(),
+        &flips[..flips.len().min(20)]
+    );
+    let allows: usize = current.values().map(|v| v.len()).sum();
+    assert_eq!(current.len(), 124, "all 124 principals present");
+    assert_eq!(allows, 16_881, "allow total preserved (the matrix is unchanged)");
+    println!(
+        "AR-1b: decision matrix identical to the recorded golden — 124 principals, \
+         16,881 allows, 0 flips (names changed, governance did not)"
+    );
 }
