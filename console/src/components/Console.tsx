@@ -7,12 +7,14 @@ import { DERIVED, TYPE } from "@/lib/tokens";
 import { AnswerCard } from "./AnswerCard";
 import { AtlasRoom } from "./AtlasRoom";
 import { DocInspector } from "./DocInspector";
+import { EmployeeDashboard } from "./EmployeeDashboard";
 import { ExportButton } from "./ExportButton";
 import { GraphRoom } from "./GraphRoom";
 import { IdentityRail } from "./IdentityRail";
 import { LaneRoom } from "./LaneRoom";
 import { LensBar } from "./LensBar";
 import { LensRoom } from "./LensRoom";
+import { ProjectSurface } from "./ProjectSurface";
 import { ResultsList } from "./ResultsList";
 import { Skeleton } from "./Skeleton";
 import iris from "./LensBar.module.css";
@@ -49,7 +51,7 @@ function entryDoorActor(search: string): string | null {
 export function Console({
   view = "ask",
 }: {
-  view?: "graph" | "ask" | "lens" | "atlas" | "lane";
+  view?: "graph" | "ask" | "lens" | "atlas" | "lane" | "project" | "me";
 }) {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
@@ -185,10 +187,14 @@ export function Console({
       <nav className="ap-card border-x-0 border-t-0" aria-label="Rooms" data-testid="view-switcher">
         <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-1.5">
           <ViewDoor label="Graph" href="/" active={view === "graph"} principal={principal} />
+          <ViewDoor label="Me" href="/me" active={view === "me"} principal={principal} />
           <ViewDoor label="Ask" href="/ask" active={view === "ask"} principal={principal} />
           <ViewDoor label="Lens" href="/lens" active={view === "lens"} principal={principal} />
           <ViewDoor label="Atlas" href="/atlas" active={view === "atlas"} principal={principal} />
           <ViewDoor label="Lane" href="/lane" active={view === "lane"} principal={principal} />
+          {view === "project" && (
+            <ViewDoor label="Project" href="/project" active principal={principal} />
+          )}
           {/* THE RESERVED DOOR — flagged in the AP-3 closeout: "Ledger —
               reserved" is placeholder copy for a room that does not exist
               yet. Disabled, not hidden: the shell states its own shape. */}
@@ -212,6 +218,8 @@ export function Console({
           <main className="min-w-0 flex-1">
             <GraphRoom actor={principal} reducedMotion={reduced} />
           </main>
+        ) : view === "me" ? (
+          <EmployeeDashboard actor={principal} />
         ) : view === "lens" ? (
           <main className="min-w-0 flex-1">
             <LensRoom actor={principal} entryDiff={entryDiff} entrySubject={entrySubject} />
@@ -224,6 +232,8 @@ export function Console({
           <main className="min-w-0 flex-1">
             <LaneRoom actor={principal} />
           </main>
+        ) : view === "project" ? (
+          <ProjectSurface actor={principal} capabilityId={entryCapability} />
         ) : (
           <>
             <aside className="w-72 shrink-0">
