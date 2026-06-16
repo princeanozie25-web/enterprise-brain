@@ -300,10 +300,15 @@ export function OrgGraph({
     peopleById.get(id)?.department_id === focusDept ||
     toolsById.get(id)?.department_id === focusDept;
 
-  const dimming = focusDept !== null || hover !== null || q.length > 0;
+  const selectedIsCenter = selectedId === graph.center.id;
+  const selectedNeighbors = selectedId !== null ? neighbors.get(selectedId) : undefined;
+  const traceRelated = (id: string): boolean =>
+    selectedId !== null && !selectedIsCenter && (selectedNeighbors?.has(id) ?? false);
+  const dimming = focusDept !== null || hover !== null || (selectedId !== null && !selectedIsCenter) || q.length > 0;
   const emphasized = (id: string): boolean => {
     if (focusDept !== null) return inDept(id) || id === graph.center.id;
     if (hover !== null) return id === hover || (neighbors.get(hover)?.has(id) ?? false);
+    if (selectedId !== null) return selectedIsCenter || id === selectedId || traceRelated(id);
     if (q.length > 0) return matches(id);
     return true;
   };
@@ -315,6 +320,7 @@ export function OrgGraph({
   const edgeTouchesFocus = (edge: GraphEdge): boolean => {
     if (focusDept !== null) return inDept(edge.from) || inDept(edge.to);
     if (hover !== null) return edge.from === hover || edge.to === hover;
+    if (selectedId !== null && !selectedIsCenter) return edge.from === selectedId || edge.to === selectedId;
     return false;
   };
 
@@ -488,7 +494,8 @@ export function OrgGraph({
           {graph.departments.map((dept) => {
             const point = at(dept.id);
             const tint = tintOf(dept.tint_key);
-            const active = focusDept === dept.id || selectedId === dept.id || hover === dept.id || matches(dept.id);
+            const active =
+              focusDept === dept.id || selectedId === dept.id || traceRelated(dept.id) || hover === dept.id || matches(dept.id);
             return (
               <g
                 key={dept.id}
@@ -554,7 +561,7 @@ export function OrgGraph({
             graph.tools.map((tool) => {
               const point = at(tool.id);
               const tint = tool.department_id ? tintOf(tool.department_id) : tintOf("");
-              const active = selectedId === tool.id || hover === tool.id || matches(tool.id);
+              const active = selectedId === tool.id || traceRelated(tool.id) || hover === tool.id || matches(tool.id);
               const size = active || focusDept === tool.department_id ? STAGE.agentSize + 2 : STAGE.agentSize;
               return (
                 <g
@@ -603,7 +610,7 @@ export function OrgGraph({
           {!hidden.has("sources") &&
             graph.sources.map((source) => {
               const point = at(source.id);
-              const active = selectedId === source.id || hover === source.id || matches(source.id);
+              const active = selectedId === source.id || traceRelated(source.id) || hover === source.id || matches(source.id);
               return (
                 <g
                   key={source.id}
@@ -658,6 +665,7 @@ export function OrgGraph({
                 const active =
                   hover === person.id ||
                   selectedId === person.id ||
+                  traceRelated(person.id) ||
                   matches(person.id) ||
                   (focusDept !== null && person.department_id === focusDept);
                 const expanded = person.ring === "anchor" || active || k >= GEOMETRY.graphLodReveal;
@@ -765,7 +773,7 @@ export function OrgGraph({
 
           {(() => {
             const point = at(graph.center.id);
-            const active = selectedId === graph.center.id || hover === graph.center.id;
+            const active = selectedId === graph.center.id || traceRelated(graph.center.id) || hover === graph.center.id;
             return (
               <g
                 data-testid="graph-center"
