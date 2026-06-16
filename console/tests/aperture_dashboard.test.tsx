@@ -8,6 +8,7 @@ import type {
   LensResponse,
   NodeSummary,
   ProjectWorkflowResponse,
+  RoleScopeSummary,
 } from "@/lib/api";
 import { EmployeeDashboard } from "@/components/EmployeeDashboard";
 
@@ -63,7 +64,7 @@ const LENS: LensResponse = {
     display_name: "Felix Osei",
     id: "p060",
     location: "Keldonbury, UK",
-    manages: [],
+    manages: ["p061", "p062"],
     personality_tag: "ENFJ",
     projects: [
       {
@@ -124,6 +125,39 @@ const SUMMARY: NodeSummary = {
   kind: "human",
   name: "Felix Osei",
   title: "Head of Finance",
+};
+
+const ROLE_SCOPE: RoleScopeSummary = {
+  actor_id: "p060",
+  admin_surface_allowed: false,
+  approval_scope: {
+    has_approval_scope: true,
+    pending_count: 1,
+  },
+  bursar_surface_allowed: false,
+  confidence: "high",
+  demo_identity_mode: true,
+  department_scope: {
+    band: 5,
+    department_id: "Finance",
+    seniority: "Leadership",
+  },
+  derived_level: "department_head",
+  enforcement: "derived_only",
+  governance_surface_allowed: false,
+  project_scope: {
+    capability_ids: ["cap31"],
+    project_count: 1,
+  },
+  reasons: [
+    "humanized actor profile is present",
+    "reporting line has 2 direct reports",
+    "sensitive surfaces remain disallowed by this contract",
+  ],
+  team_scope: {
+    direct_report_count: 2,
+    has_team_scope: true,
+  },
 };
 
 const REQUESTS: AccessRequestsResponse = {
@@ -208,6 +242,7 @@ function stubDashboardFetch() {
       if (url.endsWith("/lens/p060")) return new Response(JSON.stringify(LENS), { status: 200 });
       if (url.endsWith("/graph")) return new Response(JSON.stringify(GRAPH), { status: 200 });
       if (url.endsWith("/node/p060/summary")) return new Response(JSON.stringify(SUMMARY), { status: 200 });
+      if (url.endsWith("/me/scope")) return new Response(JSON.stringify(ROLE_SCOPE), { status: 200 });
       if (url.endsWith("/access-requests/inbox")) return new Response(JSON.stringify(INBOX), { status: 200 });
       if (url.endsWith("/access-requests")) return new Response(JSON.stringify(REQUESTS), { status: 200 });
       if (url.includes("/workflow/project/cap31")) return new Response(JSON.stringify(WORKFLOW), { status: 200 });
@@ -224,16 +259,27 @@ describe("EmployeeDashboard", () => {
 
     expect(screen.getByTestId("dashboard-user-name").textContent).toBe("Felix Osei");
     expect(screen.getByTestId("dashboard-ask-link").getAttribute("href")).toBe("/ask?as=p060");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("My Work Pod");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Project Context Pod");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Team Lead Pod");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Approval Queue Pod");
+    const askPod = screen.getByTestId("dashboard-ask-pod");
+    expect(askPod.textContent).toContain("Ask a Question");
+    expect(askPod.textContent).toContain("Start Conversation");
+    expect(askPod.getAttribute("href")).toBe("/ask?as=p060");
     const project = screen.getByTestId("dashboard-project");
     expect(project.textContent).toContain("Capability: Access Review 31");
     expect(project.getAttribute("href")).toBe("/project?cap=cap31&as=p060");
 
     const scope = screen.getByTestId("dashboard-scope");
     expect(scope.textContent).toContain("derived, not enforced");
-    expect(scope.textContent).toContain("Employee view");
+    expect(scope.textContent).toContain("Role posture");
+    expect(scope.textContent).toContain("Department head signal");
     expect(scope.textContent).toContain("Department context");
     expect(scope.textContent).toContain("Leadership");
+    expect(scope.textContent).toContain("Team scope");
     expect(scope.textContent).toContain("Project scope");
+    expect(scope.textContent).toContain("Surface limits");
     expect(scope.textContent).toContain("Enforcement status");
 
     const workflowGroups = screen.getAllByTestId("dashboard-workflow-group");

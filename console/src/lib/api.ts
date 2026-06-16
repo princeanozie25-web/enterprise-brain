@@ -71,6 +71,50 @@ export interface ScopeResponse {
   scope_statement: ScopeStatement;
 }
 
+export type DerivedRoleLevel =
+  | "employee"
+  | "team_lead"
+  | "department_head"
+  | "executive_candidate"
+  | "super_admin_candidate";
+
+export interface RoleDepartmentScope {
+  band?: number | null;
+  department_id: string;
+  seniority: string;
+}
+
+export interface RoleTeamScope {
+  direct_report_count: number;
+  has_team_scope: boolean;
+}
+
+export interface RoleProjectScope {
+  capability_ids: string[];
+  project_count: number;
+}
+
+export interface RoleApprovalScope {
+  has_approval_scope: boolean;
+  pending_count: number;
+}
+
+export interface RoleScopeSummary {
+  actor_id: string;
+  admin_surface_allowed: boolean;
+  approval_scope: RoleApprovalScope;
+  bursar_surface_allowed: boolean;
+  confidence: string;
+  demo_identity_mode: boolean;
+  department_scope: RoleDepartmentScope;
+  derived_level: DerivedRoleLevel;
+  enforcement: "derived_only" | "server_enforced";
+  governance_surface_allowed: boolean;
+  project_scope: RoleProjectScope;
+  reasons: string[];
+  team_scope: RoleTeamScope;
+}
+
 /** 401: the request carried no principal. */
 export class Unauthenticated extends Error {}
 
@@ -109,6 +153,17 @@ export async function getScope(principal: string): Promise<ScopeResponse> {
     headers: headers(principal),
   });
   return parse<ScopeResponse>(response);
+}
+
+/** GET /me/scope. Read-only role posture, not an access grant. 404 -> null. */
+export async function getRoleScope(principal: string): Promise<RoleScopeSummary | null> {
+  const response = await fetch(`${SERVICE_URL}/me/scope`, {
+    headers: headers(principal),
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<RoleScopeSummary>(response);
 }
 
 /**
@@ -227,9 +282,22 @@ export interface GraphSource {
   label: string;
 }
 
+/** A real project/capability grouped from HumanRecord.projects. */
+export interface GraphProject {
+  departments: string[];
+  id: string;
+  initiative_name: string;
+  label: string;
+  people: number;
+  primary_department_id: string;
+  status_counts: Record<string, number>;
+  strategy_name: string;
+  workflow_name: string;
+}
+
 export interface GraphEdge {
   from: string;
-  kind: "reports_to" | "member_of" | "uses" | "owns_agent" | "system_of";
+  kind: "reports_to" | "member_of" | "uses" | "owns_agent" | "system_of" | "works_on" | "involves_department";
   to: string;
 }
 
@@ -239,6 +307,7 @@ export interface GraphResponse {
   departments: GraphDept[];
   edges: GraphEdge[];
   people: GraphPerson[];
+  projects: GraphProject[];
   snapshot_version: string;
   sources: GraphSource[];
   tools: GraphTool[];
@@ -251,6 +320,154 @@ export async function getGraph(actor: string): Promise<GraphResponse | null> {
     return null;
   }
   return parse<GraphResponse>(response);
+}
+
+// ---------------------------------------------------------------------------
+// Access requests: auditable ledger only. These types cannot represent a raw
+// document target or an access grant. Approval updates request status only.
+// ---------------------------------------------------------------------------
+
+export type AccessRequestStatus = "pending" | "approved" | "denied" | "cancelled" | "expired";
+
+export type AccessTarget =
+  | { kind: "capability"; capability_id: string }
+  | { kind: "project"; capability_id: string };
+
+export interface AccessDecision {
+  actor_principal: string;
+  decided_ordinal: number;
+  outcome: "approved" | "denied";
+  reason_code?: string;
+}
+
+export interface AccessRequestRecord {
+  approver_id: string;
+  created_ordinal: number;
+  decision?: AccessDecision;
+  justification: string;
+  request_id: string;
+  request_key: string;
+  requester_id: string;
+  snapshot_version: string;
+  status: AccessRequestStatus;
+  target: AccessTarget;
+}
+
+export interface AccessRequestsResponse {
+  actor_id: string;
+  demo_identity_mode: boolean;
+  requests: AccessRequestRecord[];
+  snapshot_version: string;
+}
+
+export interface AccessRequestMutationResponse {
+  demo_identity_mode: boolean;
+  request: AccessRequestRecord;
+  snapshot_version: string;
+}
+
+export async function getAccessRequests(actor: string): Promise<AccessRequestsResponse | null> {
+  const response = await fetch(`${SERVICE_URL}/access-requests`, { headers: headers(actor) });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<AccessRequestsResponse>(response);
+}
+
+export async function getAccessRequestInbox(actor: string): Promise<AccessRequestsResponse | null> {
+  const response = await fetch(`${SERVICE_URL}/access-requests/inbox`, { headers: headers(actor) });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<AccessRequestsResponse>(response);
+}
+
+export async function postAccessRequest(
+  actor: string,
+  target: AccessTarget,
+  justification: string,
+): Promise<AccessRequestMutationResponse> {
+  const response = await fetch(`${SERVICE_URL}/access-requests`, {
+    method: "POST",
+    headers: headers(actor),
+    body: JSON.stringify({ target, justification }),
+  });
+  return parse<AccessRequestMutationResponse>(response);
+}
+
+export async function postAccessRequestDecision(
+  actor: string,
+  requestId: string,
+  decision: "approve" | "deny",
+  reasonCode?: string,
+): Promise<AccessRequestMutationResponse> {
+  const response = await fetch(
+    `${SERVICE_URL}/access-requests/${encodeURIComponent(requestId)}/${decision}`,
+    {
+      method: "POST",
+      headers: headers(actor),
+      body: reasonCode ? JSON.stringify({ reason_code: reasonCode }) : undefined,
+    },
+  );
+  return parse<AccessRequestMutationResponse>(response);
+}
+
+// ---------------------------------------------------------------------------
+// Workflow projection: read-only execution view for one real capability.
+// Items come from lane boxes, accepted agent boxes, or access-request rows.
+// ---------------------------------------------------------------------------
+
+export interface WorkflowNode {
+  id: string;
+  name: string;
+}
+
+export interface WorkflowProvenance {
+  capability: WorkflowNode;
+  initiative: WorkflowNode;
+  strategy: WorkflowNode;
+  workflow: WorkflowNode;
+}
+
+export type WorkflowItemKind = "lane_box" | "access_request" | "accepted_agent_box";
+
+export interface WorkflowItem {
+  agent_id?: string;
+  approver_id?: string;
+  capability_id: string;
+  dependencies: string[];
+  item_id: string;
+  kind: WorkflowItemKind;
+  owner_id?: string;
+  provenance: WorkflowProvenance;
+  requester_id?: string;
+  snapshot_version: string;
+  status: string;
+  title: string;
+}
+
+export interface ProjectWorkflowResponse {
+  actor_id: string;
+  capability_id: string;
+  demo_identity_mode: boolean;
+  items: WorkflowItem[];
+  provenance: WorkflowProvenance;
+  snapshot_version: string;
+}
+
+/** GET /workflow/project/{capability_id}. 404 -> null. */
+export async function getProjectWorkflow(
+  actor: string,
+  capabilityId: string,
+): Promise<ProjectWorkflowResponse | null> {
+  const response = await fetch(
+    `${SERVICE_URL}/workflow/project/${encodeURIComponent(capabilityId)}`,
+    { headers: headers(actor) },
+  );
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<ProjectWorkflowResponse>(response);
 }
 
 // ---------------------------------------------------------------------------

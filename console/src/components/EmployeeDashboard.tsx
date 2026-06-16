@@ -10,6 +10,7 @@ import type {
   NodeSummary,
   ProjectRecord,
   ProjectWorkflowResponse,
+  RoleScopeSummary,
   WorkflowItem,
 } from "@/lib/api";
 import { TYPE } from "@/lib/tokens";
@@ -56,19 +57,106 @@ function Chip({ children, mono = false }: { children: React.ReactNode; mono?: bo
   );
 }
 
+function roleLabel(level: RoleScopeSummary["derived_level"]): string {
+  switch (level) {
+    case "department_head":
+      return "Department head signal";
+    case "executive_candidate":
+      return "Executive candidate signal";
+    case "super_admin_candidate":
+      return "Super admin candidate signal";
+    case "team_lead":
+      return "Team lead signal";
+    case "employee":
+    default:
+      return "Employee view";
+  }
+}
+
 function deriveScopeBadges({
   human,
   inbox,
   requests,
+  roleScope,
   summary,
   subjectDepartment,
 }: {
   human: LensResponse["subject_human"];
   inbox: AccessRequestRecord[];
   requests: AccessRequestRecord[];
+  roleScope: RoleScopeSummary | null;
   summary: NodeSummary | null;
   subjectDepartment: string | null | undefined;
 }): ScopeBadge[] {
+  if (roleScope) {
+    const badges: ScopeBadge[] = [
+      {
+        detail: roleLabel(roleScope.derived_level),
+        label: "Role posture",
+        source: "server scope",
+      },
+      {
+        detail: roleScope.department_scope.department_id,
+        label: "Department context",
+        source: "server scope",
+      },
+      {
+        detail: roleScope.department_scope.seniority,
+        label: "Seniority signal",
+        source: "people record",
+      },
+      {
+        detail: `${roleScope.project_scope.project_count} assigned ${
+          roleScope.project_scope.project_count === 1 ? "project" : "projects"
+        }`,
+        label: "Project scope",
+        source: "server scope",
+      },
+    ];
+
+    if (roleScope.team_scope.has_team_scope) {
+      badges.push({
+        detail: `${roleScope.team_scope.direct_report_count} direct ${
+          roleScope.team_scope.direct_report_count === 1 ? "report" : "reports"
+        }`,
+        label: "Team scope",
+        source: "reporting line",
+      });
+    }
+    if (summary?.agents_owned?.length) {
+      badges.push({
+        detail: `${summary.agents_owned.length} owned ${
+          summary.agents_owned.length === 1 ? "agent" : "agents"
+        }`,
+        label: "Agent scope",
+        source: "node summary",
+      });
+    }
+    if (roleScope.approval_scope.pending_count > 0) {
+      badges.push({
+        detail: `${roleScope.approval_scope.pending_count} pending ${
+          roleScope.approval_scope.pending_count === 1 ? "approval" : "approvals"
+        }`,
+        label: "Approver queue",
+        source: "request inbox",
+      });
+    }
+    if (requests.length > 0) {
+      badges.push({
+        detail: `${requests.length} submitted ${requests.length === 1 ? "request" : "requests"}`,
+        label: "Request status",
+        source: "request ledger",
+      });
+    }
+    badges.push({
+      detail: "admin, governance, and Bursar surfaces unavailable",
+      label: "Surface limits",
+      source: roleScope.enforcement,
+    });
+
+    return badges;
+  }
+
   const department = human?.department_label ?? subjectDepartment ?? null;
   const directReports = human?.manages.length ?? summary?.manages ?? 0;
   const projectCount = human?.projects.length ?? 0;
@@ -156,10 +244,190 @@ function Panel({
   );
 }
 
+interface CommandPodModel {
+  callToAction?: string;
+  detail: string;
+  href: string;
+  kind: "work" | "project" | "team" | "department" | "approval" | "request" | "agent" | "ask";
+  metric: string;
+  title: string;
+}
+
+function buildCommandPods({
+  actor,
+  inbox,
+  projects,
+  requests,
+  roleScope,
+  summary,
+  workflowItems,
+}: {
+  actor: string;
+  inbox: AccessRequestRecord[];
+  projects: ProjectRecord[];
+  requests: AccessRequestRecord[];
+  roleScope: RoleScopeSummary | null;
+  summary: NodeSummary | null;
+  workflowItems: WorkflowItem[];
+}): CommandPodModel[] {
+  const projectCount = roleScope?.project_scope.project_count ?? projects.length;
+  const firstCapabilityId = roleScope?.project_scope.capability_ids[0] ?? projects[0]?.capability_id;
+  const department = roleScope?.department_scope.department_id ?? null;
+  const pendingApprovals = roleScope?.approval_scope.pending_count ?? inbox.length;
+  const agentCount = summary?.agents_owned?.length ?? 0;
+  const pods: CommandPodModel[] = [
+    {
+      detail: "Projected from your assigned project workflow items.",
+      href: "#dashboard-workflow",
+      kind: "work",
+      metric: `${workflowItems.length} ${workflowItems.length === 1 ? "item" : "items"}`,
+      title: "My Work Pod",
+    },
+  ];
+
+  if (firstCapabilityId && projectCount > 0) {
+    pods.push({
+      detail: "Open the project surface with graph and workflow views.",
+      href: `/project?cap=${encodeURIComponent(firstCapabilityId)}&as=${encodeURIComponent(actor)}`,
+      kind: "project",
+      metric: `${projectCount} ${projectCount === 1 ? "project" : "projects"}`,
+      title: "Project Context Pod",
+    });
+  }
+
+  pods.push({
+    callToAction: "Start Conversation",
+    detail: "Use your current actor context in the existing ask surface.",
+    href: `/ask?as=${encodeURIComponent(actor)}`,
+    kind: "ask",
+    metric: "actor scoped",
+    title: "Ask a Question",
+  });
+
+  if (roleScope?.team_scope.has_team_scope) {
+    pods.push({
+      detail: "Derived from real reporting-line facts.",
+      href: "#dashboard-scope",
+      kind: "team",
+      metric: `${roleScope.team_scope.direct_report_count} direct ${
+        roleScope.team_scope.direct_report_count === 1 ? "report" : "reports"
+      }`,
+      title: "Team Lead Pod",
+    });
+  }
+
+  if (department) {
+    pods.push({
+      detail: "Your department context and sensitivity limits.",
+      href: "#dashboard-scope",
+      kind: "department",
+      metric: department,
+      title: "Department Context Pod",
+    });
+  }
+
+  if (pendingApprovals > 0) {
+    pods.push({
+      detail: "Requests assigned to this actor for review.",
+      href: "#dashboard-requests",
+      kind: "approval",
+      metric: `${pendingApprovals} pending`,
+      title: "Approval Queue Pod",
+    });
+  }
+
+  pods.push({
+    detail: "Track submitted requests and assigned reviews.",
+    href: "#dashboard-requests",
+    kind: "request",
+    metric: `${requests.length} mine / ${inbox.length} inbox`,
+    title: "Access Request Pod",
+  });
+
+  if (agentCount > 0) {
+    pods.push({
+      detail: "Launch the existing ask route with visible agent context.",
+      href: `/ask?as=${encodeURIComponent(actor)}`,
+      kind: "agent",
+      metric: `${agentCount} ${agentCount === 1 ? "agent" : "agents"}`,
+      title: "Agent Assist Pod",
+    });
+  }
+
+  return pods;
+}
+
+function CommandPods({ pods }: { pods: CommandPodModel[] }) {
+  return (
+    <section className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-3" data-testid="dashboard-command-pods">
+      {pods.map((pod) => (
+        <CommandPod key={`${pod.kind}:${pod.title}`} pod={pod} />
+      ))}
+    </section>
+  );
+}
+
+function CommandPod({ pod }: { pod: CommandPodModel }) {
+  const isAsk = pod.kind === "ask";
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            {pod.metric}
+          </p>
+          <h2
+            className="ap-register-chrome mt-1"
+            style={{ fontSize: isAsk ? TYPE.scale.lg : TYPE.scale.sm, fontWeight: 600 }}
+          >
+            {pod.title}
+          </h2>
+        </div>
+        <span
+          aria-hidden="true"
+          className="ap-hairline grid shrink-0 place-items-center rounded-full border"
+          style={{ height: 30, width: 30 }}
+        >
+          <span className="ap-register-evidence" style={{ fontSize: TYPE.scale.xs }}>
+            {pod.kind.slice(0, 1).toUpperCase()}
+          </span>
+        </span>
+      </div>
+      <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+        {pod.detail}
+      </p>
+      {pod.callToAction && (
+        <span
+          className="ap-affordance-button ap-register-chrome mt-4 inline-flex rounded px-3 py-2"
+          style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
+        >
+          {pod.callToAction}
+        </span>
+      )}
+    </>
+  );
+
+  return (
+    <a
+      href={pod.href}
+      className="ap-card ap-washable block rounded p-3"
+      data-pod-kind={pod.kind}
+      data-testid={isAsk ? "dashboard-ask-pod" : "dashboard-command-pod"}
+      style={{
+        ...dashboardPanelStyle(),
+        minHeight: isAsk ? 178 : 136,
+      }}
+    >
+      {content}
+    </a>
+  );
+}
+
 export function EmployeeDashboard({ actor }: { actor: string | null }) {
   const [lens, setLens] = useState<LensResponse | null>(null);
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [summary, setSummary] = useState<NodeSummary | null>(null);
+  const [roleScope, setRoleScope] = useState<RoleScopeSummary | null>(null);
   const [requests, setRequests] = useState<AccessRequestRecord[]>([]);
   const [inbox, setInbox] = useState<AccessRequestRecord[]>([]);
   const [workflows, setWorkflows] = useState<ProjectWorkflowResponse[]>([]);
@@ -171,6 +439,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
       setLens(null);
       setGraph(null);
       setSummary(null);
+      setRoleScope(null);
       setRequests([]);
       setInbox([]);
       setWorkflows([]);
@@ -186,14 +455,16 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
       api.getLens(actor, actor),
       api.getGraph(actor),
       api.getNodeSummary(actor, actor),
+      api.getRoleScope(actor),
       api.getAccessRequests(actor),
       api.getAccessRequestInbox(actor),
     ])
-      .then(async ([lensResponse, graphResponse, summaryResponse, requestResponse, inboxResponse]) => {
+      .then(async ([lensResponse, graphResponse, summaryResponse, roleScopeResponse, requestResponse, inboxResponse]) => {
         if (cancelled) return;
         setLens(lensResponse);
         setGraph(graphResponse);
         setSummary(summaryResponse);
+        setRoleScope(roleScopeResponse);
         setRequests(requestResponse?.requests ?? []);
         setInbox(inboxResponse?.requests ?? []);
         setAvailable(lensResponse !== null);
@@ -215,6 +486,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
           setLens(null);
           setGraph(null);
           setSummary(null);
+          setRoleScope(null);
           setRequests([]);
           setInbox([]);
           setWorkflows([]);
@@ -273,8 +545,18 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
     human,
     inbox,
     requests,
+    roleScope,
     summary,
     subjectDepartment: lens.subject.department,
+  });
+  const commandPods = buildCommandPods({
+    actor,
+    inbox,
+    projects,
+    requests,
+    roleScope,
+    summary,
+    workflowItems,
   });
 
   return (
@@ -313,6 +595,8 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
           </a>
         </div>
       </header>
+
+      <CommandPods pods={commandPods} />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-4">
