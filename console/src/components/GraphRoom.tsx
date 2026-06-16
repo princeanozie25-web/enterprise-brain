@@ -12,23 +12,26 @@ import { Skeleton } from "./Skeleton";
 /**
  * Click-to-lens is a CROSS-LENS act: the current actor flies into the clicked
  * principal's lens, audited server-side. The route mirrors the room switcher's
- * — `?as` carries the actor, `?subject` names the target — so the iris fires on
- * /lens exactly as a manual cross-lens does.
+ * `?as` carry, so /lens receives both actor and subject explicitly.
  */
 export function lensHref(actor: string, subject: string): string {
   return `/lens?as=${encodeURIComponent(actor)}&subject=${encodeURIComponent(subject)}`;
 }
 
-/** Node kinds whose governance is summarised server-side (have an artifact). */
 const SUMMARISED = new Set(["org", "human", "agent"]);
 
-/**
- * THE ORG BRAIN — the console's entry surface and main UI: a dense, scope-
- * honest concentric-ring company graph as a command centre (left rail of real
- * counts + filters + departments; the graph; a right inspector that reads the
- * compiled governance). Dark by default. A no-standing actor gets a quiet,
- * designed empty state — honest dark, nothing padded.
- */
+const hiddenRailStyle = {
+  position: "absolute" as const,
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap" as const,
+  border: 0,
+};
+
 export function GraphRoom({
   actor,
   reducedMotion = false,
@@ -51,6 +54,7 @@ export function GraphRoom({
   useEffect(() => {
     if (actor === null) {
       setGraph(null);
+      setStats(null);
       return;
     }
     let cancelled = false;
@@ -77,7 +81,6 @@ export function GraphRoom({
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    // The sidebar's counts: the org rollup (real cardinalities).
     api
       .getNodeSummary(actor, "org")
       .then((s) => {
@@ -91,8 +94,6 @@ export function GraphRoom({
     };
   }, [actor]);
 
-  // The inspector's governance: fetched for principals/org; departments and
-  // sources are composed on the client from the graph payload (no endpoint).
   useEffect(() => {
     if (actor === null || selected === null || !SUMMARISED.has(selected.kind)) {
       setSummary(null);
@@ -123,71 +124,136 @@ export function GraphRoom({
   const toggleKind = (key: string) =>
     setHiddenKinds((cur) => (cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]));
 
-  if (actor === null) {
-    return (
-      <GraphEmpty
-        testid="graph-room-empty"
-        headline="Select a lens to begin."
-        sub="Choose a principal from the bar above to see the company through their lens."
-      />
-    );
-  }
-
-  const quiet = (testid: string) => (
-    <GraphEmpty
-      testid={testid}
-      headline="No organizational view in your scope."
-      sub="This lens doesn't include a company graph. Nothing is withheld here — there is simply nothing to draw."
-    />
-  );
+  const connectionCount = graph?.edges.length ?? 0;
+  const shellStyle = {
+    background:
+      "radial-gradient(circle at 50% 54%, color-mix(in srgb, var(--affordance) 18%, transparent), transparent 35%), linear-gradient(180deg, color-mix(in srgb, var(--ink) 4%, transparent), transparent 18%), var(--paper)",
+  };
 
   return (
-    <div data-testid="graph-room" className="w-full">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h1
-          className="ap-register-chrome"
-          style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
-        >
-          Graph
-        </h1>
-        <div className="relative ml-auto">
+    <div
+      data-testid="graph-room"
+      className="fixed inset-0 z-50 overflow-hidden"
+      style={shellStyle}
+      aria-label="Enterprise Brain graph"
+    >
+      <header
+        className="ap-card fixed inset-x-0 top-0 z-30 grid items-center gap-4 border-x-0 border-t-0 px-6"
+        style={{
+          height: 58,
+          gridTemplateColumns: "minmax(168px, 1fr) minmax(220px, 380px) minmax(168px, 1fr)",
+          background: "color-mix(in srgb, var(--paper) 88%, transparent)",
+          backdropFilter: "blur(18px)",
+        }}
+      >
+        <div className="ap-soft min-w-0 truncate" style={{ fontSize: TYPE.scale.xs }}>
+          Enterprise Brain / Connections ({connectionCount.toLocaleString("en-US")})
+        </div>
+        <div className="relative">
+          <svg
+            width={14}
+            height={14}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+          >
+            <circle cx={11} cy={11} r={6.6} fill="none" stroke={C.inkSoft} strokeWidth={2} />
+            <path d="m16 16 4.2 4.2" fill="none" stroke={C.inkSoft} strokeWidth={2} strokeLinecap="round" />
+          </svg>
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search people, agents, departments…"
-            className="w-64 rounded px-2 py-1"
-            style={{ fontSize: TYPE.scale.xs }}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search"
+            className="w-full rounded-full py-1.5 pl-9 pr-8 text-center"
+            style={{
+              fontSize: TYPE.scale.xs,
+              background: "color-mix(in srgb, var(--wash) 72%, transparent)",
+            }}
             data-testid="graph-search"
           />
           {query.length > 0 && (
             <button
               type="button"
               onClick={() => setQuery("")}
-              className="ap-soft absolute right-1 top-1/2 -translate-y-1/2 px-1"
+              className="ap-soft absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-1"
               style={{ fontSize: TYPE.scale.xs }}
               aria-label="Clear search"
               data-testid="graph-search-clear"
             >
-              ×
+              x
             </button>
           )}
         </div>
-        <ThemeToggle />
-      </div>
-
-      {loading && (
-        <div className="ap-card rounded p-4">
-          <Skeleton lines={6} />
+        <div className="flex min-w-0 items-center justify-end gap-2">
+          <ThemeToggle />
+          <span
+            className="ap-card ap-register-chrome inline-flex items-center gap-2 rounded-full px-3 py-1"
+            style={{ fontSize: TYPE.scale.xs }}
+            aria-hidden="true"
+          >
+            <svg width={13} height={13} viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M5 6h14v9H8l-3 3V6Z"
+                fill="none"
+                stroke={C.ink}
+                strokeWidth={2}
+                strokeLinejoin="round"
+              />
+            </svg>
+            Chat
+          </span>
         </div>
-      )}
+      </header>
 
-      {!loading && !available && quiet("graph-unavailable")}
+      {actor === null ? (
+        <div className="grid h-full place-items-center px-6 pt-16">
+          <GraphEmpty
+            testid="graph-room-empty"
+            headline="Select a lens to begin."
+            sub="Choose a principal to see the company through their lens."
+          />
+        </div>
+      ) : loading ? (
+        <div className="grid h-full place-items-center px-6 pt-16">
+          <div className="ap-card w-full max-w-xl rounded p-4">
+            <Skeleton lines={6} />
+          </div>
+        </div>
+      ) : !available ? (
+        <div className="grid h-full place-items-center px-6 pt-16">
+          <GraphEmpty
+            testid="graph-unavailable"
+            headline="No organizational view in your scope."
+            sub="This lens does not include a company graph. Nothing is withheld here; there is simply nothing to draw."
+          />
+        </div>
+      ) : graph !== null && graph.people.length === 0 ? (
+        <div className="grid h-full place-items-center px-6 pt-16">
+          <GraphEmpty
+            testid="graph-empty"
+            headline="No organizational view in your scope."
+            sub="This lens does not include a company graph. Nothing is withheld here; there is simply nothing to draw."
+          />
+        </div>
+      ) : graph !== null ? (
+        <>
+          <section
+            className="absolute inset-x-0 bottom-0 top-[58px] overflow-hidden"
+            data-testid="graph-stage"
+          >
+            <OrgGraph
+              graph={graph}
+              onSelectNode={setSelected}
+              onFocusDept={setFocusDept}
+              selectedId={selected?.id ?? null}
+              focusDept={focusDept}
+              query={query}
+              hiddenKinds={hiddenKinds}
+              reducedMotion={reducedMotion}
+            />
+          </section>
 
-      {!loading && graph !== null ? (
-        graph.people.length === 0 ? (
-          quiet("graph-empty")
-        ) : (
-          <div className="flex flex-wrap items-start gap-3 lg:flex-nowrap">
+          <div style={hiddenRailStyle}>
             <GraphSidebar
               orgName={graph.center.label}
               actor={actor}
@@ -198,19 +264,10 @@ export function GraphRoom({
               focusDept={focusDept}
               onFocusDept={setFocusDept}
             />
-            <div className="ap-card min-w-0 flex-1 rounded p-1" data-testid="graph-stage">
-              <OrgGraph
-                graph={graph}
-                onSelectNode={setSelected}
-                onFocusDept={setFocusDept}
-                selectedId={selected?.id ?? null}
-                focusDept={focusDept}
-                query={query}
-                hiddenKinds={hiddenKinds}
-                reducedMotion={reducedMotion}
-              />
-            </div>
-            {selected !== null && (
+          </div>
+
+          {selected !== null && (
+            <div className="fixed right-4 top-[74px] z-20">
               <GraphInspector
                 node={selected}
                 summary={summary}
@@ -219,11 +276,60 @@ export function GraphRoom({
                 onEnterLens={enterLens}
                 onClose={() => setSelected(null)}
               />
-            )}
-          </div>
-        )
+            </div>
+          )}
+
+          <Legend software={graph.sources.length} agents={graph.tools.length} people={graph.people.length} />
+        </>
       ) : null}
     </div>
+  );
+}
+
+const C = {
+  ink: "var(--ink)",
+  inkSoft: "var(--ink-soft)",
+  affordance: "var(--affordance)",
+  warm: "var(--accent-warm)",
+  hairline: "var(--hairline)",
+};
+
+function Legend({ software, agents, people }: { software: number; agents: number; people: number }) {
+  const itemStyle = { fontSize: TYPE.scale.xs - 2 };
+  const dot = (background: string, square = false) => (
+    <span
+      aria-hidden="true"
+      className="inline-block shrink-0"
+      style={{
+        width: square ? 9 : 8,
+        height: square ? 9 : 8,
+        borderRadius: square ? 2 : 999,
+        background,
+      }}
+    />
+  );
+  return (
+    <aside
+      className="ap-card fixed bottom-4 left-5 z-20 flex max-w-[calc(100vw-40px)] flex-wrap items-center gap-3 rounded-full px-3 py-2"
+      style={{ background: "color-mix(in srgb, var(--paper) 84%, transparent)", backdropFilter: "blur(14px)" }}
+      aria-label="Graph legend"
+    >
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
+        {dot(C.warm)} signals unavailable
+      </span>
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
+        {dot(C.inkSoft)} permissions unavailable
+      </span>
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
+        {dot(C.affordance)} software {software}
+      </span>
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
+        {dot(C.hairline, true)} agents {agents}
+      </span>
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
+        {dot(C.ink)} people {people}
+      </span>
+    </aside>
   );
 }
 
@@ -240,27 +346,34 @@ function ThemeToggle() {
     try {
       localStorage.setItem("ap-theme", next);
     } catch {
-      /* private mode: the choice just won't persist */
+      /* private mode: the choice just will not persist */
     }
   };
   return (
     <button
       type="button"
       onClick={flip}
-      className="ap-card ap-washable ap-register-chrome rounded px-2 py-1"
-      style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
+      className="ap-card ap-washable grid rounded-full"
+      style={{ width: 34, height: 34, placeItems: "center" }}
       data-testid="theme-toggle"
       data-theme={theme}
+      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      title={theme === "dark" ? "Light mode" : "Dark mode"}
     >
-      {theme === "dark" ? "Light mode" : "Dark mode"}
+      <svg width={16} height={16} viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx={12} cy={12} r={4} fill="none" stroke={C.ink} strokeWidth={2} />
+        <path
+          d="M12 2v2.5M12 19.5V22M4.93 4.93 6.7 6.7M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07 6.7 17.3M17.3 6.7l1.77-1.77"
+          fill="none"
+          stroke={C.ink}
+          strokeWidth={2}
+          strokeLinecap="round"
+        />
+      </svg>
     </button>
   );
 }
 
-/**
- * The designed empty state — a quiet card with a resting org glyph, not a bare
- * sentence. HONEST DARK: it states plainly that nothing is withheld.
- */
 function GraphEmpty({
   testid,
   headline,
@@ -278,23 +391,23 @@ function GraphEmpty({
     >
       <svg width={64} height={64} viewBox="0 0 64 64" aria-hidden="true">
         <circle cx={32} cy={32} r={26} fill="none" stroke={DERIVED.hairline} strokeWidth={1} />
-        {satellites.map((a, i) => (
+        {satellites.map((angle, index) => (
           <line
-            key={i}
+            key={index}
             x1={32}
             y1={32}
-            x2={32 + 26 * Math.cos(a)}
-            y2={32 + 26 * Math.sin(a)}
+            x2={32 + 26 * Math.cos(angle)}
+            y2={32 + 26 * Math.sin(angle)}
             stroke={DERIVED.hairline}
             strokeWidth={1}
             strokeOpacity={0.6}
           />
         ))}
-        {satellites.map((a, i) => (
+        {satellites.map((angle, index) => (
           <circle
-            key={`s${i}`}
-            cx={32 + 26 * Math.cos(a)}
-            cy={32 + 26 * Math.sin(a)}
+            key={`s${index}`}
+            cx={32 + 26 * Math.cos(angle)}
+            cy={32 + 26 * Math.sin(angle)}
             r={4}
             fill={DERIVED.wash}
             stroke={DERIVED.hairline}
