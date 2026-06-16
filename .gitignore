@@ -5,3 +5,6 @@ __pycache__/
 /target/
 /compiler/artifacts/
 /retrieval/idx/
+/.state/
+/target-graph/
+/enterprise-brain-target-graph-*.png
