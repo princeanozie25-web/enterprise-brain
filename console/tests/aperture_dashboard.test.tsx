@@ -228,6 +228,14 @@ describe("EmployeeDashboard", () => {
     expect(project.textContent).toContain("Capability: Access Review 31");
     expect(project.getAttribute("href")).toBe("/project?cap=cap31&as=p060");
 
+    const scope = screen.getByTestId("dashboard-scope");
+    expect(scope.textContent).toContain("derived, not enforced");
+    expect(scope.textContent).toContain("Employee view");
+    expect(scope.textContent).toContain("Department context");
+    expect(scope.textContent).toContain("Leadership");
+    expect(scope.textContent).toContain("Project scope");
+    expect(scope.textContent).toContain("Enforcement status");
+
     const workflowGroups = screen.getAllByTestId("dashboard-workflow-group");
     expect(within(workflowGroups[0]).getAllByTestId("dashboard-workflow-item").length).toBe(1);
     expect(within(workflowGroups[2]).getAllByTestId("dashboard-workflow-item").length).toBe(1);

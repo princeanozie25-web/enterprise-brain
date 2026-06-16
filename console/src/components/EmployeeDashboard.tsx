@@ -24,6 +24,12 @@ const WORKFLOW_GROUPS = [
   { label: "Done", statuses: ["done", "approved"] },
 ];
 
+interface ScopeBadge {
+  detail: string;
+  label: string;
+  source: string;
+}
+
 function workflowGroup(status: string): string {
   for (const group of WORKFLOW_GROUPS) {
     if (group.statuses.includes(status)) return group.label;
@@ -48,6 +54,84 @@ function Chip({ children, mono = false }: { children: React.ReactNode; mono?: bo
       {children}
     </span>
   );
+}
+
+function deriveScopeBadges({
+  human,
+  inbox,
+  requests,
+  summary,
+  subjectDepartment,
+}: {
+  human: LensResponse["subject_human"];
+  inbox: AccessRequestRecord[];
+  requests: AccessRequestRecord[];
+  summary: NodeSummary | null;
+  subjectDepartment: string | null | undefined;
+}): ScopeBadge[] {
+  const department = human?.department_label ?? subjectDepartment ?? null;
+  const directReports = human?.manages.length ?? summary?.manages ?? 0;
+  const projectCount = human?.projects.length ?? 0;
+  const agentCount = summary?.agents_owned?.length ?? 0;
+  const badges: ScopeBadge[] = [
+    {
+      detail: "daily work surface",
+      label: "Employee view",
+      source: "current actor",
+    },
+  ];
+
+  if (department) {
+    badges.push({
+      detail: department,
+      label: "Department context",
+      source: "profile",
+    });
+  }
+  if (human?.seniority) {
+    badges.push({
+      detail: human.seniority,
+      label: "Seniority signal",
+      source: "people record",
+    });
+  }
+  if (directReports > 0) {
+    badges.push({
+      detail: `${directReports} direct ${directReports === 1 ? "report" : "reports"}`,
+      label: "Team lead signal",
+      source: "reporting line",
+    });
+  }
+  if (projectCount > 0) {
+    badges.push({
+      detail: `${projectCount} assigned ${projectCount === 1 ? "project" : "projects"}`,
+      label: "Project scope",
+      source: "profile projects",
+    });
+  }
+  if (agentCount > 0) {
+    badges.push({
+      detail: `${agentCount} owned ${agentCount === 1 ? "agent" : "agents"}`,
+      label: "Agent scope",
+      source: "node summary",
+    });
+  }
+  if (inbox.length > 0) {
+    badges.push({
+      detail: `${inbox.length} pending ${inbox.length === 1 ? "approval" : "approvals"}`,
+      label: "Approver queue",
+      source: "request inbox",
+    });
+  }
+  if (requests.length > 0) {
+    badges.push({
+      detail: `${requests.length} submitted ${requests.length === 1 ? "request" : "requests"}`,
+      label: "Request status",
+      source: "request ledger",
+    });
+  }
+
+  return badges;
 }
 
 function Panel({
@@ -185,6 +269,13 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   const workflowItems = workflows.flatMap((workflow) => workflow.items);
   const knowledgeSections = lens.holdings.length;
   const visibleKnowledgeRows = lens.holdings.reduce((sum, section) => sum + section.docs.length, 0);
+  const scopeBadges = deriveScopeBadges({
+    human,
+    inbox,
+    requests,
+    summary,
+    subjectDepartment: lens.subject.department,
+  });
 
   return (
     <main className="min-w-0 flex-1" data-testid="employee-dashboard">
@@ -225,6 +316,13 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-4">
+          <Panel
+            title="Scope Posture"
+            action={<Chip>derived, not enforced</Chip>}
+          >
+            <ScopePosture badges={scopeBadges} />
+          </Panel>
+
           <Panel
             title="My Projects"
             action={<span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>{projects.length}</span>}
@@ -268,6 +366,44 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
         </div>
       </div>
     </main>
+  );
+}
+
+function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
+  return (
+    <div data-testid="dashboard-scope">
+      <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+        Derived from visible profile, reporting, project, agent, and request facts. Server-side
+        authorization is still handled by the existing scoped APIs; this label is derived, not
+        enforced.
+      </p>
+      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+        {badges.map((badge) => (
+          <div key={`${badge.label}:${badge.detail}`} className="ap-card rounded p-2">
+            <div className="flex items-start justify-between gap-2">
+              <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+                {badge.label}
+              </p>
+              <span className="ap-register-evidence ap-soft shrink-0" style={{ fontSize: TYPE.scale.xs }}>
+                {badge.source}
+              </span>
+            </div>
+            <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+              {badge.detail}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="ap-card mt-3 rounded p-2">
+        <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+          Enforcement status
+        </p>
+        <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+          This dashboard labels the current actor posture only. It does not create admin access,
+          expose Bursar data, or replace server-side graph/lens/workflow filtering.
+        </p>
+      </div>
+    </div>
   );
 }
 
