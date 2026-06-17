@@ -162,6 +162,63 @@ const ROLE_SCOPE: RoleScopeSummary = {
   },
 };
 
+const EMPLOYEE_LENS: LensResponse = {
+  ...LENS,
+  actor: {
+    ...LENS.actor,
+    title: "Finance Analyst",
+  },
+  subject_human: {
+    ...LENS.subject_human!,
+    manages: [],
+    seniority: "Associate",
+    title: "Finance Analyst",
+  },
+};
+
+const EMPLOYEE_ROLE_SCOPE: RoleScopeSummary = {
+  ...ROLE_SCOPE,
+  approval_scope: {
+    has_approval_scope: false,
+    pending_count: 0,
+  },
+  confidence: "high",
+  department_scope: {
+    ...ROLE_SCOPE.department_scope,
+    seniority: "Associate",
+  },
+  derived_level: "employee",
+  project_scope: {
+    capability_ids: ["cap31"],
+    project_count: 1,
+  },
+  reasons: [
+    "humanized actor profile is present",
+    "project scope has 1 visible capability assignments",
+    "sensitive surfaces remain disallowed by this contract",
+  ],
+  team_scope: {
+    direct_report_count: 0,
+    has_team_scope: false,
+  },
+};
+
+const EXECUTIVE_CANDIDATE_ROLE_SCOPE: RoleScopeSummary = {
+  ...EMPLOYEE_ROLE_SCOPE,
+  confidence: "medium",
+  department_scope: {
+    band: 7,
+    department_id: "Executive",
+    seniority: "Executive",
+  },
+  derived_level: "executive_candidate",
+  reasons: [
+    "humanized actor profile is present",
+    "executive-like title/department is only a candidate signal",
+    "sensitive surfaces remain disallowed by this contract",
+  ],
+};
+
 const REQUESTS: AccessRequestsResponse = {
   actor_id: "p060",
   demo_identity_mode: true,
@@ -211,6 +268,25 @@ const GRANTS: AccessGrantsResponse = {
     },
   ],
   snapshot_version: "snap",
+};
+
+const INACTIVE_GRANTS: AccessGrantsResponse = {
+  ...GRANTS,
+  grants: [
+    {
+      ...GRANTS.grants[0],
+      grant_id: "ag_revoked",
+      revoked_by: "p001",
+      revoked_ordinal: 2,
+      status: "revoked",
+    },
+    {
+      ...GRANTS.grants[0],
+      expires_at: "snap",
+      grant_id: "ag_expired",
+      status: "expired",
+    },
+  ],
 };
 
 const REVOKED_GRANT: AccessGrantRecord = {
@@ -284,7 +360,25 @@ const WORKFLOW: ProjectWorkflowResponse = {
   snapshot_version: "snap",
 };
 
-function stubDashboardFetch() {
+function stubDashboardFetch({
+  grants = GRANTS,
+  graph = GRAPH,
+  inbox = INBOX,
+  lens = LENS,
+  requests = REQUESTS,
+  roleScope = ROLE_SCOPE,
+  summary = SUMMARY,
+  workflow = WORKFLOW,
+}: {
+  grants?: AccessGrantsResponse;
+  graph?: GraphResponse;
+  inbox?: AccessRequestsResponse;
+  lens?: LensResponse;
+  requests?: AccessRequestsResponse;
+  roleScope?: RoleScopeSummary;
+  summary?: NodeSummary;
+  workflow?: ProjectWorkflowResponse;
+} = {}) {
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/access-grants/ag_revoke/revoke") && init?.method === "POST") {
@@ -297,14 +391,14 @@ function stubDashboardFetch() {
         { status: 200 },
       );
     }
-    if (url.endsWith("/lens/p060")) return new Response(JSON.stringify(LENS), { status: 200 });
-    if (url.endsWith("/graph")) return new Response(JSON.stringify(GRAPH), { status: 200 });
-    if (url.endsWith("/node/p060/summary")) return new Response(JSON.stringify(SUMMARY), { status: 200 });
-    if (url.endsWith("/me/scope")) return new Response(JSON.stringify(ROLE_SCOPE), { status: 200 });
-    if (url.endsWith("/access-requests/inbox")) return new Response(JSON.stringify(INBOX), { status: 200 });
-    if (url.endsWith("/access-grants")) return new Response(JSON.stringify(GRANTS), { status: 200 });
-    if (url.endsWith("/access-requests")) return new Response(JSON.stringify(REQUESTS), { status: 200 });
-    if (url.includes("/workflow/project/cap31")) return new Response(JSON.stringify(WORKFLOW), { status: 200 });
+    if (url.endsWith("/lens/p060")) return new Response(JSON.stringify(lens), { status: 200 });
+    if (url.endsWith("/graph")) return new Response(JSON.stringify(graph), { status: 200 });
+    if (url.endsWith("/node/p060/summary")) return new Response(JSON.stringify(summary), { status: 200 });
+    if (url.endsWith("/me/scope")) return new Response(JSON.stringify(roleScope), { status: 200 });
+    if (url.endsWith("/access-requests/inbox")) return new Response(JSON.stringify(inbox), { status: 200 });
+    if (url.endsWith("/access-grants")) return new Response(JSON.stringify(grants), { status: 200 });
+    if (url.endsWith("/access-requests")) return new Response(JSON.stringify(requests), { status: 200 });
+    if (url.includes("/workflow/project/cap31")) return new Response(JSON.stringify(workflow), { status: 200 });
     return new Response("{\"demo_identity_mode\":true,\"error\":\"not found\"}", { status: 404 });
   });
   vi.stubGlobal(
@@ -325,7 +419,10 @@ describe("EmployeeDashboard", () => {
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("My Work Pod");
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Project Context Pod");
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Team Lead Pod");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Department Context Pod");
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Approval Queue Pod");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Granted Knowledge Pod");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).not.toContain("Executive Candidate Pod");
     const askPod = screen.getByTestId("dashboard-ask-pod");
     expect(askPod.textContent).toContain("Ask a Question");
     expect(askPod.textContent).toContain("Start Conversation");
@@ -345,6 +442,14 @@ describe("EmployeeDashboard", () => {
     expect(scope.textContent).toContain("Read grants");
     expect(scope.textContent).toContain("Surface limits");
     expect(scope.textContent).toContain("Enforcement status");
+
+    const roleExperience = screen.getByTestId("dashboard-role-experience");
+    expect(roleExperience.textContent).toContain("Department head");
+    expect(roleExperience.textContent).toContain("Team scope");
+    expect(roleExperience.textContent).toContain("Approval queue");
+    expect(roleExperience.textContent).toContain("Granted knowledge");
+    expect(roleExperience.textContent).toContain("Surface boundary");
+    expect(roleExperience.textContent).not.toMatch(/bursar|governance/i);
 
     const workflowGroups = screen.getAllByTestId("dashboard-workflow-group");
     expect(within(workflowGroups[0]).getAllByTestId("dashboard-workflow-item").length).toBe(1);
@@ -384,5 +489,66 @@ describe("EmployeeDashboard", () => {
     expect(text).not.toContain("d0196");
     expect(text).not.toMatch(/denied count|hidden/i);
     expect(text).not.toMatch(/bursar|governance/i);
+  });
+
+  it("keeps ordinary employee pods to employee-safe surfaces only", async () => {
+    stubDashboardFetch({
+      grants: INACTIVE_GRANTS,
+      inbox: { ...INBOX, requests: [] },
+      lens: EMPLOYEE_LENS,
+      requests: { ...REQUESTS, requests: [] },
+      roleScope: EMPLOYEE_ROLE_SCOPE,
+      summary: { ...SUMMARY, agents_owned: [] },
+    });
+    const { container } = render(<EmployeeDashboard actor="p060" />);
+    await waitFor(() => expect(screen.getByTestId("employee-dashboard")).toBeTruthy());
+
+    const pods = screen.getByTestId("dashboard-command-pods");
+    expect(pods.textContent).toContain("My Work Pod");
+    expect(pods.textContent).toContain("Project Context Pod");
+    expect(pods.textContent).toContain("Access Request Pod");
+    expect(pods.textContent).toContain("Ask a Question");
+    expect(pods.textContent).not.toContain("Team Lead Pod");
+    expect(pods.textContent).not.toContain("Department Context Pod");
+    expect(pods.textContent).not.toContain("Approval Queue Pod");
+    expect(pods.textContent).not.toContain("Executive Candidate Pod");
+    expect(pods.textContent).not.toContain("Granted Knowledge Pod");
+
+    const roleExperience = screen.getByTestId("dashboard-role-experience");
+    expect(roleExperience.textContent).toContain("Employee baseline");
+    expect(roleExperience.textContent).toContain("Surface boundary");
+    expect(roleExperience.textContent).not.toContain("Team scope");
+    expect(roleExperience.textContent).not.toContain("Department head");
+    expect(roleExperience.textContent).not.toContain("Approval queue");
+
+    expect(screen.queryByTestId("dashboard-open-grant-ask")).toBeNull();
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/bursar|governance/i);
+  });
+
+  it("labels executive candidates without unlocking elevated dashboard pods", async () => {
+    stubDashboardFetch({
+      grants: { ...GRANTS, grants: [] },
+      inbox: { ...INBOX, requests: [] },
+      lens: EMPLOYEE_LENS,
+      requests: { ...REQUESTS, requests: [] },
+      roleScope: EXECUTIVE_CANDIDATE_ROLE_SCOPE,
+      summary: { ...SUMMARY, agents_owned: [] },
+    });
+    const { container } = render(<EmployeeDashboard actor="p060" />);
+    await waitFor(() => expect(screen.getByTestId("employee-dashboard")).toBeTruthy());
+
+    const pods = screen.getByTestId("dashboard-command-pods");
+    expect(pods.textContent).toContain("Executive Candidate Pod");
+    expect(pods.textContent).toContain("candidate only");
+    expect(pods.textContent).not.toContain("Team Lead Pod");
+    expect(pods.textContent).not.toContain("Department Context Pod");
+    expect(pods.textContent).not.toContain("Approval Queue Pod");
+
+    const roleExperience = screen.getByTestId("dashboard-role-experience");
+    expect(roleExperience.textContent).toContain("Executive candidate");
+    expect(roleExperience.textContent).toContain("not enforced");
+    expect(roleExperience.textContent).toContain("Surface boundary");
+    expect(container.textContent ?? "").not.toMatch(/bursar|governance/i);
   });
 });

@@ -74,6 +74,18 @@ function roleLabel(level: RoleScopeSummary["derived_level"]): string {
   }
 }
 
+function isExecutiveCandidate(level: RoleScopeSummary["derived_level"] | null | undefined): boolean {
+  return level === "executive_candidate" || level === "super_admin_candidate";
+}
+
+function isDepartmentHead(level: RoleScopeSummary["derived_level"] | null | undefined): boolean {
+  return level === "department_head";
+}
+
+function activeKnowledgeGrants(grants: AccessGrantRecord[], actor: string): AccessGrantRecord[] {
+  return grants.filter((grant) => grant.status === "active" && grant.grantee_id === actor);
+}
+
 function deriveScopeBadges({
   grants,
   human,
@@ -265,7 +277,17 @@ interface CommandPodModel {
   callToAction?: string;
   detail: string;
   href: string;
-  kind: "work" | "project" | "team" | "department" | "approval" | "request" | "agent" | "ask";
+  kind:
+    | "work"
+    | "project"
+    | "team"
+    | "department"
+    | "approval"
+    | "request"
+    | "grant"
+    | "agent"
+    | "ask"
+    | "executive";
   metric: string;
   title: string;
 }
@@ -294,6 +316,7 @@ function buildCommandPods({
   const department = roleScope?.department_scope.department_id ?? null;
   const pendingApprovals = roleScope?.approval_scope.pending_count ?? inbox.length;
   const agentCount = summary?.agents_owned?.length ?? 0;
+  const activeGrants = activeKnowledgeGrants(grants, actor);
   const pods: CommandPodModel[] = [
     {
       detail: "Projected from your assigned project workflow items.",
@@ -311,6 +334,16 @@ function buildCommandPods({
       kind: "project",
       metric: `${projectCount} ${projectCount === 1 ? "project" : "projects"}`,
       title: "Project Context Pod",
+    });
+  }
+
+  if (activeGrants.length > 0) {
+    pods.push({
+      detail: "Open only the capabilities unlocked by active read grants.",
+      href: "#dashboard-granted-knowledge",
+      kind: "grant",
+      metric: `${activeGrants.length} active ${activeGrants.length === 1 ? "grant" : "grants"}`,
+      title: "Granted Knowledge Pod",
     });
   }
 
@@ -335,9 +368,9 @@ function buildCommandPods({
     });
   }
 
-  if (department) {
+  if (isDepartmentHead(roleScope?.derived_level) && department) {
     pods.push({
-      detail: "Your department context and sensitivity limits.",
+      detail: "Department-head signal from real reporting and title facts.",
       href: "#dashboard-scope",
       kind: "department",
       metric: department,
@@ -352,6 +385,16 @@ function buildCommandPods({
       kind: "approval",
       metric: `${pendingApprovals} pending`,
       title: "Approval Queue Pod",
+    });
+  }
+
+  if (isExecutiveCandidate(roleScope?.derived_level)) {
+    pods.push({
+      detail: "Candidate signal only. No restricted surface is unlocked.",
+      href: "#dashboard-role-experience",
+      kind: "executive",
+      metric: "candidate only",
+      title: "Executive Candidate Pod",
     });
   }
 
@@ -378,7 +421,7 @@ function buildCommandPods({
 
 function CommandPods({ pods }: { pods: CommandPodModel[] }) {
   return (
-    <section className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-3" data-testid="dashboard-command-pods">
+    <section className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4" data-testid="dashboard-command-pods">
       {pods.map((pod) => (
         <CommandPod key={`${pod.kind}:${pod.title}`} pod={pod} />
       ))}
@@ -431,7 +474,7 @@ function CommandPod({ pod }: { pod: CommandPodModel }) {
       href={pod.href}
       className="ap-card ap-washable block rounded p-3"
       data-pod-kind={pod.kind}
-      data-testid={isAsk ? "dashboard-ask-pod" : "dashboard-command-pod"}
+      data-testid={isAsk ? "dashboard-ask-pod" : `dashboard-pod-${pod.kind}`}
       style={{
         ...dashboardPanelStyle(),
         minHeight: isAsk ? 178 : 136,
@@ -439,6 +482,140 @@ function CommandPod({ pod }: { pod: CommandPodModel }) {
     >
       {content}
     </a>
+  );
+}
+
+interface RoleExperienceCard {
+  detail: string;
+  label: string;
+  metric: string;
+  source: string;
+  tone: "default" | "active" | "candidate" | "limited";
+}
+
+function buildRoleExperienceCards({
+  actor,
+  grants,
+  inbox,
+  requests,
+  roleScope,
+  workflowItems,
+}: {
+  actor: string;
+  grants: AccessGrantRecord[];
+  inbox: AccessRequestRecord[];
+  requests: AccessRequestRecord[];
+  roleScope: RoleScopeSummary | null;
+  workflowItems: WorkflowItem[];
+}): RoleExperienceCard[] {
+  const cards: RoleExperienceCard[] = [
+    {
+      detail: "Daily execution stays scoped to this actor.",
+      label: "Employee baseline",
+      metric: `${workflowItems.length} workflow ${workflowItems.length === 1 ? "item" : "items"}`,
+      source: "workflow projection",
+      tone: "default",
+    },
+  ];
+  const activeGrants = activeKnowledgeGrants(grants, actor);
+  if (activeGrants.length > 0) {
+    cards.push({
+      detail: "Active read grants can open approved capability context in Ask.",
+      label: "Granted knowledge",
+      metric: `${activeGrants.length} active`,
+      source: "grant ledger",
+      tone: "active",
+    });
+  }
+  if (roleScope?.team_scope.has_team_scope) {
+    cards.push({
+      detail: "Direct-report count is derived from the people record.",
+      label: "Team scope",
+      metric: `${roleScope.team_scope.direct_report_count} direct ${
+        roleScope.team_scope.direct_report_count === 1 ? "report" : "reports"
+      }`,
+      source: "reporting line",
+      tone: "active",
+    });
+  }
+  if (isDepartmentHead(roleScope?.derived_level)) {
+    cards.push({
+      detail: "Department context is label-only until server enforcement exists.",
+      label: "Department head",
+      metric: roleScope?.department_scope.department_id ?? "department",
+      source: "server scope",
+      tone: "active",
+    });
+  }
+  if ((roleScope?.approval_scope.pending_count ?? inbox.length) > 0) {
+    const pending = roleScope?.approval_scope.pending_count ?? inbox.length;
+    cards.push({
+      detail: "Only requests assigned to this actor appear here.",
+      label: "Approval queue",
+      metric: `${pending} pending`,
+      source: "request inbox",
+      tone: "active",
+    });
+  }
+  if (isExecutiveCandidate(roleScope?.derived_level)) {
+    cards.push({
+      detail: "Candidate signal is shown honestly and unlocks nothing.",
+      label: "Executive candidate",
+      metric: "not enforced",
+      source: "server scope",
+      tone: "candidate",
+    });
+  }
+  cards.push({
+    detail: "Restricted surfaces remain unavailable in this dashboard.",
+    label: "Surface boundary",
+    metric: roleScope?.enforcement ?? "derived only",
+    source: "scope contract",
+    tone: "limited",
+  });
+  if (requests.length > 0) {
+    cards.push({
+      detail: "Submitted requests stay visible as status, not access grants.",
+      label: "Request status",
+      metric: `${requests.length} submitted`,
+      source: "request ledger",
+      tone: "default",
+    });
+  }
+  return cards;
+}
+
+function RoleExperienceSummary({ cards }: { cards: RoleExperienceCard[] }) {
+  return (
+    <div
+      className="grid grid-cols-1 gap-2 md:grid-cols-2"
+      data-testid="dashboard-role-experience"
+      id="dashboard-role-experience"
+    >
+      {cards.map((card) => (
+        <div
+          key={`${card.label}:${card.metric}`}
+          className="ap-card rounded border p-3"
+          data-role-tone={card.tone}
+          data-testid={`dashboard-role-card-${card.tone}`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                {card.label}
+              </p>
+              <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+                {card.detail}
+              </p>
+            </div>
+            <Chip>{card.metric}</Chip>
+          </div>
+          <p className="ap-register-evidence ap-soft mt-2" style={{ fontSize: TYPE.scale.xs }}>
+            {card.source}
+          </p>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -599,6 +776,14 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
     summary,
     workflowItems,
   });
+  const roleExperienceCards = buildRoleExperienceCards({
+    actor,
+    grants,
+    inbox,
+    requests,
+    roleScope,
+    workflowItems,
+  });
 
   async function revokeGrant(grantId: string) {
     if (!actor) return;
@@ -658,6 +843,13 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-4">
+          <Panel
+            title="Role Experience"
+            action={<Chip>{roleScope ? roleLabel(roleScope.derived_level) : "derived posture unavailable"}</Chip>}
+          >
+            <RoleExperienceSummary cards={roleExperienceCards} />
+          </Panel>
+
           <Panel
             title="Scope Posture"
             action={<Chip>derived, not enforced</Chip>}
@@ -740,14 +932,12 @@ function GrantedKnowledgeList({
   grants: AccessGrantRecord[];
   projectById: Map<string, GraphProject>;
 }) {
-  const activeGrants = grants.filter(
-    (grant) => grant.status === "active" && grant.grantee_id === actor,
-  );
+  const activeGrants = activeKnowledgeGrants(grants, actor);
   if (activeGrants.length === 0) {
     return <EmptyLine>No active granted knowledge is available for this actor.</EmptyLine>;
   }
   return (
-    <div className="space-y-2" data-testid="dashboard-granted-knowledge">
+    <div className="space-y-2" data-testid="dashboard-granted-knowledge" id="dashboard-granted-knowledge">
       {activeGrants.map((grant) => {
         const capabilityId = grant.target.capability_id;
         const project = projectById.get(capabilityId);
@@ -795,7 +985,7 @@ function GrantedKnowledgeList({
 
 function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
   return (
-    <div data-testid="dashboard-scope">
+    <div data-testid="dashboard-scope" id="dashboard-scope">
       <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
         Derived from visible profile, reporting, project, agent, and request facts. Server-side
         authorization is still handled by the existing scoped APIs; this label is derived, not
@@ -892,7 +1082,7 @@ function WorkflowSummary({ actor, items }: { actor: string; items: WorkflowItem[
   for (const group of WORKFLOW_GROUPS) grouped.set(group.label, []);
   for (const item of items) grouped.get(workflowGroup(item.status))?.push(item);
   return (
-    <div className="grid grid-cols-1 gap-2 lg:grid-cols-5" data-testid="dashboard-workflow">
+    <div className="grid grid-cols-1 gap-2 lg:grid-cols-5" data-testid="dashboard-workflow" id="dashboard-workflow">
       {WORKFLOW_GROUPS.map((group) => {
         const groupItems = grouped.get(group.label) ?? [];
         return (
@@ -977,7 +1167,7 @@ function RequestsList({
     return <EmptyLine>No access requests are active for this actor.</EmptyLine>;
   }
   return (
-    <div className="space-y-2" data-testid="dashboard-requests">
+    <div className="space-y-2" data-testid="dashboard-requests" id="dashboard-requests">
       {grantError && (
         <p className="ap-soft rounded border px-2 py-1" style={{ fontSize: TYPE.scale.xs }} role="alert">
           {grantError}
