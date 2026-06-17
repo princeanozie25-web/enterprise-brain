@@ -254,6 +254,7 @@ fn derive(
                 hybrid: params.hybrid,
                 judge: params.judge,
                 bypass_cache: false,
+                granted_context: None,
             };
             let (body, trace) = ask(state, actor, &params.query, &options)?;
             // Metering parity with the live endpoint (failures to stderr).

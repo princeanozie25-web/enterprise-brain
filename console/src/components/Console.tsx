@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import * as api from "@/lib/api";
-import type { AnswerEnvelope, DocCard, ScopeStatement } from "@/lib/api";
+import type {
+  AccessGrantRecord,
+  AnswerEnvelope,
+  DocCard,
+  GrantedContextSummary,
+  ScopeStatement,
+} from "@/lib/api";
 import { DERIVED, TYPE } from "@/lib/tokens";
 import { AnswerCard } from "./AnswerCard";
 import { AtlasRoom } from "./AtlasRoom";
@@ -69,6 +75,9 @@ export function Console({
   } | null>(null);
   const [entryCapability, setEntryCapability] = useState<string | null>(null);
   const [entryDiff, setEntryDiff] = useState<string | null>(null);
+  const [entryGrantId, setEntryGrantId] = useState<string | null>(null);
+  const [grantContext, setGrantContext] = useState<AccessGrantRecord | null>(null);
+  const [grantContextUnavailable, setGrantContextUnavailable] = useState(false);
   /** AR-2: ?subject=… — the click-to-lens door from the Org Graph; opens the
    * subject's lens (cross-lens, audited) once on the /lens page. */
   const [entrySubject, setEntrySubject] = useState<string | null>(null);
@@ -90,6 +99,9 @@ export function Console({
     // never re-enters a diff or a graph-borne subject (the residue rule).
     setEntryCapability(null);
     setEntryDiff(null);
+    setEntryGrantId(null);
+    setGrantContext(null);
+    setGrantContextUnavailable(false);
     setEntrySubject(null);
   }, []);
 
@@ -109,6 +121,10 @@ export function Console({
     if (cap.length > 0) {
       setEntryCapability(cap);
     }
+    const grant = (params.get("grant") ?? "").trim();
+    if (grant.length > 0) {
+      setEntryGrantId(grant);
+    }
     const diff = (params.get("diff") ?? "").trim();
     if (diff.length > 0) {
       setEntryDiff(diff);
@@ -118,6 +134,50 @@ export function Console({
       setEntrySubject(subject);
     }
   }, []);
+
+  useEffect(() => {
+    if (
+      view !== "ask" ||
+      principal === null ||
+      entryGrantId === null ||
+      entryCapability === null
+    ) {
+      setGrantContext(null);
+      setGrantContextUnavailable(false);
+      return;
+    }
+    let cancelled = false;
+    setGrantContext(null);
+    setGrantContextUnavailable(false);
+    api
+      .getAccessGrant(principal, entryGrantId)
+      .then((response) => {
+        if (cancelled) return;
+        const grant = response?.grant ?? null;
+        if (
+          grant &&
+          grant.status === "active" &&
+          grant.permission === "read" &&
+          grant.grantee_id === principal &&
+          grant.target.capability_id === entryCapability
+        ) {
+          setGrantContext(grant);
+          setGrantContextUnavailable(false);
+        } else {
+          setGrantContext(null);
+          setGrantContextUnavailable(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGrantContext(null);
+          setGrantContextUnavailable(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entryCapability, entryGrantId, principal, view]);
 
   useEffect(() => {
     if (principal === null) {
@@ -142,14 +202,26 @@ export function Console({
   }, [principal]);
 
   const submitAsk = useCallback(async () => {
-    if (principal === null || query.trim().length === 0 || asking) {
+    const grantOptions =
+      grantContext === null
+        ? {}
+        : {
+            capabilityId: grantContext.target.capability_id,
+            grantId: grantContext.grant_id,
+          };
+    if (
+      principal === null ||
+      query.trim().length === 0 ||
+      asking ||
+      (entryGrantId !== null && entryCapability !== null && grantContext === null)
+    ) {
       return;
     }
     setAsking(true);
     setEnvelope(null);
     setSubmitted(null);
     try {
-      const response = await api.ask(principal, query, { hybrid, judge });
+      const response = await api.ask(principal, query, { hybrid, judge, ...grantOptions });
       setEnvelope(response);
       setSubmitted({ query, hybrid, judge });
     } catch {
@@ -159,7 +231,7 @@ export function Console({
     } finally {
       setAsking(false);
     }
-  }, [principal, query, hybrid, judge, asking]);
+  }, [asking, entryCapability, entryGrantId, grantContext, hybrid, judge, principal, query]);
 
   const openDoc = useCallback(
     async (docId: string) => {
@@ -263,11 +335,24 @@ export function Console({
           </header>
 
           <div className="ap-card rounded p-3">
+            {(entryGrantId !== null || grantContext !== null || grantContextUnavailable) && (
+              <GrantedAskContextPanel
+                capabilityId={entryCapability}
+                grant={grantContext}
+                grantId={entryGrantId}
+                serverContext={envelope?.granted_context}
+                unavailable={grantContextUnavailable}
+              />
+            )}
             <textarea
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={
-                principal === null ? "Select a lens first" : "Ask within your scope…"
+                principal === null
+                  ? "Select a lens first"
+                  : grantContext
+                    ? "Ask within this granted capability context..."
+                    : "Ask within your scope..."
               }
               disabled={principal === null}
               rows={2}
@@ -303,7 +388,11 @@ export function Console({
               <button
                 type="button"
                 onClick={submitAsk}
-                disabled={principal === null || asking}
+                disabled={
+                  principal === null ||
+                  asking ||
+                  (entryGrantId !== null && entryCapability !== null && grantContext === null)
+                }
                 className="ap-affordance-button ml-auto rounded px-3 py-1"
                 style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
                 data-testid="ask-button"
@@ -361,6 +450,74 @@ export function Console({
         onOpenDoc={openDoc}
       />
     </div>
+  );
+}
+
+function GrantedAskContextPanel({
+  capabilityId,
+  grant,
+  grantId,
+  serverContext,
+  unavailable,
+}: {
+  capabilityId: string | null;
+  grant: AccessGrantRecord | null;
+  grantId: string | null;
+  serverContext?: GrantedContextSummary;
+  unavailable: boolean;
+}) {
+  const status = unavailable ? "unavailable" : grant?.status ?? "validating";
+  const title = serverContext?.capability.name ?? capabilityId ?? "Granted capability";
+  return (
+    <section
+      className="ap-card mb-3 rounded border p-3"
+      data-testid="ask-granted-context"
+      style={{
+        background: "color-mix(in srgb, var(--wash) 34%, transparent)",
+        boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent)",
+      }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Granted Knowledge
+          </p>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+            {title}
+          </h2>
+        </div>
+        <span
+          className="ap-hairline ap-register-chrome rounded border px-2 py-1"
+          style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+        >
+          {status}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {grantId && <GrantChip>grant {grantId}</GrantChip>}
+        {capabilityId && <GrantChip>capability {capabilityId}</GrantChip>}
+        {serverContext?.request_id && <GrantChip>request {serverContext.request_id}</GrantChip>}
+        {serverContext?.approver_id && <GrantChip>approver {serverContext.approver_id}</GrantChip>}
+      </div>
+      <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+        {unavailable
+          ? "This grant cannot be used for Ask context. Revoked, expired, mismatched, and unrelated grants are refused by the server."
+          : grant
+            ? "Ask will send this grant and capability to the server for validation. Results are constrained to the granted capability context."
+            : "Checking the grant ledger before Ask can use this context."}
+      </p>
+    </section>
+  );
+}
+
+function GrantChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="ap-hairline ap-register-evidence ap-soft rounded border px-1.5 py-0.5"
+      style={{ fontSize: TYPE.scale.xs }}
+    >
+      {children}
+    </span>
   );
 }
 

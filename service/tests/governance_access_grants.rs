@@ -211,6 +211,23 @@ fn read_grant_audit(store_dir: &Path) -> Vec<AuditEvent> {
         .collect()
 }
 
+fn capability_doc_ids(capability_id: &str) -> BTreeSet<String> {
+    let fixtures = common::repo_fixtures_dir();
+    let brm: Value = serde_json::from_slice(&fs::read(fixtures.join("brm.json")).expect("brm"))
+        .expect("brm parse");
+    brm["capabilities"]
+        .as_array()
+        .expect("capabilities")
+        .iter()
+        .find(|capability| capability["id"] == capability_id)
+        .expect("capability exists")["document_ids"]
+        .as_array()
+        .expect("document_ids")
+        .iter()
+        .map(|id| id.as_str().expect("doc id").to_string())
+        .collect()
+}
+
 async fn post_json(
     router: &axum::Router,
     principal: &str,
@@ -408,6 +425,97 @@ async fn read_grant_opens_project_workflow_context_without_document_ids() {
 }
 
 #[tokio::test]
+async fn read_grant_can_scope_ask_to_granted_capability_context_only() {
+    let _guard = access_grant_test_lock().lock().expect("test lock");
+    let store_dir = scratch("access_grant_ask_store");
+    let (requester, approver, _non_party, own_capability, outside_capability) = request_fixture();
+    let (state, _requests, _grants) = grant_state(&store_dir);
+    let router = app(Arc::new(state));
+
+    let (status, created, _) = post_json(
+        &router,
+        &requester,
+        "/access-requests",
+        json!({
+            "target": { "kind": "project", "capability_id": outside_capability },
+            "justification": "Need approved ask context for this capability."
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let request_id = created["request"]["request_id"].as_str().unwrap();
+
+    let (status, _approved, _) = post_json(
+        &router,
+        &approver,
+        &format!("/access-requests/{request_id}/approve"),
+        json!({ "reason_code": "manager_approved" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, grant_list, _) = get(&router, &requester, "/access-grants").await;
+    assert_eq!(status, StatusCode::OK);
+    let grant_id = grant_list["grants"].as_array().unwrap()[0]["grant_id"]
+        .as_str()
+        .unwrap();
+
+    let (status, ask_body, _ask_bytes) = post_json(
+        &router,
+        &requester,
+        "/ask",
+        json!({
+            "query": "procedure record review quality customer stock site warehouse",
+            "grant_id": grant_id,
+            "capability_id": outside_capability,
+            "hybrid": false,
+            "judge": false
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let context = &ask_body["granted_context"];
+    assert_eq!(context["grant_id"], grant_id);
+    assert_eq!(context["grant_status"], "active");
+    assert_eq!(context["capability"]["id"], outside_capability);
+    assert_eq!(context["request_id"], request_id);
+    assert_eq!(context["approver_id"], approver);
+    assert_eq!(context["active"], true);
+    let context_text = serde_json::to_string(context).expect("context json");
+    assert!(!context_text.contains("document_id"));
+    assert!(!context_text.contains("denied"));
+    assert!(!context_text.contains("\"permission\":\"write\""));
+    assert!(!context_text.contains("\"permission\":\"admin\""));
+
+    let allowed = capability_doc_ids(&outside_capability);
+    for result in ask_body["results"].as_array().expect("results") {
+        let document_id = result["document_id"].as_str().expect("doc id");
+        assert!(
+            allowed.contains(document_id),
+            "granted ask result {document_id} must belong to the granted capability"
+        );
+    }
+
+    let (status, refused, refused_bytes) = post_json(
+        &router,
+        &requester,
+        "/ask",
+        json!({
+            "query": "procedure record review quality customer stock site warehouse",
+            "grant_id": grant_id,
+            "capability_id": own_capability,
+            "hybrid": false,
+            "judge": false
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(refused["error"], "granted context is unavailable");
+    let refused_text = String::from_utf8_lossy(&refused_bytes);
+    assert!(!refused_text.contains(grant_id));
+    assert!(!refused_text.contains(&outside_capability));
+}
+
+#[tokio::test]
 async fn approver_can_revoke_and_revoked_grant_no_longer_unlocks_workflow() {
     let _guard = access_grant_test_lock().lock().expect("test lock");
     let store_dir = scratch("access_grant_revoke_store");
@@ -485,6 +593,23 @@ async fn approver_can_revoke_and_revoked_grant_no_longer_unlocks_workflow() {
     let after_text = String::from_utf8_lossy(&after_bytes);
     assert!(!after_text.contains("document_id"));
     assert!(!after_text.contains("denied"));
+
+    let (status, refused_ask, refused_ask_bytes) = post_json(
+        &router,
+        &requester,
+        "/ask",
+        json!({
+            "query": "procedure record review quality customer stock site warehouse",
+            "grant_id": grant_id,
+            "capability_id": outside_capability,
+            "hybrid": false,
+            "judge": false
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(refused_ask["error"], "granted context is unavailable");
+    assert!(!String::from_utf8_lossy(&refused_ask_bytes).contains(grant_id));
 
     let audit = read_grant_audit(&store_dir);
     let allowed_create = audit.iter().position(|row| {
@@ -634,4 +759,21 @@ async fn expired_grant_no_longer_unlocks_context() {
     assert!(!text.contains("\"permission\":\"write\""));
     assert!(!text.contains("\"permission\":\"admin\""));
     assert!(!text.contains("denied"));
+
+    let (status, refused_ask, refused_ask_bytes) = post_json(
+        &router,
+        &requester,
+        "/ask",
+        json!({
+            "query": "procedure record review quality customer stock site warehouse",
+            "grant_id": grant_id,
+            "capability_id": outside_capability,
+            "hybrid": false,
+            "judge": false
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(refused_ask["error"], "granted context is unavailable");
+    assert!(!String::from_utf8_lossy(&refused_ask_bytes).contains(&grant_id));
 }

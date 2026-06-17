@@ -359,6 +359,13 @@ describe("EmployeeDashboard", () => {
     expect(grant?.textContent).toContain("active");
     expect(within(grant!).getByRole("link").getAttribute("href")).toBe("/project?cap=cap31&as=p060");
 
+    const grantedKnowledge = screen.getByTestId("dashboard-granted-knowledge");
+    expect(grantedKnowledge.textContent).toContain("ag_123");
+    expect(grantedKnowledge.textContent).not.toContain("ag_revoke");
+    expect(screen.getByTestId("dashboard-open-grant-ask").getAttribute("href")).toBe(
+      "/ask?as=p060&grant=ag_123&cap=cap31",
+    );
+
     const revokeButton = screen.getByTestId("dashboard-grant-revoke");
     expect(revokeButton.textContent).toBe("Revoke");
     fireEvent.click(revokeButton);

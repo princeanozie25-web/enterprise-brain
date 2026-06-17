@@ -704,6 +704,17 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
             />
           </Panel>
 
+          <Panel
+            title="Granted Knowledge"
+            action={
+              <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+                {grants.filter((grant) => grant.status === "active" && grant.grantee_id === actor).length}
+              </span>
+            }
+          >
+            <GrantedKnowledgeList actor={actor} grants={grants} projectById={projectById} />
+          </Panel>
+
           <Panel title="My Knowledge">
             <KnowledgeSummary
               sections={knowledgeSections}
@@ -717,6 +728,68 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
         </div>
       </div>
     </main>
+  );
+}
+
+function GrantedKnowledgeList({
+  actor,
+  grants,
+  projectById,
+}: {
+  actor: string;
+  grants: AccessGrantRecord[];
+  projectById: Map<string, GraphProject>;
+}) {
+  const activeGrants = grants.filter(
+    (grant) => grant.status === "active" && grant.grantee_id === actor,
+  );
+  if (activeGrants.length === 0) {
+    return <EmptyLine>No active granted knowledge is available for this actor.</EmptyLine>;
+  }
+  return (
+    <div className="space-y-2" data-testid="dashboard-granted-knowledge">
+      {activeGrants.map((grant) => {
+        const capabilityId = grant.target.capability_id;
+        const project = projectById.get(capabilityId);
+        const title = project?.label.replace(/^Capability:\s*/i, "") ?? capabilityId;
+        const href = `/ask?as=${encodeURIComponent(actor)}&grant=${encodeURIComponent(
+          grant.grant_id,
+        )}&cap=${encodeURIComponent(capabilityId)}`;
+        return (
+          <article
+            key={grant.grant_id}
+            className="ap-card rounded border p-3 transition-transform duration-200 hover:-translate-y-px"
+            data-testid="dashboard-granted-knowledge-card"
+            style={dashboardPanelStyle()}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+                  {grant.target.kind} read grant
+                </p>
+                <h3 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                  {title}
+                </h3>
+              </div>
+              <Chip>{grant.status}</Chip>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Chip mono>{grant.grant_id}</Chip>
+              <Chip mono>request {grant.request_id}</Chip>
+              <Chip mono>approver {grant.approver_id}</Chip>
+            </div>
+            <a
+              href={href}
+              className="ap-affordance-button ap-register-chrome mt-3 inline-flex min-h-10 items-center rounded px-3 py-2"
+              style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+              data-testid="dashboard-open-grant-ask"
+            >
+              Open In Ask
+            </a>
+          </article>
+        );
+      })}
+    </div>
   );
 }
 

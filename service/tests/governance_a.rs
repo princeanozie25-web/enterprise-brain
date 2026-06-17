@@ -713,6 +713,7 @@ fn a6_full_corpus_hybrid_service_pipeline_never_leaks() {
         hybrid: true,
         judge: true,
         bypass_cache: false,
+        granted_context: None,
     };
     let mut asks = 0usize;
     let mut ids_checked = 0usize;
@@ -776,21 +777,32 @@ fn a6_full_corpus_hybrid_service_pipeline_never_leaks() {
 // A-7 ENVELOPE RULES + REAL SCOPE STATEMENTS
 // ---------------------------------------------------------------------------
 
-const ENVELOPE_KEY_WHITELIST: [&str; 24] = [
+const ENVELOPE_KEY_WHITELIST: [&str; 38] = [
+    "active",
     "aggregation_bounded",
     "answer",
+    "approver_id",
     "band",
+    "capability",
     "citations",
     "demo_identity_mode",
     "document_id",
     "effective_successor",
     "generation_applied",
+    "grant_id",
+    "grant_scope",
+    "grant_status",
+    "granted_context",
     "groups",
+    "id",
     "index_version",
+    "initiative",
     "judge_applied",
+    "name",
     "principal_id",
     "query_hash",
     "reasons_ref",
+    "request_id",
     "results",
     "retrieval_mode",
     "scope_statement",
@@ -798,9 +810,12 @@ const ENVELOPE_KEY_WHITELIST: [&str; 24] = [
     "sensitivity",
     "sites",
     "snapshot_version",
+    "strategy",
     "superseded",
+    "target_kind",
     "text",
     "title",
+    "workflow",
 ];
 
 const FORBIDDEN_KEY_SUBSTRINGS: [&str; 18] = [
@@ -859,6 +874,7 @@ fn a7_envelope_keys_are_whitelisted_and_scope_matches_ground_truth() {
         hybrid: true,
         judge: true,
         bypass_cache: false,
+        granted_context: None,
     };
     let (rich, _, _) = ask_ok(&state, "p060", FAMILY_MIX_QUERY, &rich_options);
     assert_eq!(rich["aggregation_bounded"], Value::Bool(true));
@@ -1227,6 +1243,7 @@ fn a8_same_ask_twice_is_byte_identical_with_and_without_cache() {
         hybrid: true,
         judge: true,
         bypass_cache: false,
+        granted_context: None,
     };
 
     let (_, trace_one, bytes_one) =

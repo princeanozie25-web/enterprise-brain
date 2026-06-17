@@ -552,6 +552,10 @@ pub fn loopback_listener(addr: &str) -> Result<TcpListener> {
 pub struct AskRequest {
     pub query: String,
     #[serde(default)]
+    pub capability_id: Option<String>,
+    #[serde(default)]
+    pub grant_id: Option<String>,
+    #[serde(default)]
     pub hybrid: bool,
     #[serde(default)]
     pub judge: bool,
@@ -619,10 +623,24 @@ async fn handle_ask(
     DemoPrincipal(principal): DemoPrincipal,
     Json(request): Json<AskRequest>,
 ) -> Response {
+    let granted_context = match (request.grant_id, request.capability_id) {
+        (Some(grant_id), Some(capability_id)) => Some(answer::GrantedContextRequest {
+            capability_id,
+            grant_id,
+        }),
+        (None, None) => None,
+        _ => {
+            return json_bytes_response(
+                StatusCode::BAD_REQUEST,
+                b"{\"demo_identity_mode\":true,\"error\":\"granted context requires grant_id and capability_id\"}\n".to_vec(),
+            );
+        }
+    };
     let options = AskOptions {
         hybrid: request.hybrid,
         judge: request.judge,
-        bypass_cache: false,
+        bypass_cache: granted_context.is_some(),
+        granted_context,
     };
     let blocking_state = state.clone();
     let result = tokio::task::spawn_blocking(move || {

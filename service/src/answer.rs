@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::CacheKey;
 use crate::generate::ContextDoc;
+use crate::lane::LaneGraph;
 use crate::sidecar::{generation_event, UsageEvent};
 use crate::AppState;
 
@@ -38,11 +39,41 @@ const JUDGE_TOP_K: usize = 12;
 const JUDGE_MIN_CANDIDATES: usize = 4;
 const JUDGE_MAX_RATIO: f64 = 1.3;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct AskOptions {
     pub hybrid: bool,
     pub judge: bool,
     pub bypass_cache: bool,
+    pub granted_context: Option<GrantedContextRequest>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GrantedContextRequest {
+    pub capability_id: String,
+    pub grant_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GrantedContextNode {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GrantedContextSummary {
+    pub active: bool,
+    pub approver_id: String,
+    pub capability: GrantedContextNode,
+    pub grant_id: String,
+    pub grant_scope: String,
+    pub grant_status: String,
+    pub initiative: GrantedContextNode,
+    pub request_id: String,
+    pub strategy: GrantedContextNode,
+    pub target_kind: String,
+    pub workflow: GrantedContextNode,
 }
 
 /// The validated answer: text whose every citation is inside the sealed
@@ -102,6 +133,8 @@ pub struct AnswerEnvelope {
     /// says so on every response.
     pub demo_identity_mode: bool,
     pub generation_applied: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub granted_context: Option<GrantedContextSummary>,
     pub index_version: String,
     pub judge_applied: bool,
     pub principal_id: String,
@@ -140,6 +173,106 @@ impl From<anyhow::Error> for AskError {
     }
 }
 
+fn capability_context(
+    graph: &LaneGraph,
+    capability_id: &str,
+) -> anyhow::Result<Option<(GrantedContextSummary, BTreeSet<String>)>> {
+    let Some(capability) = graph.capabilities.iter().find(|c| c.id == capability_id) else {
+        return Ok(None);
+    };
+    let workflow = graph
+        .workflows
+        .iter()
+        .find(|w| w.id == capability.workflow_id)
+        .context("capability references an unknown workflow")?;
+    let initiative = graph
+        .initiatives
+        .iter()
+        .find(|i| i.id == workflow.initiative_id)
+        .context("workflow references an unknown initiative")?;
+    let strategy = graph
+        .strategies
+        .iter()
+        .find(|s| s.id == initiative.strategy_id)
+        .context("initiative references an unknown strategy")?;
+
+    let summary = GrantedContextSummary {
+        active: true,
+        approver_id: String::new(),
+        capability: GrantedContextNode {
+            id: capability.id.clone(),
+            name: capability.name.clone(),
+        },
+        grant_id: String::new(),
+        grant_scope: String::new(),
+        grant_status: String::new(),
+        initiative: GrantedContextNode {
+            id: initiative.id.clone(),
+            name: initiative.name.clone(),
+        },
+        request_id: String::new(),
+        strategy: GrantedContextNode {
+            id: strategy.id.clone(),
+            name: strategy.name.clone(),
+        },
+        target_kind: String::new(),
+        workflow: GrantedContextNode {
+            id: workflow.id.clone(),
+            name: workflow.name.clone(),
+        },
+    };
+    Ok(Some((
+        summary,
+        capability.document_ids.iter().cloned().collect(),
+    )))
+}
+
+fn resolve_granted_context(
+    state: &AppState,
+    principal_id: &str,
+    request: &GrantedContextRequest,
+) -> Result<(GrantedContextSummary, BTreeSet<String>), AskError> {
+    let Some(store) = &state.access_grants else {
+        return Err(AskError::BadRequest(
+            "granted context is unavailable".to_string(),
+        ));
+    };
+    let Some(grant) = store.get_effective(&request.grant_id, &state.snapshot_version) else {
+        return Err(AskError::BadRequest(
+            "granted context is unavailable".to_string(),
+        ));
+    };
+    if grant.grantee_id != principal_id
+        || grant.permission != crate::access_grants::PERMISSION_READ
+        || grant.status != crate::access_grants::STATUS_ACTIVE
+        || grant.snapshot_version != state.snapshot_version
+        || grant.target.capability_id() != request.capability_id
+    {
+        return Err(AskError::BadRequest(
+            "granted context is unavailable".to_string(),
+        ));
+    }
+    let Some(graph) = &state.lane_graph else {
+        return Err(AskError::BadRequest(
+            "granted context is unavailable".to_string(),
+        ));
+    };
+    let Some((mut summary, document_ids)) =
+        capability_context(graph, &request.capability_id).map_err(AskError::Internal)?
+    else {
+        return Err(AskError::BadRequest(
+            "granted context is unavailable".to_string(),
+        ));
+    };
+    summary.approver_id = grant.approver_id;
+    summary.grant_id = grant.grant_id;
+    summary.grant_scope = format!("{}:{}", grant.target.kind(), grant.target.capability_id());
+    summary.grant_status = grant.status;
+    summary.request_id = grant.request_id;
+    summary.target_kind = grant.target.kind().to_string();
+    Ok((summary, document_ids))
+}
+
 /// The full ask pipeline. Synchronous on purpose — the async boundary stays
 /// in the HTTP layer; everything governed is plain auditable code.
 pub fn ask(
@@ -149,6 +282,10 @@ pub fn ask(
     options: &AskOptions,
 ) -> Result<(Vec<u8>, AskTrace), AskError> {
     let mut trace = AskTrace::default();
+    let granted_context = match &options.granted_context {
+        Some(request) => Some(resolve_granted_context(state, principal_id, request)?),
+        None => None,
+    };
 
     let normalized = normalize_query(query);
     let computed_query_hash = query_hash(
@@ -162,7 +299,7 @@ pub fn ask(
         hybrid: options.hybrid,
         judge: options.judge,
     };
-    if !options.bypass_cache {
+    if !options.bypass_cache && granted_context.is_none() {
         if let Some(cache) = &state.cache {
             if let Some(bytes) = cache.get(&cache_key) {
                 trace.cache_hit = true;
@@ -192,6 +329,7 @@ pub fn ask(
             answer: None,
             demo_identity_mode: true,
             generation_applied: false,
+            granted_context: None,
             index_version: state.engine.manifest.index_version.clone(),
             judge_applied: false,
             principal_id: principal_id.to_string(),
@@ -233,7 +371,7 @@ pub fn ask(
                 max_ratio: JUDGE_MAX_RATIO,
             }),
     };
-    let (retrieval_envelope, retrieval_trace) = state
+    let (mut retrieval_envelope, retrieval_trace) = state
         .engine
         .search(&scope, query, &search_options)
         .context("governed retrieval failed")
@@ -241,6 +379,17 @@ pub fn ask(
     trace
         .usage_events
         .extend(retrieval_trace.usage_events.iter().cloned());
+    let granted_context_summary = if let Some((summary, document_ids)) = granted_context {
+        retrieval_envelope
+            .results
+            .retain(|result| document_ids.contains(&result.document_id));
+        for (index, result) in retrieval_envelope.results.iter_mut().enumerate() {
+            result.score_rank = (index + 1) as u32;
+        }
+        Some(summary)
+    } else {
+        None
+    };
 
     // 3. Mosaic bound: if both members of a tagged pair appear in this
     // principal's results, the LOWER-RANKED member leaves the generation
@@ -350,6 +499,7 @@ pub fn ask(
         answer,
         demo_identity_mode: true,
         generation_applied,
+        granted_context: granted_context_summary,
         index_version: retrieval_envelope.index_version.clone(),
         judge_applied: retrieval_envelope.judge_applied,
         principal_id: principal_id.to_string(),
@@ -365,6 +515,7 @@ pub fn ask(
     // judge, or generator failure; citation fault) must not be pinned.
     let hybrid_degraded = options.hybrid && envelope.retrieval_mode != "hybrid";
     let cacheable = !options.bypass_cache
+        && envelope.granted_context.is_none()
         && !trace.generation_fault
         && !transient_failure
         && !hybrid_degraded

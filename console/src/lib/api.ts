@@ -41,11 +41,31 @@ export interface EnrichedResult {
   title: string;
 }
 
+export interface GrantedContextNode {
+  id: string;
+  name: string;
+}
+
+export interface GrantedContextSummary {
+  active: boolean;
+  approver_id: string;
+  capability: GrantedContextNode;
+  grant_id: string;
+  grant_scope: string;
+  grant_status: "active";
+  initiative: GrantedContextNode;
+  request_id: string;
+  strategy: GrantedContextNode;
+  target_kind: "capability" | "project";
+  workflow: GrantedContextNode;
+}
+
 export interface AnswerEnvelope {
   aggregation_bounded: boolean;
   answer?: Answer;
   demo_identity_mode: boolean;
   generation_applied: boolean;
+  granted_context?: GrantedContextSummary;
   index_version: string;
   judge_applied: boolean;
   principal_id: string;
@@ -138,12 +158,23 @@ async function parse<T>(response: Response): Promise<T> {
 export async function ask(
   principal: string,
   query: string,
-  options: { hybrid: boolean; judge: boolean },
+  options: { capabilityId?: string; grantId?: string; hybrid: boolean; judge: boolean },
 ): Promise<AnswerEnvelope> {
+  const body: {
+    capability_id?: string;
+    grant_id?: string;
+    hybrid: boolean;
+    judge: boolean;
+    query: string;
+  } = { query, hybrid: options.hybrid, judge: options.judge };
+  if (options.grantId && options.capabilityId) {
+    body.grant_id = options.grantId;
+    body.capability_id = options.capabilityId;
+  }
   const response = await fetch(`${SERVICE_URL}/ask`, {
     method: "POST",
     headers: headers(principal),
-    body: JSON.stringify({ query, hybrid: options.hybrid, judge: options.judge }),
+    body: JSON.stringify(body),
   });
   return parse<AnswerEnvelope>(response);
 }
