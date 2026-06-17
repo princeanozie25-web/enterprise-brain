@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
 import type {
+  AccessGrantRecord,
   AccessRequestRecord,
   GraphProject,
   GraphResponse,
@@ -74,6 +75,7 @@ function roleLabel(level: RoleScopeSummary["derived_level"]): string {
 }
 
 function deriveScopeBadges({
+  grants,
   human,
   inbox,
   requests,
@@ -81,6 +83,7 @@ function deriveScopeBadges({
   summary,
   subjectDepartment,
 }: {
+  grants: AccessGrantRecord[];
   human: LensResponse["subject_human"];
   inbox: AccessRequestRecord[];
   requests: AccessRequestRecord[];
@@ -148,8 +151,15 @@ function deriveScopeBadges({
         source: "request ledger",
       });
     }
+    if (grants.length > 0) {
+      badges.push({
+        detail: `${grants.length} active read ${grants.length === 1 ? "grant" : "grants"}`,
+        label: "Read grants",
+        source: "grant ledger",
+      });
+    }
     badges.push({
-      detail: "admin, governance, and Bursar surfaces unavailable",
+      detail: "restricted admin-domain surfaces unavailable",
       label: "Surface limits",
       source: roleScope.enforcement,
     });
@@ -218,6 +228,13 @@ function deriveScopeBadges({
       source: "request ledger",
     });
   }
+  if (grants.length > 0) {
+    badges.push({
+      detail: `${grants.length} active read ${grants.length === 1 ? "grant" : "grants"}`,
+      label: "Read grants",
+      source: "grant ledger",
+    });
+  }
 
   return badges;
 }
@@ -255,6 +272,7 @@ interface CommandPodModel {
 
 function buildCommandPods({
   actor,
+  grants,
   inbox,
   projects,
   requests,
@@ -263,6 +281,7 @@ function buildCommandPods({
   workflowItems,
 }: {
   actor: string;
+  grants: AccessGrantRecord[];
   inbox: AccessRequestRecord[];
   projects: ProjectRecord[];
   requests: AccessRequestRecord[];
@@ -337,10 +356,10 @@ function buildCommandPods({
   }
 
   pods.push({
-    detail: "Track submitted requests and assigned reviews.",
+    detail: "Track submitted requests, assigned reviews, and active read grants.",
     href: "#dashboard-requests",
     kind: "request",
-    metric: `${requests.length} mine / ${inbox.length} inbox`,
+    metric: `${requests.length} mine / ${inbox.length} inbox / ${grants.length} grants`,
     title: "Access Request Pod",
   });
 
@@ -429,6 +448,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   const [summary, setSummary] = useState<NodeSummary | null>(null);
   const [roleScope, setRoleScope] = useState<RoleScopeSummary | null>(null);
   const [requests, setRequests] = useState<AccessRequestRecord[]>([]);
+  const [grants, setGrants] = useState<AccessGrantRecord[]>([]);
   const [inbox, setInbox] = useState<AccessRequestRecord[]>([]);
   const [workflows, setWorkflows] = useState<ProjectWorkflowResponse[]>([]);
   const [loading, setLoading] = useState(false);
@@ -441,6 +461,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
       setSummary(null);
       setRoleScope(null);
       setRequests([]);
+      setGrants([]);
       setInbox([]);
       setWorkflows([]);
       setAvailable(true);
@@ -457,15 +478,25 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
       api.getNodeSummary(actor, actor),
       api.getRoleScope(actor),
       api.getAccessRequests(actor),
+      api.getAccessGrants(actor),
       api.getAccessRequestInbox(actor),
     ])
-      .then(async ([lensResponse, graphResponse, summaryResponse, roleScopeResponse, requestResponse, inboxResponse]) => {
+      .then(async ([
+        lensResponse,
+        graphResponse,
+        summaryResponse,
+        roleScopeResponse,
+        requestResponse,
+        grantResponse,
+        inboxResponse,
+      ]) => {
         if (cancelled) return;
         setLens(lensResponse);
         setGraph(graphResponse);
         setSummary(summaryResponse);
         setRoleScope(roleScopeResponse);
         setRequests(requestResponse?.requests ?? []);
+        setGrants(grantResponse?.grants ?? []);
         setInbox(inboxResponse?.requests ?? []);
         setAvailable(lensResponse !== null);
 
@@ -488,6 +519,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
           setSummary(null);
           setRoleScope(null);
           setRequests([]);
+          setGrants([]);
           setInbox([]);
           setWorkflows([]);
           setAvailable(false);
@@ -542,6 +574,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   const knowledgeSections = lens.holdings.length;
   const visibleKnowledgeRows = lens.holdings.reduce((sum, section) => sum + section.docs.length, 0);
   const scopeBadges = deriveScopeBadges({
+    grants,
     human,
     inbox,
     requests,
@@ -551,6 +584,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   });
   const commandPods = buildCommandPods({
     actor,
+    grants,
     inbox,
     projects,
     requests,
@@ -632,9 +666,15 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
 
           <Panel
             title="My Requests"
-            action={<span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>{requests.length + inbox.length}</span>}
+            action={<span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>{requests.length + inbox.length + grants.length}</span>}
           >
-            <RequestsList requests={requests} inbox={inbox} projectById={projectById} />
+            <RequestsList
+              actor={actor}
+              grants={grants}
+              requests={requests}
+              inbox={inbox}
+              projectById={projectById}
+            />
           </Panel>
 
           <Panel title="My Knowledge">
@@ -684,7 +724,7 @@ function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
         </p>
         <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
           This dashboard labels the current actor posture only. It does not create admin access,
-          expose Bursar data, or replace server-side graph/lens/workflow filtering.
+          expose restricted admin-domain data, or replace server-side graph/lens/workflow filtering.
         </p>
       </div>
     </div>
@@ -811,10 +851,14 @@ function AgentsList({ agents }: { agents: NonNullable<NodeSummary["agents_owned"
 }
 
 function RequestsList({
+  actor,
+  grants,
   inbox,
   projectById,
   requests,
 }: {
+  actor: string;
+  grants: AccessGrantRecord[];
   inbox: AccessRequestRecord[];
   projectById: Map<string, GraphProject>;
   requests: AccessRequestRecord[];
@@ -823,11 +867,43 @@ function RequestsList({
     ...requests.map((request) => ({ label: "Mine", request })),
     ...inbox.map((request) => ({ label: "Approval", request })),
   ];
-  if (rows.length === 0) {
+  if (rows.length === 0 && grants.length === 0) {
     return <EmptyLine>No access requests are active for this actor.</EmptyLine>;
   }
   return (
     <div className="space-y-2" data-testid="dashboard-requests">
+      {grants.length > 0 && (
+        <div className="grid grid-cols-1 gap-2">
+          {grants.map((grant) => {
+            const project = projectById.get(grant.target.capability_id);
+            return (
+              <a
+                key={grant.grant_id}
+                href={`/project?cap=${encodeURIComponent(grant.target.capability_id)}&as=${encodeURIComponent(actor)}`}
+                className="ap-card ap-washable block rounded p-2"
+                data-testid="dashboard-grant"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                      {project?.label.replace(/^Capability:\s*/i, "") ?? grant.target.capability_id}
+                    </p>
+                    <p className="ap-register-evidence ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+                      {grant.grant_id}
+                    </p>
+                  </div>
+                  <Chip>{grant.permission} grant</Chip>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Chip>{grant.status}</Chip>
+                  <Chip mono>request {grant.request_id}</Chip>
+                  <Chip mono>approver {grant.approver_id}</Chip>
+                </div>
+              </a>
+            );
+          })}
+        </div>
+      )}
       {rows.map(({ label, request }) => {
         const project = projectById.get(request.target.capability_id);
         return (

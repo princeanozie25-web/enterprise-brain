@@ -57,8 +57,8 @@ fn parse_args() -> Result<Args> {
             other => bail!("unknown flag {other:?}"),
         }
     }
-    if agents_config.is_some() != state_dir.is_some() {
-        bail!("--agents-config and --state-dir must be given together");
+    if agents_config.is_some() && state_dir.is_none() {
+        bail!("--agents-config requires --state-dir");
     }
     Ok(Args {
         fixtures: fixtures.context("--fixtures is required")?,
@@ -85,6 +85,12 @@ fn build_state(args: &Args) -> Result<AppState> {
         state = state.with_cache(None);
     }
     state = state.with_usage_out(args.usage_out.clone());
+    if let Some(state_dir) = &args.state_dir {
+        let access_requests = service::access_requests::AccessRequestStore::open(state_dir)?;
+        let access_grants = service::access_grants::AccessGrantStore::open(state_dir)?;
+        state = state.with_access_requests(std::sync::Arc::new(access_requests));
+        state = state.with_access_grants(std::sync::Arc::new(access_grants));
+    }
     if let (Some(agents_config), Some(state_dir)) = (&args.agents_config, &args.state_dir) {
         let registry = service::agent::standing::AgentRegistry::load(
             agents_config,

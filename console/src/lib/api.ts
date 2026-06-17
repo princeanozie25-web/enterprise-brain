@@ -323,11 +323,13 @@ export async function getGraph(actor: string): Promise<GraphResponse | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Access requests: auditable ledger only. These types cannot represent a raw
-// document target or an access grant. Approval updates request status only.
+// Access requests and read grants. Requests cannot target raw documents, and
+// grants cannot represent write/admin rights or hidden document identities.
 // ---------------------------------------------------------------------------
 
 export type AccessRequestStatus = "pending" | "approved" | "denied" | "cancelled" | "expired";
+export type AccessGrantStatus = "active";
+export type AccessGrantPermission = "read";
 
 export type AccessTarget =
   | { kind: "capability"; capability_id: string }
@@ -363,6 +365,33 @@ export interface AccessRequestsResponse {
 export interface AccessRequestMutationResponse {
   demo_identity_mode: boolean;
   request: AccessRequestRecord;
+  snapshot_version: string;
+}
+
+export interface AccessGrantRecord {
+  approver_id: string;
+  created_ordinal: number;
+  expires_at?: string;
+  grant_id: string;
+  grantee_id: string;
+  permission: AccessGrantPermission;
+  reason: string;
+  request_id: string;
+  snapshot_version: string;
+  status: AccessGrantStatus;
+  target: AccessTarget;
+}
+
+export interface AccessGrantsResponse {
+  actor_id: string;
+  demo_identity_mode: boolean;
+  grants: AccessGrantRecord[];
+  snapshot_version: string;
+}
+
+export interface AccessGrantResponse {
+  demo_identity_mode: boolean;
+  grant: AccessGrantRecord;
   snapshot_version: string;
 }
 
@@ -410,6 +439,27 @@ export async function postAccessRequestDecision(
     },
   );
   return parse<AccessRequestMutationResponse>(response);
+}
+
+export async function getAccessGrants(actor: string): Promise<AccessGrantsResponse | null> {
+  const response = await fetch(`${SERVICE_URL}/access-grants`, { headers: headers(actor) });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<AccessGrantsResponse>(response);
+}
+
+export async function getAccessGrant(
+  actor: string,
+  grantId: string,
+): Promise<AccessGrantResponse | null> {
+  const response = await fetch(`${SERVICE_URL}/access-grants/${encodeURIComponent(grantId)}`, {
+    headers: headers(actor),
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  return parse<AccessGrantResponse>(response);
 }
 
 // ---------------------------------------------------------------------------

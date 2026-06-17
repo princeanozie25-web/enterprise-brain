@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 
 import type {
+  AccessGrantsResponse,
   AccessRequestsResponse,
   GraphResponse,
   LensResponse,
@@ -179,6 +180,26 @@ const REQUESTS: AccessRequestsResponse = {
   snapshot_version: "snap",
 };
 
+const GRANTS: AccessGrantsResponse = {
+  actor_id: "p060",
+  demo_identity_mode: true,
+  grants: [
+    {
+      approver_id: "p001",
+      created_ordinal: 0,
+      grant_id: "ag_123",
+      grantee_id: "p060",
+      permission: "read",
+      reason: "manager_approved",
+      request_id: "ar_approved",
+      snapshot_version: "snap",
+      status: "active",
+      target: { kind: "project", capability_id: "cap31" },
+    },
+  ],
+  snapshot_version: "snap",
+};
+
 const INBOX: AccessRequestsResponse = {
   actor_id: "p060",
   demo_identity_mode: true,
@@ -244,6 +265,7 @@ function stubDashboardFetch() {
       if (url.endsWith("/node/p060/summary")) return new Response(JSON.stringify(SUMMARY), { status: 200 });
       if (url.endsWith("/me/scope")) return new Response(JSON.stringify(ROLE_SCOPE), { status: 200 });
       if (url.endsWith("/access-requests/inbox")) return new Response(JSON.stringify(INBOX), { status: 200 });
+      if (url.endsWith("/access-grants")) return new Response(JSON.stringify(GRANTS), { status: 200 });
       if (url.endsWith("/access-requests")) return new Response(JSON.stringify(REQUESTS), { status: 200 });
       if (url.includes("/workflow/project/cap31")) return new Response(JSON.stringify(WORKFLOW), { status: 200 });
       return new Response("{\"demo_identity_mode\":true,\"error\":\"not found\"}", { status: 404 });
@@ -279,6 +301,7 @@ describe("EmployeeDashboard", () => {
     expect(scope.textContent).toContain("Leadership");
     expect(scope.textContent).toContain("Team scope");
     expect(scope.textContent).toContain("Project scope");
+    expect(scope.textContent).toContain("Read grants");
     expect(scope.textContent).toContain("Surface limits");
     expect(scope.textContent).toContain("Enforcement status");
 
@@ -288,11 +311,16 @@ describe("EmployeeDashboard", () => {
 
     expect(screen.getByTestId("dashboard-agent").textContent).toContain("Finance analysis assistant");
     expect(screen.getByTestId("dashboard-request").textContent).toContain("pending");
+    const grant = screen.getByTestId("dashboard-grant");
+    expect(grant.textContent).toContain("read grant");
+    expect(grant.textContent).toContain("active");
+    expect(grant.getAttribute("href")).toBe("/project?cap=cap31&as=p060");
     expect(screen.getByTestId("dashboard-knowledge").textContent).toContain("Visible rows");
 
     const text = container.textContent ?? "";
     expect(text).not.toContain("document_id");
     expect(text).not.toContain("d0196");
     expect(text).not.toMatch(/denied count|hidden/i);
+    expect(text).not.toMatch(/bursar|governance/i);
   });
 });

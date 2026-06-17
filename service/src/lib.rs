@@ -10,6 +10,7 @@
 //! Async lives in THIS crate only (the HTTP edge); the whole governed
 //! pipeline (`answer::ask`) is synchronous, auditable code.
 
+pub mod access_grants;
 pub mod access_requests;
 pub mod agent;
 pub mod answer;
@@ -183,9 +184,11 @@ pub struct AppState {
     pub agents: Option<agent::standing::AgentRegistry>,
     /// M4: the append-only proposal + audit store.
     pub proposals: Option<Arc<agent::proposals::ProposalStore>>,
-    /// Access request ledger: append-only records only. Approval does not
-    /// grant access or change compiled artifacts.
+    /// Access request ledger: append-only request/decision records.
     pub access_requests: Option<Arc<access_requests::AccessRequestStore>>,
+    /// Access grant ledger: append-only read entitlements derived from
+    /// approved access requests. Grants never mutate compiled artifacts.
+    pub access_grants: Option<Arc<access_grants::AccessGrantStore>>,
     /// AP-5: the vendored print fonts (OFL TTFs decompressed from the
     /// console's own woff2 subsets). Compile-time crate path — a demo
     /// deployment choice, flagged in the AP-5 closeout.
@@ -357,6 +360,7 @@ impl AppState {
             agents: None,
             proposals: None,
             access_requests: None,
+            access_grants: None,
             export_fonts_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fonts"),
             export_fixed_date: None,
             lane_graph,
@@ -432,6 +436,11 @@ impl AppState {
         store: Arc<access_requests::AccessRequestStore>,
     ) -> AppState {
         self.access_requests = Some(store);
+        self
+    }
+
+    pub fn with_access_grants(mut self, store: Arc<access_grants::AccessGrantStore>) -> AppState {
+        self.access_grants = Some(store);
         self
     }
 
@@ -578,6 +587,8 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/access-requests", get(handle_access_requests_list))
         .route("/access-requests", post(handle_access_request_create))
         .route("/access-requests/inbox", get(handle_access_requests_inbox))
+        .route("/access-grants", get(handle_access_grants_list))
+        .route("/access-grants/{id}", get(handle_access_grant_get))
         .route(
             "/access-requests/{id}/approve",
             post(handle_access_request_approve),
@@ -1343,6 +1354,21 @@ struct AccessRequestsResponse {
 }
 
 #[derive(serde::Serialize)]
+struct AccessGrantsResponse {
+    actor_id: String,
+    demo_identity_mode: bool,
+    grants: Vec<access_grants::AccessGrant>,
+    snapshot_version: String,
+}
+
+#[derive(serde::Serialize)]
+struct AccessGrantResponse {
+    demo_identity_mode: bool,
+    grant: access_grants::AccessGrant,
+    snapshot_version: String,
+}
+
+#[derive(serde::Serialize)]
 struct AccessRequestMutationResponse {
     demo_identity_mode: bool,
     request: access_requests::AccessRequest,
@@ -1537,6 +1563,80 @@ fn inbox_access_requests(state: &AppState, caller: &str) -> Reply {
     })
 }
 
+fn list_access_grants(state: &AppState, caller: &str) -> Reply {
+    let Some(store) = &state.access_grants else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    let audit = |outcome: &str| store.audit("access_grant_list", caller, "access_grants", outcome);
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("access grant people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    if !people.contains_key(caller) {
+        if audit("refused_unknown_principal").is_err() {
+            return reply_internal();
+        }
+        return reply_canonical(&AccessGrantsResponse {
+            actor_id: caller.to_string(),
+            demo_identity_mode: true,
+            grants: Vec::new(),
+            snapshot_version: state.snapshot_version.clone(),
+        });
+    }
+    if audit("allowed").is_err() {
+        return reply_internal();
+    }
+    reply_canonical(&AccessGrantsResponse {
+        actor_id: caller.to_string(),
+        demo_identity_mode: true,
+        grants: store.visible_to(caller),
+        snapshot_version: state.snapshot_version.clone(),
+    })
+}
+
+fn get_access_grant(state: &AppState, caller: &str, grant_id: &str) -> Reply {
+    let Some(store) = &state.access_grants else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    let audit = |outcome: &str| store.audit("access_grant_get", caller, grant_id, outcome);
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("access grant people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    if !people.contains_key(caller) {
+        if audit("refused_unknown_principal").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    let Some(grant) = store.get(grant_id) else {
+        if audit("refused_not_found").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    if grant.grantee_id != caller && grant.approver_id != caller {
+        if audit("refused_not_party").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    if audit("allowed").is_err() {
+        return reply_internal();
+    }
+    reply_canonical(&AccessGrantResponse {
+        demo_identity_mode: true,
+        grant,
+        snapshot_version: state.snapshot_version.clone(),
+    })
+}
+
 fn decide_access_request(
     state: &AppState,
     caller: &str,
@@ -1629,11 +1729,32 @@ fn decide_access_request(
         reason_code,
         &state.snapshot_version,
     ) {
-        Ok(Ok(request)) => reply_canonical(&AccessRequestMutationResponse {
-            demo_identity_mode: true,
-            request,
-            snapshot_version: state.snapshot_version.clone(),
-        }),
+        Ok(Ok(request)) => {
+            if status == access_requests::STATUS_APPROVED {
+                if let Some(grant_store) = &state.access_grants {
+                    let grant_target = format!(
+                        "{}:{}",
+                        request.target.kind(),
+                        request.target.capability_id()
+                    );
+                    if grant_store
+                        .audit("access_grant_create", caller, &grant_target, "allowed")
+                        .is_err()
+                    {
+                        return reply_internal();
+                    }
+                    if let Err(err) = grant_store.create_from_approved_request(&request) {
+                        eprintln!("access grant create failed: {err:#}");
+                        return reply_internal();
+                    }
+                }
+            }
+            reply_canonical(&AccessRequestMutationResponse {
+                demo_identity_mode: true,
+                request,
+                snapshot_version: state.snapshot_version.clone(),
+            })
+        }
         Ok(Err(DecideError::NotFound)) => reply_error(StatusCode::NOT_FOUND, "not found"),
         Ok(Err(DecideError::Stale)) => reply_error(StatusCode::CONFLICT, "stale request"),
         Ok(Err(DecideError::AlreadyDecided)) => {
@@ -1670,6 +1791,24 @@ async fn handle_access_requests_inbox(
     DemoPrincipal(caller): DemoPrincipal,
 ) -> Response {
     run_blocking(state, move |state| inbox_access_requests(state, &caller)).await
+}
+
+async fn handle_access_grants_list(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+) -> Response {
+    run_blocking(state, move |state| list_access_grants(state, &caller)).await
+}
+
+async fn handle_access_grant_get(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    axum::extract::Path(grant_id): axum::extract::Path<String>,
+) -> Response {
+    run_blocking(state, move |state| {
+        get_access_grant(state, &caller, &grant_id)
+    })
+    .await
 }
 
 async fn handle_access_request_approve(
