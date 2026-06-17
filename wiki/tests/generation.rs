@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 use common::{compile_artifacts, fixtures_dir, scratch};
 
 fn generate_into(out: &Path) -> wiki::GenerateReport {
-    let artifacts = scratch("generation_artifacts");
+    // A per-test artifacts dir (keyed off the unique `out` name) so the tests in
+    // this binary, which run in parallel, never share a scratch dir.
+    let key = out.file_name().unwrap().to_string_lossy();
+    let artifacts = scratch(&format!("{key}_artifacts"));
     compile_artifacts(&artifacts);
     wiki::generate(&fixtures_dir(), &artifacts, out).expect("generate layer")
 }

@@ -7,11 +7,15 @@
 //! (a dev-dependency). The wiki runtime never links the compiler — only this
 //! harness does, and only to PRODUCE artifacts.
 
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
+
+use wiki::scope::DocSelector;
+use wiki::synth::{RawClaim, SourceDoc, Synthesizer};
 
 /// The repo's real fixtures dir (read-only).
 pub fn fixtures_dir() -> PathBuf {
@@ -81,5 +85,72 @@ fn hash_tree_into(root: &Path, dir: &Path, out: &mut BTreeMap<String, String>) {
                 .replace('\\', "/");
             out.insert(rel, sha256_file(&path));
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Slice-2 test doubles: a deterministic synthesizer that RECORDS exactly which
+// documents it was handed (so a test can prove no out-of-scope doc reaches the
+// model), and a fixed document selector (so tests need neither Ollama nor a
+// tantivy index).
+// ---------------------------------------------------------------------------
+
+type GenFn = Box<dyn Fn(&[SourceDoc]) -> Vec<RawClaim>>;
+
+pub struct RecordingSynthesizer {
+    model: String,
+    received: RefCell<BTreeSet<String>>,
+    gen: GenFn,
+}
+
+impl RecordingSynthesizer {
+    pub fn new(model: &str, gen: impl Fn(&[SourceDoc]) -> Vec<RawClaim> + 'static) -> Self {
+        RecordingSynthesizer {
+            model: model.to_string(),
+            received: RefCell::new(BTreeSet::new()),
+            gen: Box::new(gen),
+        }
+    }
+
+    /// Echoes each in-scope source back as a claim citing it (no implication).
+    pub fn echo(model: &str) -> Self {
+        RecordingSynthesizer::new(model, |sources| {
+            sources
+                .iter()
+                .map(|s| RawClaim {
+                    text: format!("Source {} ({}) is in scope", s.doc_id, s.title),
+                    cited_doc_id: s.doc_id.clone(),
+                    about_principal: None,
+                })
+                .collect()
+        })
+    }
+
+    /// Every distinct document id this synthesizer was handed, across all calls.
+    pub fn received_ids(&self) -> BTreeSet<String> {
+        self.received.borrow().clone()
+    }
+}
+
+impl Synthesizer for RecordingSynthesizer {
+    fn model_id(&self) -> &str {
+        &self.model
+    }
+    fn synthesize(&self, _topic: &str, sources: &[SourceDoc]) -> anyhow::Result<Vec<RawClaim>> {
+        for s in sources {
+            self.received.borrow_mut().insert(s.doc_id.clone());
+        }
+        Ok((self.gen)(sources))
+    }
+}
+
+/// Returns a fixed list of doc ids (capped at k) regardless of the topic.
+pub struct FixedSelector {
+    pub ids: Vec<String>,
+}
+
+impl DocSelector for FixedSelector {
+    fn select(&self, _topic: &str, k: usize) -> anyhow::Result<Vec<String>> {
+        Ok(self.ids.iter().take(k).cloned().collect())
     }
 }

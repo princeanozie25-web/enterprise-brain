@@ -2525,6 +2525,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "retrieval",
  "scope-compiler",
  "serde",
  "serde_json",

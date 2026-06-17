@@ -88,6 +88,10 @@ pub struct DocRecord {
     pub subject_id: Option<String>,
     #[serde(default)]
     pub acl_refs: Vec<AclRef>,
+    /// Full document text. Slice 2 feeds this (for in-scope docs ONLY) to the
+    /// local LLM as scope-gated source material.
+    #[serde(default)]
+    pub body: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

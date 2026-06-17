@@ -58,6 +58,9 @@ struct IndexRowView {
 struct IndexView {
     snapshot_version: String,
     principals: Vec<IndexRowView>,
+    /// fixture file name -> SHA-256 of its bytes at compile time.
+    #[serde(default)]
+    fixture_hashes: BTreeMap<String, String>,
 }
 
 // --- The read-only view -----------------------------------------------------
@@ -76,6 +79,7 @@ struct PrincipalGrants {
 #[derive(Debug, Clone)]
 pub struct AuthzView {
     snapshot_version: String,
+    documents_sha256: Option<String>,
     by_principal: BTreeMap<String, PrincipalGrants>,
 }
 
@@ -132,8 +136,15 @@ impl AuthzView {
 
         Ok(Self {
             snapshot_version: index.snapshot_version,
+            documents_sha256: index.fixture_hashes.get("documents.json").cloned(),
             by_principal,
         })
+    }
+
+    /// SHA-256 of the `documents.json` the allowlists were compiled from, if the
+    /// index records it. Slice 2 pins the corpus it feeds the model against this.
+    pub fn documents_sha256(&self) -> Option<&str> {
+        self.documents_sha256.as_deref()
     }
 
     pub fn snapshot_version(&self) -> &str {
