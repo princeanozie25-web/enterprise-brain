@@ -590,6 +590,10 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/access-grants", get(handle_access_grants_list))
         .route("/access-grants/{id}", get(handle_access_grant_get))
         .route(
+            "/access-grants/{id}/revoke",
+            post(handle_access_grant_revoke),
+        )
+        .route(
             "/access-requests/{id}/approve",
             post(handle_access_request_approve),
         )
@@ -1592,7 +1596,7 @@ fn list_access_grants(state: &AppState, caller: &str) -> Reply {
     reply_canonical(&AccessGrantsResponse {
         actor_id: caller.to_string(),
         demo_identity_mode: true,
-        grants: store.visible_to(caller),
+        grants: store.visible_to(caller, &state.snapshot_version),
         snapshot_version: state.snapshot_version.clone(),
     })
 }
@@ -1615,7 +1619,7 @@ fn get_access_grant(state: &AppState, caller: &str, grant_id: &str) -> Reply {
         }
         return reply_error(StatusCode::NOT_FOUND, "not found");
     }
-    let Some(grant) = store.get(grant_id) else {
+    let Some(grant) = store.get_effective(grant_id, &state.snapshot_version) else {
         if audit("refused_not_found").is_err() {
             return reply_internal();
         }
@@ -1635,6 +1639,100 @@ fn get_access_grant(state: &AppState, caller: &str, grant_id: &str) -> Reply {
         grant,
         snapshot_version: state.snapshot_version.clone(),
     })
+}
+
+fn revoke_access_grant(state: &AppState, caller: &str, grant_id: &str, body: &[u8]) -> Reply {
+    use access_grants::GrantRevokeError;
+
+    let Some(store) = &state.access_grants else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    let audit = |outcome: &str| store.audit("access_grant_revoke", caller, grant_id, outcome);
+    let decision_body: AccessRequestDecisionBody = if body.is_empty() {
+        AccessRequestDecisionBody::default()
+    } else {
+        match serde_json::from_slice(body) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                eprintln!("access grant revoke refused: {err}");
+                if audit("refused_strict_parse").is_err() {
+                    return reply_internal();
+                }
+                return reply_error(StatusCode::BAD_REQUEST, "revoke request fails strict parse");
+            }
+        }
+    };
+    let reason_code = match clean_reason_code(decision_body.reason_code) {
+        Ok(reason) => reason,
+        Err(err) => {
+            eprintln!("access grant revoke reason refused: {err:#}");
+            if audit("refused_bad_reason_code").is_err() {
+                return reply_internal();
+            }
+            return reply_error(StatusCode::BAD_REQUEST, "reason_code fails validation");
+        }
+    };
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("access grant people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    if !people.contains_key(caller) {
+        if audit("refused_unknown_principal").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    let Some(grant) = store.get_effective(grant_id, &state.snapshot_version) else {
+        if audit("refused_not_found").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    if grant.approver_id != caller {
+        if grant.grantee_id == caller {
+            if audit("refused_not_approver").is_err() {
+                return reply_internal();
+            }
+            return reply_error(StatusCode::FORBIDDEN, "forbidden");
+        }
+        if audit("refused_not_party").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    if grant.snapshot_version != state.snapshot_version {
+        if audit("refused_stale").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::CONFLICT, "stale grant");
+    }
+    if grant.status != access_grants::STATUS_ACTIVE {
+        if audit("refused_inactive").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::CONFLICT, "inactive grant");
+    }
+    if audit("allowed").is_err() {
+        return reply_internal();
+    }
+    match store.revoke(grant_id, caller, reason_code, &state.snapshot_version) {
+        Ok(Ok(grant)) => reply_canonical(&AccessGrantResponse {
+            demo_identity_mode: true,
+            grant,
+            snapshot_version: state.snapshot_version.clone(),
+        }),
+        Ok(Err(GrantRevokeError::NotFound)) => reply_error(StatusCode::NOT_FOUND, "not found"),
+        Ok(Err(GrantRevokeError::AlreadyInactive)) => {
+            reply_error(StatusCode::CONFLICT, "inactive grant")
+        }
+        Err(err) => {
+            eprintln!("access grant revoke failed: {err:#}");
+            reply_internal()
+        }
+    }
 }
 
 fn decide_access_request(
@@ -1807,6 +1905,19 @@ async fn handle_access_grant_get(
 ) -> Response {
     run_blocking(state, move |state| {
         get_access_grant(state, &caller, &grant_id)
+    })
+    .await
+}
+
+async fn handle_access_grant_revoke(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    axum::extract::Path(grant_id): axum::extract::Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    let body = body.to_vec();
+    run_blocking(state, move |state| {
+        revoke_access_grant(state, &caller, &grant_id, &body)
     })
     .await
 }

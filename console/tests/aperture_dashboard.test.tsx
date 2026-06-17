@@ -1,8 +1,9 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import type {
+  AccessGrantRecord,
   AccessGrantsResponse,
   AccessRequestsResponse,
   GraphResponse,
@@ -196,8 +197,36 @@ const GRANTS: AccessGrantsResponse = {
       status: "active",
       target: { kind: "project", capability_id: "cap31" },
     },
+    {
+      approver_id: "p060",
+      created_ordinal: 1,
+      grant_id: "ag_revoke",
+      grantee_id: "p061",
+      permission: "read",
+      reason: "manager_approved",
+      request_id: "ar_to_revoke",
+      snapshot_version: "snap",
+      status: "active",
+      target: { kind: "project", capability_id: "cap31" },
+    },
   ],
   snapshot_version: "snap",
+};
+
+const REVOKED_GRANT: AccessGrantRecord = {
+  approver_id: "p060",
+  created_ordinal: 1,
+  grant_id: "ag_revoke",
+  grantee_id: "p061",
+  permission: "read",
+  reason: "manager_approved",
+  request_id: "ar_to_revoke",
+  revocation_reason: "approver_revoked",
+  revoked_by: "p060",
+  revoked_ordinal: 2,
+  snapshot_version: "snap",
+  status: "revoked",
+  target: { kind: "project", capability_id: "cap31" },
 };
 
 const INBOX: AccessRequestsResponse = {
@@ -256,26 +285,38 @@ const WORKFLOW: ProjectWorkflowResponse = {
 };
 
 function stubDashboardFetch() {
+  const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/access-grants/ag_revoke/revoke") && init?.method === "POST") {
+      return new Response(
+        JSON.stringify({
+          demo_identity_mode: true,
+          grant: REVOKED_GRANT,
+          snapshot_version: "snap",
+        }),
+        { status: 200 },
+      );
+    }
+    if (url.endsWith("/lens/p060")) return new Response(JSON.stringify(LENS), { status: 200 });
+    if (url.endsWith("/graph")) return new Response(JSON.stringify(GRAPH), { status: 200 });
+    if (url.endsWith("/node/p060/summary")) return new Response(JSON.stringify(SUMMARY), { status: 200 });
+    if (url.endsWith("/me/scope")) return new Response(JSON.stringify(ROLE_SCOPE), { status: 200 });
+    if (url.endsWith("/access-requests/inbox")) return new Response(JSON.stringify(INBOX), { status: 200 });
+    if (url.endsWith("/access-grants")) return new Response(JSON.stringify(GRANTS), { status: 200 });
+    if (url.endsWith("/access-requests")) return new Response(JSON.stringify(REQUESTS), { status: 200 });
+    if (url.includes("/workflow/project/cap31")) return new Response(JSON.stringify(WORKFLOW), { status: 200 });
+    return new Response("{\"demo_identity_mode\":true,\"error\":\"not found\"}", { status: 404 });
+  });
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith("/lens/p060")) return new Response(JSON.stringify(LENS), { status: 200 });
-      if (url.endsWith("/graph")) return new Response(JSON.stringify(GRAPH), { status: 200 });
-      if (url.endsWith("/node/p060/summary")) return new Response(JSON.stringify(SUMMARY), { status: 200 });
-      if (url.endsWith("/me/scope")) return new Response(JSON.stringify(ROLE_SCOPE), { status: 200 });
-      if (url.endsWith("/access-requests/inbox")) return new Response(JSON.stringify(INBOX), { status: 200 });
-      if (url.endsWith("/access-grants")) return new Response(JSON.stringify(GRANTS), { status: 200 });
-      if (url.endsWith("/access-requests")) return new Response(JSON.stringify(REQUESTS), { status: 200 });
-      if (url.includes("/workflow/project/cap31")) return new Response(JSON.stringify(WORKFLOW), { status: 200 });
-      return new Response("{\"demo_identity_mode\":true,\"error\":\"not found\"}", { status: 404 });
-    }),
+    fetcher,
   );
+  return fetcher;
 }
 
 describe("EmployeeDashboard", () => {
   it("renders the daily work surface from real-shaped API responses", async () => {
-    stubDashboardFetch();
+    const fetcher = stubDashboardFetch();
     const { container } = render(<EmployeeDashboard actor="p060" />);
     await waitFor(() => expect(screen.getByTestId("employee-dashboard")).toBeTruthy());
 
@@ -311,10 +352,24 @@ describe("EmployeeDashboard", () => {
 
     expect(screen.getByTestId("dashboard-agent").textContent).toContain("Finance analysis assistant");
     expect(screen.getByTestId("dashboard-request").textContent).toContain("pending");
-    const grant = screen.getByTestId("dashboard-grant");
-    expect(grant.textContent).toContain("read grant");
-    expect(grant.textContent).toContain("active");
-    expect(grant.getAttribute("href")).toBe("/project?cap=cap31&as=p060");
+    const grants = screen.getAllByTestId("dashboard-grant");
+    const grant = grants.find((row) => row.textContent?.includes("ag_123"));
+    expect(grant).toBeTruthy();
+    expect(grant?.textContent).toContain("read grant");
+    expect(grant?.textContent).toContain("active");
+    expect(within(grant!).getByRole("link").getAttribute("href")).toBe("/project?cap=cap31&as=p060");
+
+    const revokeButton = screen.getByTestId("dashboard-grant-revoke");
+    expect(revokeButton.textContent).toBe("Revoke");
+    fireEvent.click(revokeButton);
+    await waitFor(() => expect(screen.getByText("revoked by p060")).toBeTruthy());
+    expect(fetcher).toHaveBeenCalledWith(
+      expect.stringContaining("/access-grants/ag_revoke/revoke"),
+      expect.objectContaining({
+        body: JSON.stringify({ reason_code: "approver_revoked" }),
+        method: "POST",
+      }),
+    );
     expect(screen.getByTestId("dashboard-knowledge").textContent).toContain("Visible rows");
 
     const text = container.textContent ?? "";

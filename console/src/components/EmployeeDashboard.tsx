@@ -451,6 +451,8 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   const [grants, setGrants] = useState<AccessGrantRecord[]>([]);
   const [inbox, setInbox] = useState<AccessRequestRecord[]>([]);
   const [workflows, setWorkflows] = useState<ProjectWorkflowResponse[]>([]);
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const [revokingGrantId, setRevokingGrantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
 
@@ -464,6 +466,8 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
       setGrants([]);
       setInbox([]);
       setWorkflows([]);
+      setGrantError(null);
+      setRevokingGrantId(null);
       setAvailable(true);
       setLoading(false);
       return;
@@ -498,6 +502,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
         setRequests(requestResponse?.requests ?? []);
         setGrants(grantResponse?.grants ?? []);
         setInbox(inboxResponse?.requests ?? []);
+        setGrantError(null);
         setAvailable(lensResponse !== null);
 
         const projects = lensResponse?.subject_human?.projects ?? [];
@@ -522,6 +527,8 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
           setGrants([]);
           setInbox([]);
           setWorkflows([]);
+          setGrantError(null);
+          setRevokingGrantId(null);
           setAvailable(false);
         }
       })
@@ -592,6 +599,23 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
     summary,
     workflowItems,
   });
+
+  async function revokeGrant(grantId: string) {
+    if (!actor) return;
+    const actorId = actor;
+    setRevokingGrantId(grantId);
+    setGrantError(null);
+    try {
+      const response = await api.postAccessGrantRevoke(actorId, grantId, "approver_revoked");
+      setGrants((current) =>
+        current.map((grant) => (grant.grant_id === grantId ? response.grant : grant)),
+      );
+    } catch {
+      setGrantError("Grant revoke failed.");
+    } finally {
+      setRevokingGrantId(null);
+    }
+  }
 
   return (
     <main className="min-w-0 flex-1" data-testid="employee-dashboard">
@@ -670,10 +694,13 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
           >
             <RequestsList
               actor={actor}
+              grantError={grantError}
               grants={grants}
               requests={requests}
               inbox={inbox}
+              onRevokeGrant={revokeGrant}
               projectById={projectById}
+              revokingGrantId={revokingGrantId}
             />
           </Panel>
 
@@ -852,16 +879,22 @@ function AgentsList({ agents }: { agents: NonNullable<NodeSummary["agents_owned"
 
 function RequestsList({
   actor,
+  grantError,
   grants,
   inbox,
+  onRevokeGrant,
   projectById,
   requests,
+  revokingGrantId,
 }: {
   actor: string;
+  grantError: string | null;
   grants: AccessGrantRecord[];
   inbox: AccessRequestRecord[];
+  onRevokeGrant: (grantId: string) => void;
   projectById: Map<string, GraphProject>;
   requests: AccessRequestRecord[];
+  revokingGrantId: string | null;
 }) {
   const rows = [
     ...requests.map((request) => ({ label: "Mine", request })),
@@ -872,34 +905,57 @@ function RequestsList({
   }
   return (
     <div className="space-y-2" data-testid="dashboard-requests">
+      {grantError && (
+        <p className="ap-soft rounded border px-2 py-1" style={{ fontSize: TYPE.scale.xs }} role="alert">
+          {grantError}
+        </p>
+      )}
       {grants.length > 0 && (
         <div className="grid grid-cols-1 gap-2">
           {grants.map((grant) => {
             const project = projectById.get(grant.target.capability_id);
+            const canRevoke = grant.approver_id === actor && grant.status === "active";
+            const isRevoking = revokingGrantId === grant.grant_id;
             return (
-              <a
+              <div
                 key={grant.grant_id}
-                href={`/project?cap=${encodeURIComponent(grant.target.capability_id)}&as=${encodeURIComponent(actor)}`}
-                className="ap-card ap-washable block rounded p-2"
+                className="ap-card rounded p-2"
                 data-testid="dashboard-grant"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                    <a
+                      href={`/project?cap=${encodeURIComponent(grant.target.capability_id)}&as=${encodeURIComponent(actor)}`}
+                      className="ap-register-chrome ap-washable block truncate rounded px-1 py-0.5"
+                      style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
+                    >
                       {project?.label.replace(/^Capability:\s*/i, "") ?? grant.target.capability_id}
-                    </p>
+                    </a>
                     <p className="ap-register-evidence ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
                       {grant.grant_id}
                     </p>
                   </div>
-                  <Chip>{grant.permission} grant</Chip>
+                  <Chip>{grant.status}</Chip>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Chip>{grant.status}</Chip>
+                  <Chip>{grant.permission} grant</Chip>
                   <Chip mono>request {grant.request_id}</Chip>
                   <Chip mono>approver {grant.approver_id}</Chip>
+                  {grant.revoked_by && <Chip mono>revoked by {grant.revoked_by}</Chip>}
                 </div>
-              </a>
+                {canRevoke && (
+                  <button
+                    type="button"
+                    className="ap-washable ap-register-chrome ap-soft mt-2 rounded border px-2 py-1"
+                    style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+                    disabled={isRevoking}
+                    onClick={() => onRevokeGrant(grant.grant_id)}
+                    data-testid="dashboard-grant-revoke"
+                  >
+                    {isRevoking ? "Revoking" : "Revoke"}
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

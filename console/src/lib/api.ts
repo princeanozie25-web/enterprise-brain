@@ -328,7 +328,7 @@ export async function getGraph(actor: string): Promise<GraphResponse | null> {
 // ---------------------------------------------------------------------------
 
 export type AccessRequestStatus = "pending" | "approved" | "denied" | "cancelled" | "expired";
-export type AccessGrantStatus = "active";
+export type AccessGrantStatus = "active" | "revoked" | "expired";
 export type AccessGrantPermission = "read";
 
 export type AccessTarget =
@@ -377,6 +377,9 @@ export interface AccessGrantRecord {
   permission: AccessGrantPermission;
   reason: string;
   request_id: string;
+  revocation_reason?: string;
+  revoked_by?: string;
+  revoked_ordinal?: number;
   snapshot_version: string;
   status: AccessGrantStatus;
   target: AccessTarget;
@@ -459,6 +462,22 @@ export async function getAccessGrant(
   if (response.status === 404) {
     return null;
   }
+  return parse<AccessGrantResponse>(response);
+}
+
+export async function postAccessGrantRevoke(
+  actor: string,
+  grantId: string,
+  reasonCode?: string,
+): Promise<AccessGrantResponse> {
+  const response = await fetch(
+    `${SERVICE_URL}/access-grants/${encodeURIComponent(grantId)}/revoke`,
+    {
+      method: "POST",
+      headers: headers(actor),
+      body: reasonCode ? JSON.stringify({ reason_code: reasonCode }) : undefined,
+    },
+  );
   return parse<AccessGrantResponse>(response);
 }
 

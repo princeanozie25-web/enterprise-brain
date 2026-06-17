@@ -16,6 +16,8 @@ use crate::access_requests::{AccessRequest, AccessTarget, STATUS_APPROVED};
 
 pub const PERMISSION_READ: &str = "read";
 pub const STATUS_ACTIVE: &str = "active";
+pub const STATUS_EXPIRED: &str = "expired";
+pub const STATUS_REVOKED: &str = "revoked";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -29,15 +31,56 @@ pub struct AccessGrant {
     pub permission: String,
     pub reason: String,
     pub request_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revocation_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revoked_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revoked_ordinal: Option<u64>,
     pub snapshot_version: String,
     pub status: String,
     pub target: AccessTarget,
 }
 
+impl AccessGrant {
+    fn expired_at(&self, snapshot_version: &str) -> bool {
+        self.status == STATUS_ACTIVE
+            && self
+                .expires_at
+                .as_deref()
+                .map(|expires_at| {
+                    let expires_at = expires_at.trim();
+                    !expires_at.is_empty() && expires_at == snapshot_version
+                })
+                .unwrap_or(false)
+    }
+
+    fn effective_for(mut self, snapshot_version: &str) -> AccessGrant {
+        if self.expired_at(snapshot_version) {
+            self.status = STATUS_EXPIRED.to_string();
+        }
+        self
+    }
+
+    fn active_read_at(&self, snapshot_version: &str) -> bool {
+        self.permission == PERMISSION_READ
+            && self.status == STATUS_ACTIVE
+            && !self.expired_at(snapshot_version)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case", deny_unknown_fields)]
 enum StoreEvent {
-    Created { grant: AccessGrant },
+    Created {
+        grant: AccessGrant,
+    },
+    Revoked {
+        actor_principal: String,
+        grant_id: String,
+        reason_code: Option<String>,
+        revoked_ordinal: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +112,12 @@ pub enum GrantCreateOutcome {
     Existing(Box<AccessGrant>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GrantRevokeError {
+    AlreadyInactive,
+    NotFound,
+}
+
 impl AccessGrantStore {
     pub fn open(dir: &Path) -> Result<AccessGrantStore> {
         std::fs::create_dir_all(dir)
@@ -95,6 +144,21 @@ impl AccessGrantStore {
                             .by_request
                             .insert(grant.request_id.clone(), grant.grant_id.clone());
                         state.grants.insert(grant.grant_id.clone(), grant);
+                    }
+                    StoreEvent::Revoked {
+                        actor_principal,
+                        grant_id,
+                        reason_code,
+                        revoked_ordinal,
+                    } => {
+                        let grant = state
+                            .grants
+                            .get_mut(&grant_id)
+                            .context("revoked event for unknown access grant; store corrupt")?;
+                        grant.status = STATUS_REVOKED.to_string();
+                        grant.revoked_by = Some(actor_principal);
+                        grant.revoked_ordinal = Some(revoked_ordinal);
+                        grant.revocation_reason = reason_code;
                     }
                 }
             }
@@ -147,6 +211,14 @@ impl AccessGrantStore {
         &self,
         request: &AccessRequest,
     ) -> Result<GrantCreateOutcome> {
+        self.create_from_approved_request_with_expiry(request, None)
+    }
+
+    pub fn create_from_approved_request_with_expiry(
+        &self,
+        request: &AccessRequest,
+        expires_at: Option<String>,
+    ) -> Result<GrantCreateOutcome> {
         if request.status != STATUS_APPROVED {
             bail!("cannot create an access grant from a non-approved request");
         }
@@ -180,12 +252,15 @@ impl AccessGrantStore {
         let grant = AccessGrant {
             approver_id: request.approver_id.clone(),
             created_ordinal: state.next_ordinal,
-            expires_at: None,
+            expires_at,
             grant_id,
             grantee_id: request.requester_id.clone(),
             permission: PERMISSION_READ.to_string(),
             reason,
             request_id: request.request_id.clone(),
+            revocation_reason: None,
+            revoked_by: None,
+            revoked_ordinal: None,
             snapshot_version: request.snapshot_version.clone(),
             status: STATUS_ACTIVE.to_string(),
             target: request.target.clone(),
@@ -214,13 +289,56 @@ impl AccessGrantStore {
             .cloned()
     }
 
-    pub fn visible_to(&self, actor: &str) -> Vec<AccessGrant> {
+    pub fn get_effective(&self, grant_id: &str, snapshot_version: &str) -> Option<AccessGrant> {
+        self.get(grant_id)
+            .map(|grant| grant.effective_for(snapshot_version))
+    }
+
+    pub fn revoke(
+        &self,
+        grant_id: &str,
+        actor_principal: &str,
+        reason_code: Option<String>,
+        snapshot_version: &str,
+    ) -> Result<Result<AccessGrant, GrantRevokeError>> {
+        let mut state = self.state.lock().expect("store mutex");
+        let Some(existing) = state.grants.get(grant_id) else {
+            return Ok(Err(GrantRevokeError::NotFound));
+        };
+        if !existing
+            .clone()
+            .effective_for(snapshot_version)
+            .active_read_at(snapshot_version)
+        {
+            return Ok(Err(GrantRevokeError::AlreadyInactive));
+        }
+        let revoked_ordinal = state.next_ordinal;
+        Self::append(
+            &self.grants_path,
+            &StoreEvent::Revoked {
+                actor_principal: actor_principal.to_string(),
+                grant_id: grant_id.to_string(),
+                reason_code: reason_code.clone(),
+                revoked_ordinal,
+            },
+        )?;
+        state.next_ordinal += 1;
+        let grant = state.grants.get_mut(grant_id).expect("checked above");
+        grant.status = STATUS_REVOKED.to_string();
+        grant.revoked_by = Some(actor_principal.to_string());
+        grant.revoked_ordinal = Some(revoked_ordinal);
+        grant.revocation_reason = reason_code;
+        Ok(Ok(grant.clone()))
+    }
+
+    pub fn visible_to(&self, actor: &str, snapshot_version: &str) -> Vec<AccessGrant> {
         let state = self.state.lock().expect("store mutex");
         let mut grants: Vec<AccessGrant> = state
             .grants
             .values()
             .filter(|grant| grant.grantee_id == actor || grant.approver_id == actor)
             .cloned()
+            .map(|grant| grant.effective_for(snapshot_version))
             .collect();
         grants.sort_by_key(|grant| grant.created_ordinal);
         grants
@@ -235,10 +353,9 @@ impl AccessGrantStore {
         let state = self.state.lock().expect("store mutex");
         state.grants.values().any(|grant| {
             grant.grantee_id == grantee_id
-                && grant.permission == PERMISSION_READ
-                && grant.status == STATUS_ACTIVE
                 && grant.snapshot_version == snapshot_version
                 && grant.target.capability_id() == capability_id
+                && grant.active_read_at(snapshot_version)
         })
     }
 }

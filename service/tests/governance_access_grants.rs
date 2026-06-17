@@ -8,7 +8,7 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -16,7 +16,9 @@ use retrieval::index::{build_index, sha256_hex};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use service::access_grants::{AccessGrantStore, AuditEvent};
-use service::access_requests::AccessRequestStore;
+use service::access_requests::{
+    AccessDecision, AccessRequest, AccessRequestStore, AccessTarget, STATUS_APPROVED,
+};
 use service::{app, AppState};
 use tower::ServiceExt;
 
@@ -63,6 +65,11 @@ fn world() -> &'static World {
             idx_dir,
         }
     })
+}
+
+fn access_grant_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn grant_state(store_dir: &Path) -> (AppState, Arc<AccessRequestStore>, Arc<AccessGrantStore>) {
@@ -256,6 +263,7 @@ async fn get(router: &axum::Router, principal: &str, uri: &str) -> (StatusCode, 
 
 #[tokio::test]
 async fn approved_request_creates_read_grant_without_mutating_compiled_access() {
+    let _guard = access_grant_test_lock().lock().expect("test lock");
     let store_dir = scratch("access_grant_create_store");
     let (requester, approver, non_party, capability, _outside_capability) = request_fixture();
     let world = world();
@@ -342,6 +350,7 @@ async fn approved_request_creates_read_grant_without_mutating_compiled_access() 
 
 #[tokio::test]
 async fn read_grant_opens_project_workflow_context_without_document_ids() {
+    let _guard = access_grant_test_lock().lock().expect("test lock");
     let store_dir = scratch("access_grant_workflow_store");
     let (requester, approver, _non_party, _own_capability, outside_capability) = request_fixture();
     let (state, _requests, _grants) = grant_state(&store_dir);
@@ -395,5 +404,234 @@ async fn read_grant_opens_project_workflow_context_without_document_ids() {
     let text = String::from_utf8_lossy(&workflow_bytes);
     assert!(!text.contains("document_id"));
     assert!(!text.contains("evidence"));
+    assert!(!text.contains("denied"));
+}
+
+#[tokio::test]
+async fn approver_can_revoke_and_revoked_grant_no_longer_unlocks_workflow() {
+    let _guard = access_grant_test_lock().lock().expect("test lock");
+    let store_dir = scratch("access_grant_revoke_store");
+    let (requester, approver, _non_party, _own_capability, outside_capability) = request_fixture();
+    let (state, _requests, _grants) = grant_state(&store_dir);
+    let router = app(Arc::new(state));
+
+    let (status, created, _) = post_json(
+        &router,
+        &requester,
+        "/access-requests",
+        json!({
+            "target": { "kind": "project", "capability_id": outside_capability },
+            "justification": "Need temporary approved read context for this capability."
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let request_id = created["request"]["request_id"].as_str().unwrap();
+
+    let (status, _approved, _) = post_json(
+        &router,
+        &approver,
+        &format!("/access-requests/{request_id}/approve"),
+        json!({ "reason_code": "manager_approved" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, grant_list, list_bytes) = get(&router, &requester, "/access-grants").await;
+    assert_eq!(status, StatusCode::OK);
+    let grant = &grant_list["grants"].as_array().unwrap()[0];
+    let grant_id = grant["grant_id"].as_str().unwrap();
+    assert_eq!(grant["status"], "active");
+    let list_text = String::from_utf8_lossy(&list_bytes);
+    assert!(!list_text.contains("document_id"));
+    assert!(!list_text.contains("\"permission\":\"write\""));
+    assert!(!list_text.contains("\"permission\":\"admin\""));
+    assert!(!list_text.contains("denied"));
+
+    let (status, workflow, workflow_bytes) = get(
+        &router,
+        &requester,
+        &format!("/workflow/project/{outside_capability}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(workflow["capability_id"], outside_capability);
+    assert!(!String::from_utf8_lossy(&workflow_bytes).contains("document_id"));
+
+    let (status, revoked, revoked_bytes) = post_json(
+        &router,
+        &approver,
+        &format!("/access-grants/{grant_id}/revoke"),
+        json!({ "reason_code": "manager_revoked" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revoked["grant"]["status"], "revoked");
+    assert_eq!(revoked["grant"]["revoked_by"], approver);
+    assert_eq!(revoked["grant"]["revocation_reason"], "manager_revoked");
+    let revoked_text = String::from_utf8_lossy(&revoked_bytes);
+    assert!(!revoked_text.contains("document_id"));
+    assert!(!revoked_text.contains("\"permission\":\"write\""));
+    assert!(!revoked_text.contains("\"permission\":\"admin\""));
+
+    let (status, after, after_bytes) = get(
+        &router,
+        &requester,
+        &format!("/workflow/project/{outside_capability}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(after["error"], "not found");
+    let after_text = String::from_utf8_lossy(&after_bytes);
+    assert!(!after_text.contains("document_id"));
+    assert!(!after_text.contains("denied"));
+
+    let audit = read_grant_audit(&store_dir);
+    let allowed_create = audit.iter().position(|row| {
+        row.action == "access_grant_create"
+            && row.actor_principal == approver
+            && row.outcome == "allowed"
+    });
+    let allowed_revoke = audit.iter().position(|row| {
+        row.action == "access_grant_revoke"
+            && row.actor_principal == approver
+            && row.target == grant_id
+            && row.outcome == "allowed"
+    });
+    assert!(allowed_create.is_some());
+    assert!(allowed_revoke.is_some());
+    assert!(allowed_revoke.unwrap() > allowed_create.unwrap());
+}
+
+#[tokio::test]
+async fn grant_revoke_refuses_grantee_and_unrelated_actor() {
+    let _guard = access_grant_test_lock().lock().expect("test lock");
+    let store_dir = scratch("access_grant_revoke_refuse_store");
+    let (requester, approver, non_party, _own_capability, outside_capability) = request_fixture();
+    let (state, _requests, _grants) = grant_state(&store_dir);
+    let router = app(Arc::new(state));
+
+    let (status, created, _) = post_json(
+        &router,
+        &requester,
+        "/access-requests",
+        json!({
+            "target": { "kind": "project", "capability_id": outside_capability },
+            "justification": "Need approved read context for this capability."
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let request_id = created["request"]["request_id"].as_str().unwrap();
+    let (status, _approved, _) = post_json(
+        &router,
+        &approver,
+        &format!("/access-requests/{request_id}/approve"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, grant_list, _) = get(&router, &requester, "/access-grants").await;
+    assert_eq!(status, StatusCode::OK);
+    let grant_id = grant_list["grants"].as_array().unwrap()[0]["grant_id"]
+        .as_str()
+        .unwrap();
+
+    let (status, refused_grantee, _) = post_json(
+        &router,
+        &requester,
+        &format!("/access-grants/{grant_id}/revoke"),
+        json!({ "reason_code": "self_revoke_not_modelled" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(refused_grantee["error"], "forbidden");
+
+    let (status, refused_non_party, hidden_bytes) = post_json(
+        &router,
+        &non_party,
+        &format!("/access-grants/{grant_id}/revoke"),
+        json!({ "reason_code": "unrelated_actor" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(refused_non_party["error"], "not found");
+    assert!(!String::from_utf8_lossy(&hidden_bytes).contains(grant_id));
+
+    let (status, grant_body, _) =
+        get(&router, &requester, &format!("/access-grants/{grant_id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(grant_body["grant"]["status"], "active");
+
+    let audit = read_grant_audit(&store_dir);
+    assert!(audit.iter().any(|row| {
+        row.action == "access_grant_revoke"
+            && row.actor_principal == requester
+            && row.outcome == "refused_not_approver"
+    }));
+    assert!(audit.iter().any(|row| {
+        row.action == "access_grant_revoke"
+            && row.actor_principal == non_party
+            && row.outcome == "refused_not_party"
+    }));
+}
+
+#[tokio::test]
+async fn expired_grant_no_longer_unlocks_context() {
+    let _guard = access_grant_test_lock().lock().expect("test lock");
+    let store_dir = scratch("access_grant_expired_store");
+    let (requester, approver, _non_party, _own_capability, outside_capability) = request_fixture();
+    let (state, _requests, grants) = grant_state(&store_dir);
+    let snapshot_version = state.snapshot_version.clone();
+    let target = AccessTarget::Project {
+        capability_id: outside_capability.clone(),
+    };
+    let request = AccessRequest {
+        approver_id: approver.clone(),
+        created_ordinal: 0,
+        decision: Some(AccessDecision {
+            actor_principal: approver,
+            decided_ordinal: 1,
+            outcome: STATUS_APPROVED.to_string(),
+            reason_code: Some("manager_approved".to_string()),
+        }),
+        justification: "Expired read context fixture.".to_string(),
+        request_id: "ar_expired_fixture".to_string(),
+        request_key: AccessRequestStore::request_key(&requester, &target),
+        requester_id: requester.clone(),
+        snapshot_version: snapshot_version.clone(),
+        status: STATUS_APPROVED.to_string(),
+        target,
+    };
+    let grant = grants
+        .create_from_approved_request_with_expiry(&request, Some(snapshot_version.clone()))
+        .expect("create expired grant");
+    let grant_id = match grant {
+        service::access_grants::GrantCreateOutcome::Created(grant) => grant.grant_id.clone(),
+        service::access_grants::GrantCreateOutcome::Existing(grant) => grant.grant_id.clone(),
+    };
+    let router = app(Arc::new(state));
+
+    let (status, workflow, workflow_bytes) = get(
+        &router,
+        &requester,
+        &format!("/workflow/project/{outside_capability}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(workflow["error"], "not found");
+    assert!(!String::from_utf8_lossy(&workflow_bytes).contains("document_id"));
+
+    let (status, grant_list, list_bytes) = get(&router, &requester, "/access-grants").await;
+    assert_eq!(status, StatusCode::OK);
+    let grants = grant_list["grants"].as_array().unwrap();
+    assert_eq!(grants.len(), 1);
+    assert_eq!(grants[0]["grant_id"], grant_id);
+    assert_eq!(grants[0]["status"], "expired");
+    let text = String::from_utf8_lossy(&list_bytes);
+    assert!(!text.contains("document_id"));
+    assert!(!text.contains("\"permission\":\"write\""));
+    assert!(!text.contains("\"permission\":\"admin\""));
     assert!(!text.contains("denied"));
 }
