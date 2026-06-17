@@ -237,9 +237,11 @@ describe("U-17: an actor switch clears the Atlas room", () => {
     render(<Console view="atlas" />);
 
     // The shell offers the doors; the reserved one is disabled, not a link.
-    // AR-2: the Org Graph is the entry view (href "/"); Ask moved to /ask.
-    expect(screen.getByTestId("view-door-graph").getAttribute("href")).toBe("/");
+    expect(screen.getByTestId("view-door-me").getAttribute("href")).toBe("/me");
+    expect(screen.getByTestId("view-door-project").getAttribute("href")).toBe("/project");
     expect(screen.getByTestId("view-door-ask").getAttribute("href")).toBe("/ask");
+    expect(screen.getByTestId("view-door-admin-graph").getAttribute("href")).toBe("/admin/graph");
+    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("not full auth enforced yet");
     expect(screen.getByTestId("view-door-lens").getAttribute("href")).toBe("/lens");
     expect(screen.getByTestId("view-door-atlas").getAttribute("aria-current")).toBe("page");
     const ledger = screen.getByTestId("ledger-door");

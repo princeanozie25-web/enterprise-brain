@@ -51,7 +51,7 @@ function entryDoorActor(search: string): string | null {
 export function Console({
   view = "ask",
 }: {
-  view?: "graph" | "ask" | "lens" | "atlas" | "lane" | "project" | "me";
+  view?: "adminGraph" | "ask" | "lens" | "atlas" | "lane" | "project" | "me";
 }) {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
@@ -186,15 +186,20 @@ export function Console({
 
       <nav className="ap-card border-x-0 border-t-0" aria-label="Rooms" data-testid="view-switcher">
         <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-1.5">
-          <ViewDoor label="Graph" href="/" active={view === "graph"} principal={principal} />
           <ViewDoor label="Me" href="/me" active={view === "me"} principal={principal} />
+          <ViewDoor label="Project" href="/project" active={view === "project"} principal={principal} />
           <ViewDoor label="Ask" href="/ask" active={view === "ask"} principal={principal} />
+          <ViewDoor label="Admin Graph" href="/admin/graph" active={view === "adminGraph"} principal={principal} />
+          <span
+            className="ap-register-evidence ap-soft rounded px-1.5 py-0.5"
+            style={{ fontSize: TYPE.scale.xs }}
+            data-testid="admin-preview-badge"
+          >
+            derived access posture only / not full auth enforced yet
+          </span>
           <ViewDoor label="Lens" href="/lens" active={view === "lens"} principal={principal} />
           <ViewDoor label="Atlas" href="/atlas" active={view === "atlas"} principal={principal} />
           <ViewDoor label="Lane" href="/lane" active={view === "lane"} principal={principal} />
-          {view === "project" && (
-            <ViewDoor label="Project" href="/project" active principal={principal} />
-          )}
           {/* THE RESERVED DOOR — flagged in the AP-3 closeout: "Ledger —
               reserved" is placeholder copy for a room that does not exist
               yet. Disabled, not hidden: the shell states its own shape. */}
@@ -214,9 +219,9 @@ export function Console({
         className={`mx-auto flex max-w-6xl gap-6 p-4 ${irisClass}`}
         data-testid="iris-stage"
       >
-        {view === "graph" ? (
+        {view === "adminGraph" ? (
           <main className="min-w-0 flex-1">
-            <GraphRoom actor={principal} reducedMotion={reduced} />
+            <GraphRoom actor={principal} reducedMotion={reduced} adminPreview />
           </main>
         ) : view === "me" ? (
           <EmployeeDashboard actor={principal} />
@@ -375,7 +380,7 @@ function ViewDoor({
   active: boolean;
   principal: string | null;
 }) {
-  const testid = `view-door-${label.toLowerCase()}`;
+  const testid = `view-door-${label.toLowerCase().replace(/\s+/g, "-")}`;
   if (active) {
     return (
       <span
