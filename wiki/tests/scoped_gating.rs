@@ -10,7 +10,10 @@ mod common;
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use common::{compile_artifacts, fixtures_dir, scratch, FixedSelector, RecordingSynthesizer};
+use common::{
+    compile_artifacts, fixtures_dir, scratch, verbatim_prefix, FakeVerifier, FixedSelector,
+    RecordingSynthesizer,
+};
 
 use wiki::authz::{AuthzView, GrantOracle};
 use wiki::scope::{ScopeContext, ScopeGate};
@@ -31,11 +34,12 @@ fn echo_layer(artifacts: &Path, sources: &Sources, authz: &AuthzView, pid: &str)
     let ctx = ScopeContext::build(gate, sources);
     let selector = FixedSelector { ids: head };
     let synth = RecordingSynthesizer::echo("fake-model");
+    let verifier = FakeVerifier::always();
     let topics = vec![Topic {
         label: "scope material".into(),
         query: "scope material".into(),
     }];
-    derive_scope(sources, &ctx, &topics, &selector, &synth, authz).expect("derive scope")
+    derive_scope(sources, &ctx, &topics, &selector, &synth, &verifier, authz).expect("derive scope")
 }
 
 #[test]
@@ -106,11 +110,15 @@ fn doc_set_handed_to_model_equals_oracle_allowed_set_and_never_exceeds_it() {
     let ctx = ScopeContext::build(gate, &sources);
     let selector = FixedSelector { ids: head };
     let synth = RecordingSynthesizer::echo("fake-model");
+    let verifier = FakeVerifier::always();
     let topics = vec![Topic {
         label: "t".into(),
         query: "t".into(),
     }];
-    let _layer = derive_scope(&sources, &ctx, &topics, &selector, &synth, &authz).unwrap();
+    let _layer = derive_scope(
+        &sources, &ctx, &topics, &selector, &synth, &verifier, &authz,
+    )
+    .unwrap();
 
     let received = synth.received_ids();
     assert!(!received.is_empty(), "the model was handed some documents");
@@ -149,25 +157,39 @@ fn adversarial_out_of_scope_citation_is_refused() {
     // plus one honest in-scope claim.
     let oos = out_of_scope.clone();
     let honest_id = honest.clone();
-    let synth = RecordingSynthesizer::new("adversary", move |_sources| {
+    let synth = RecordingSynthesizer::new("adversary", move |sources| {
+        // A verbatim quote from the honest in-scope doc, so that claim can anchor
+        // and land. The smuggled claim is refused at the scope gate BEFORE
+        // grounding runs, so its quote is irrelevant.
+        let honest_quote = sources
+            .iter()
+            .find(|s| s.doc_id == honest_id)
+            .map(|s| verbatim_prefix(&s.text, 48))
+            .unwrap_or_default();
         vec![
             RawClaim {
                 text: "smuggle HR knowledge".into(),
                 cited_doc_id: oos.clone(),
+                quote: "irrelevant — refused before grounding".into(),
                 about_principal: None,
             },
             RawClaim {
                 text: "honest in-scope fact".into(),
                 cited_doc_id: honest_id.clone(),
+                quote: honest_quote,
                 about_principal: None,
             },
         ]
     });
+    let verifier = FakeVerifier::always();
     let topics = vec![Topic {
         label: "t".into(),
         query: "t".into(),
     }];
-    let layer = derive_scope(&sources, &ctx, &topics, &selector, &synth, &authz).unwrap();
+    let layer = derive_scope(
+        &sources, &ctx, &topics, &selector, &synth, &verifier, &authz,
+    )
+    .unwrap();
 
     // The out-of-scope citation was REFUSED — recorded, never written.
     assert!(

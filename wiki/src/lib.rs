@@ -24,6 +24,7 @@
 pub mod authz;
 pub mod compound;
 pub mod derive;
+pub mod ground;
 pub mod provenance;
 pub mod render;
 pub mod scope;
@@ -41,6 +42,7 @@ use anyhow::{bail, Context, Result};
 pub use authz::{AuthzView, GrantOracle};
 pub use compound::{compound_answer, CompoundStore, CompoundedPage, ScopeStamp, SourceRef};
 pub use derive::{derive_all, DerivedLayer};
+pub use ground::{Anchor, OllamaVerifier, SupportVerdict, Verifier};
 pub use provenance::{Claim, Provenance};
 pub use scope::{RetrievalSelector, ScopeContext, ScopeGate};
 pub use scoped::{derive_scope, ScopedLayer, Topic};
@@ -97,6 +99,10 @@ pub struct ScopeResult {
     pub claims: usize,
     pub fail_closed_flags: usize,
     pub refused: usize,
+    /// Grounding (slice 4): no verbatim in-scope span — unfounded.
+    pub refused_unfounded: usize,
+    /// Grounding (slice 4): anchored but judge did not confirm support.
+    pub withheld: usize,
 }
 
 /// Summary of a scoped generation run.
@@ -106,6 +112,7 @@ pub struct ScopedGenerateReport {
     pub structural_flags: usize,
     pub pages_written: usize,
     pub model: String,
+    pub judge_model: String,
 }
 
 /// Derives scoped content knowledge for each principal using the LIVE local
@@ -121,6 +128,7 @@ pub fn generate_scoped(
     principals: &[String],
     endpoint: &str,
     model: &str,
+    judge_model: &str,
     timeout: Duration,
 ) -> Result<ScopedGenerateReport> {
     let sources = Sources::load(fixtures_dir)?;
@@ -144,6 +152,7 @@ pub fn generate_scoped(
     }
 
     let synth = OllamaSynthesizer::new(endpoint, model, timeout)?;
+    let verifier = OllamaVerifier::new(endpoint, judge_model, timeout)?;
 
     // Slice-1 structural flags feed the standing drift report.
     let structural_flags = derive_all(&sources, &authz).all_discrepancies().len();
@@ -154,7 +163,9 @@ pub fn generate_scoped(
         let ctx = ScopeContext::build(gate, &sources);
         let selector = RetrievalSelector::open(idx_dir, artifacts_dir, principal)?;
         let topics = topics_for_scope(&sources, principal);
-        let layer = derive_scope(&sources, &ctx, &topics, &selector, &synth, &authz)?;
+        let layer = derive_scope(
+            &sources, &ctx, &topics, &selector, &synth, &verifier, &authz,
+        )?;
         layers.push(layer);
     }
 
@@ -181,11 +192,14 @@ pub fn generate_scoped(
                 claims: l.claims.len(),
                 fail_closed_flags: l.discrepancies.len(),
                 refused: l.rejected.len(),
+                refused_unfounded: l.refused_unfounded.len(),
+                withheld: l.withheld.len(),
             })
             .collect(),
         structural_flags,
         pages_written,
         model: model.to_string(),
+        judge_model: judge_model.to_string(),
     })
 }
 
@@ -230,6 +244,9 @@ pub struct CompoundScopeResult {
     /// Compounded pages that were ELIGIBLE as sources for this scope's round-2
     /// question (fail-closed: only pages whose scope ⊆ this scope, same snapshot).
     pub round2_eligible: Vec<String>,
+    /// Grounding (slice 4), summed across both rounds.
+    pub refused_unfounded: usize,
+    pub withheld: usize,
 }
 
 /// Summary of a compounding run.
@@ -238,6 +255,7 @@ pub struct CompoundGenerateReport {
     pub scopes: Vec<CompoundScopeResult>,
     pub snapshot: String,
     pub model: String,
+    pub judge_model: String,
     pub pages_written: usize,
 }
 
@@ -263,6 +281,7 @@ pub fn generate_compounded(
     principals: &[String],
     endpoint: &str,
     model: &str,
+    judge_model: &str,
     timeout: Duration,
 ) -> Result<CompoundGenerateReport> {
     let sources = Sources::load(fixtures_dir)?;
@@ -281,6 +300,7 @@ pub fn generate_compounded(
     }
 
     let synth = OllamaSynthesizer::new(endpoint, model, timeout)?;
+    let verifier = OllamaVerifier::new(endpoint, judge_model, timeout)?;
     let snap = authz.snapshot_version().to_string();
 
     // Allowed set per scope (read-only, from the compiled model).
@@ -290,7 +310,8 @@ pub fn generate_compounded(
     }
 
     let mut store = CompoundStore::new();
-    let mut r1: BTreeMap<String, (String, usize)> = BTreeMap::new();
+    // principal -> (round1 page id, claims, refused-unfounded, withheld)
+    let mut r1: BTreeMap<String, (String, usize, usize, usize)> = BTreeMap::new();
 
     // Round 1 — no prior pages are eligible.
     for p in principals {
@@ -304,13 +325,19 @@ pub fn generate_compounded(
             ROUND1_QUERY,
             &selector,
             &synth,
+            &verifier,
             &[],
             &allowed_of,
             store.next_ordinal(),
         )?;
-        let (id, claims) = (page.page_id.clone(), page.claims.len());
+        let row = (
+            page.page_id.clone(),
+            page.claims.len(),
+            page.refused_unfounded.len(),
+            page.withheld.len(),
+        );
         store.add(page, &allowed_of)?;
-        r1.insert(p.clone(), (id, claims));
+        r1.insert(p.clone(), row);
     }
 
     // Round 2 — offered the fail-closed eligible prior pages.
@@ -331,15 +358,21 @@ pub fn generate_compounded(
                 ROUND2_QUERY,
                 &selector,
                 &synth,
+                &verifier,
                 &eligible,
                 &allowed_of,
                 store.next_ordinal(),
             )?;
             (page, eligible_ids)
         };
-        let (r2_id, r2_claims) = (page.page_id.clone(), page.claims.len());
+        let (r2_id, r2_claims, r2_ref, r2_wh) = (
+            page.page_id.clone(),
+            page.claims.len(),
+            page.refused_unfounded.len(),
+            page.withheld.len(),
+        );
         store.add(page, &allowed_of)?;
-        let (r1_id, r1_claims) = r1.get(p).cloned().unwrap_or_default();
+        let (r1_id, r1_claims, r1_ref, r1_wh) = r1.get(p).cloned().unwrap_or_default();
         results.push(CompoundScopeResult {
             principal_id: p.clone(),
             allowed_count: allowed.len(),
@@ -348,6 +381,8 @@ pub fn generate_compounded(
             round2_page: r2_id,
             round2_claims: r2_claims,
             round2_eligible: eligible_ids,
+            refused_unfounded: r1_ref + r2_ref,
+            withheld: r1_wh + r2_wh,
         });
     }
 
@@ -361,7 +396,7 @@ pub fn generate_compounded(
     }
     pages.push(render::RenderedPage {
         relpath: "compounded/_report.md".to_string(),
-        markdown: render_compound_report(&snap, model, &results),
+        markdown: render_compound_report(&snap, model, judge_model, &results),
     });
     let pages_written = write_pages(out_dir, &pages)?;
 
@@ -369,17 +404,25 @@ pub fn generate_compounded(
         scopes: results,
         snapshot: snap,
         model: model.to_string(),
+        judge_model: judge_model.to_string(),
         pages_written,
     })
 }
 
-fn render_compound_report(snapshot: &str, model: &str, results: &[CompoundScopeResult]) -> String {
+fn render_compound_report(
+    snapshot: &str,
+    model: &str,
+    judge_model: &str,
+    results: &[CompoundScopeResult],
+) -> String {
     let mut s = String::new();
-    s.push_str("# Compounding run — eligibility + no-laundering report\n\n");
+    s.push_str("# Compounding run — eligibility + no-laundering + grounding report\n\n");
     s.push_str(&format!(
-        "> snapshot `{snapshot}` · model `{model}`. Every compounded page is scope-stamped; its \
-         transitive raw-doc closure is asserted within its scope on write. Eligibility is \
-         fail-closed (same snapshot AND allowed(S) ⊆ allowed(T)); there is no widening toggle.\n\n"
+        "> snapshot `{snapshot}` · model `{model}` · judge `{judge_model}`. Every compounded page is \
+         scope-stamped; its transitive raw-doc closure is asserted within its scope on write. \
+         Eligibility is fail-closed (same snapshot AND allowed(S) ⊆ allowed(T)); no widening toggle. \
+         Every admitted claim is verbatim-anchored + support-checked (judge, fail-closed) — anchored \
+         + support-checked, NOT proven faithful.\n\n"
     ));
     for r in results {
         s.push_str(&format!(
@@ -395,12 +438,16 @@ fn render_compound_report(snapshot: &str, model: &str, results: &[CompoundScopeR
             r.round2_page, r.round2_claims
         ));
         s.push_str(&format!(
-            "- round 2 eligible compounded sources: {}\n\n",
+            "- round 2 eligible compounded sources: {}\n",
             if r.round2_eligible.is_empty() {
                 "(none)".to_string()
             } else {
                 r.round2_eligible.join(", ")
             }
+        ));
+        s.push_str(&format!(
+            "- grounding: {} refused-unfounded, {} withheld-unsupported (both rounds)\n\n",
+            r.refused_unfounded, r.withheld
         ));
     }
     s

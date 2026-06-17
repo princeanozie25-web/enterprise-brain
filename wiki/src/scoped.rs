@@ -30,6 +30,7 @@ use anyhow::Result;
 
 use crate::authz::GrantOracle;
 use crate::derive::Discrepancy;
+use crate::ground::{ground_claim, Anchor, Grounded, SupportVerdict, Verifier};
 use crate::provenance::{Claim, Provenance};
 use crate::scope::{DocSelector, ScopeContext};
 use crate::sources::{LineIndex, Sources, SRC_DOCUMENTS};
@@ -46,10 +47,14 @@ pub struct Topic {
     pub query: String,
 }
 
-/// One admitted LLM-derived content claim, anchored to an in-scope source.
+/// One admitted LLM-derived content claim: grounded (anchored to a verbatim
+/// in-scope span) AND judge-confirmed supported (slice 4), on top of the slice-2
+/// scope cite.
 #[derive(Debug, Clone)]
 pub struct ScopedClaim {
     pub claim: Claim,
+    pub anchor: Anchor,
+    pub support: SupportVerdict,
     pub topic: String,
     pub about_principal: Option<String>,
     pub model: String,
@@ -75,7 +80,12 @@ pub struct ScopedLayer {
     pub sourced_docs: BTreeSet<String>,
     pub claims: Vec<ScopedClaim>,
     pub discrepancies: Vec<Discrepancy>,
+    /// Cited an out-of-scope / unknown source (slice-2 scope gate).
     pub rejected: Vec<RejectedClaim>,
+    /// No verbatim in-scope span backs the claim — unfounded (slice-4 anchoring).
+    pub refused_unfounded: Vec<RejectedClaim>,
+    /// Anchored, but the judge did not confirm support — withheld (slice-4, fail-closed).
+    pub withheld: Vec<RejectedClaim>,
 }
 
 impl ScopedLayer {
@@ -113,12 +123,14 @@ fn doc_provenance(
 /// Derive content for a single scope. `selector` and `synth` are injected so
 /// the security properties can be proven deterministically; the real callers
 /// pass a governed-retrieval selector and a local-Ollama synthesizer.
+#[allow(clippy::too_many_arguments)]
 pub fn derive_scope(
     sources: &Sources,
     ctx: &ScopeContext,
     topics: &[Topic],
     selector: &dyn DocSelector,
     synth: &dyn Synthesizer,
+    verifier: &dyn Verifier,
     authz: &dyn GrantOracle,
 ) -> Result<ScopedLayer> {
     let gate = &ctx.gate;
@@ -140,6 +152,8 @@ pub fn derive_scope(
         claims: Vec::new(),
         discrepancies: Vec::new(),
         rejected: Vec::new(),
+        refused_unfounded: Vec::new(),
+        withheld: Vec::new(),
     };
 
     for topic in topics {
@@ -156,6 +170,11 @@ pub fn derive_scope(
             continue;
         }
         let provided: BTreeSet<&str> = sources_in.iter().map(|s| s.doc_id.as_str()).collect();
+        // The in-scope source bodies grounding will anchor verbatim spans against.
+        let body_of: BTreeMap<&str, &str> = sources_in
+            .iter()
+            .map(|s| (s.doc_id.as_str(), s.text.as_str()))
+            .collect();
         for s in &sources_in {
             layer.sourced_docs.insert(s.doc_id.clone());
         }
@@ -176,8 +195,39 @@ pub fn derive_scope(
             }
             let prov = doc_provenance(&raw.cited_doc_id, lines, &doc_index);
 
-            // 3b. FAIL-CLOSED gate: an implicated principal the model does not
-            //     grant the cited doc -> flag, surface, never widen.
+            // 3b. GROUNDING (slice 4): a verbatim, in-scope, existing source span
+            //     (extractive anchor) AND judge-confirmed support, fail-closed.
+            //     No anchor -> refused (unfounded); judge unconfirmed -> withheld.
+            let body = body_of
+                .get(raw.cited_doc_id.as_str())
+                .copied()
+                .unwrap_or("");
+            let (anchor, support) =
+                match ground_claim(&raw.text, &raw.cited_doc_id, &raw.quote, body, verifier) {
+                    Grounded::RefusedUnfounded { reason, .. } => {
+                        layer.refused_unfounded.push(RejectedClaim {
+                            text: raw.text.clone(),
+                            cited_doc_id: raw.cited_doc_id.clone(),
+                            reason,
+                        });
+                        continue;
+                    }
+                    Grounded::Withheld { .. } => {
+                        layer.withheld.push(RejectedClaim {
+                            text: raw.text.clone(),
+                            cited_doc_id: raw.cited_doc_id.clone(),
+                            reason: format!(
+                                "judge `{}` did not confirm support; withheld",
+                                verifier.model_id()
+                            ),
+                        });
+                        continue;
+                    }
+                    Grounded::Admitted { anchor, support } => (anchor, support),
+                };
+
+            // 3c. FAIL-CLOSED gate (admitted claims only): an implicated principal
+            //     the model does not grant the cited doc -> flag, never widen.
             if let Some(p) = &raw.about_principal {
                 if authz.known_principal(p) && authz.why_allowed(p, &raw.cited_doc_id).is_none() {
                     layer.discrepancies.push(Discrepancy {
@@ -202,6 +252,8 @@ pub fn derive_scope(
             );
             layer.claims.push(ScopedClaim {
                 claim: Claim::new(text, prov),
+                anchor,
+                support,
                 topic: topic.label.clone(),
                 about_principal: raw.about_principal,
                 model: synth.model_id().to_string(),
@@ -230,6 +282,14 @@ pub fn render_scoped_layer(layer: &ScopedLayer) -> String {
          Compiled model `{}`.\n\n",
         layer.model, layer.allowed_count, layer.snapshot_version
     ));
+    s.push_str(&format!(
+        "Grounding: **{}** admitted (verbatim-anchored + support-checked, fail-closed) · \
+         **{}** refused-unfounded (no verbatim in-scope span) · **{}** withheld-unsupported. \
+         Support is a judge's assessment — anchored + support-checked, NOT proven faithful.\n\n",
+        layer.claims.len(),
+        layer.refused_unfounded.len(),
+        layer.withheld.len()
+    ));
 
     s.push_str(&format!("## Derived facts ({})\n\n", layer.claims.len()));
     if layer.claims.is_empty() {
@@ -241,10 +301,18 @@ pub fn render_scoped_layer(layer: &ScopedLayer) -> String {
             None => String::new(),
         };
         s.push_str(&format!(
-            "- {}{} — `src: {}`\n",
+            "- {}{} — `src: {}` · `anchor: \"{}\" @{}` · support: {} (judge `{}`)\n",
             c.claim.text(),
             about,
-            c.claim.provenance().cite()
+            c.claim.provenance().cite(),
+            c.anchor.span_text.replace('\n', " "),
+            c.anchor.locator,
+            if c.support.supported {
+                "confirmed"
+            } else {
+                "unconfirmed"
+            },
+            c.support.judge_model,
         ));
     }
     s.push('\n');
@@ -273,6 +341,26 @@ pub fn render_scoped_layer(layer: &ScopedLayer) -> String {
             layer.rejected.len()
         ));
         for r in &layer.rejected {
+            s.push_str(&format!("- cited `{}` — {}\n", r.cited_doc_id, r.reason));
+        }
+        s.push('\n');
+    }
+    if !layer.refused_unfounded.is_empty() {
+        s.push_str(&format!(
+            "## Refused — unfounded ({}) — no verbatim in-scope span, not written\n\n",
+            layer.refused_unfounded.len()
+        ));
+        for r in &layer.refused_unfounded {
+            s.push_str(&format!("- cited `{}` — {}\n", r.cited_doc_id, r.reason));
+        }
+        s.push('\n');
+    }
+    if !layer.withheld.is_empty() {
+        s.push_str(&format!(
+            "## Withheld — unsupported ({}) — anchored but judge did not confirm support (fail-closed)\n\n",
+            layer.withheld.len()
+        ));
+        for r in &layer.withheld {
             s.push_str(&format!("- cited `{}` — {}\n", r.cited_doc_id, r.reason));
         }
         s.push('\n');

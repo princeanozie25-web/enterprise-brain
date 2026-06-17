@@ -62,6 +62,9 @@ enum Command {
         /// Local generation model id (a CONFIG value; never defaulted silently).
         #[arg(long)]
         model: String,
+        /// Local JUDGE model id for support-verification (a CONFIG value, separate from --model).
+        #[arg(long)]
+        judge_model: String,
         /// Local model endpoint (loopback only).
         #[arg(long, default_value = "http://127.0.0.1:11434")]
         endpoint: String,
@@ -91,6 +94,9 @@ enum Command {
         /// Local generation model id (a CONFIG value; never defaulted silently).
         #[arg(long)]
         model: String,
+        /// Local JUDGE model id for support-verification (a CONFIG value, separate from --model).
+        #[arg(long)]
+        judge_model: String,
         /// Local model endpoint (loopback only).
         #[arg(long, default_value = "http://127.0.0.1:11434")]
         endpoint: String,
@@ -131,6 +137,7 @@ fn run() -> Result<()> {
             out,
             scopes,
             model,
+            judge_model,
             endpoint,
             timeout_ms,
         } => {
@@ -142,22 +149,26 @@ fn run() -> Result<()> {
                 &scopes,
                 &endpoint,
                 &model,
+                &judge_model,
                 Duration::from_millis(timeout_ms),
             )?;
             println!(
-                "scoped derivation with `{}` over {} scope(s):",
+                "scoped derivation with `{}` (judge `{}`) over {} scope(s):",
                 report.model,
+                report.judge_model,
                 report.scopes.len()
             );
             for s in &report.scopes {
                 println!(
-                    "  {} — allowed {} docs, {} sourced, {} claims, {} fail-closed flags, {} refused",
+                    "  {} — allowed {}, {} sourced, {} admitted, {} flags, {} oos-refused, {} unfounded, {} withheld",
                     s.principal_id,
                     s.allowed_count,
                     s.sourced_docs,
                     s.claims,
                     s.fail_closed_flags,
-                    s.refused
+                    s.refused,
+                    s.refused_unfounded,
+                    s.withheld
                 );
             }
             println!(
@@ -174,6 +185,7 @@ fn run() -> Result<()> {
             out,
             scopes,
             model,
+            judge_model,
             endpoint,
             timeout_ms,
         } => {
@@ -185,24 +197,28 @@ fn run() -> Result<()> {
                 &scopes,
                 &endpoint,
                 &model,
+                &judge_model,
                 Duration::from_millis(timeout_ms),
             )?;
             println!(
-                "compounding with `{}` (snapshot {}) over {} scope(s):",
+                "compounding with `{}` (judge `{}`, snapshot {}) over {} scope(s):",
                 report.model,
+                report.judge_model,
                 report.snapshot,
                 report.scopes.len()
             );
             for s in &report.scopes {
                 println!(
-                    "  {} ({} allowed) — r1 {} ({} claims), r2 {} ({} claims); r2 eligible: [{}]",
+                    "  {} ({} allowed) — r1 {} ({} claims), r2 {} ({} claims); r2 eligible: [{}]; grounding: {} unfounded, {} withheld",
                     s.principal_id,
                     s.allowed_count,
                     s.round1_page,
                     s.round1_claims,
                     s.round2_page,
                     s.round2_claims,
-                    s.round2_eligible.join(", ")
+                    s.round2_eligible.join(", "),
+                    s.refused_unfounded,
+                    s.withheld
                 );
             }
             println!(

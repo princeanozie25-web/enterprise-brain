@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
+use wiki::ground::Verifier;
 use wiki::scope::DocSelector;
 use wiki::synth::{RawClaim, SourceDoc, Synthesizer};
 
@@ -113,6 +114,9 @@ impl RecordingSynthesizer {
     }
 
     /// Echoes each in-scope source back as a claim citing it (no implication).
+    /// The quote is a VERBATIM prefix of the source body, so slice-4 extractive
+    /// anchoring (`source_body.find(quote)`) matches and the claim can be
+    /// admitted under an `always()` verifier.
     pub fn echo(model: &str) -> Self {
         RecordingSynthesizer::new(model, |sources| {
             sources
@@ -120,6 +124,7 @@ impl RecordingSynthesizer {
                 .map(|s| RawClaim {
                     text: format!("Source {} ({}) is in scope", s.doc_id, s.title),
                     cited_doc_id: s.doc_id.clone(),
+                    quote: verbatim_prefix(&s.text, 48),
                     about_principal: None,
                 })
                 .collect()
@@ -152,5 +157,48 @@ pub struct FixedSelector {
 impl DocSelector for FixedSelector {
     fn select(&self, _topic: &str, k: usize) -> anyhow::Result<Vec<String>> {
         Ok(self.ids.iter().take(k).cloned().collect())
+    }
+}
+
+/// A verbatim prefix of `text` (up to `n` chars), trimmed. By construction it is
+/// an exact substring of `text`, so the slice-4 extractive anchor matches when
+/// the same body is the grounding source. An empty `text` yields an empty quote,
+/// which grounding refuses as unfounded (the fail-closed path).
+pub fn verbatim_prefix(text: &str, n: usize) -> String {
+    text.chars().take(n).collect::<String>().trim().to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Slice-4 test double: a deterministic support-verifier. `always()` confirms
+// support (an anchored claim is admitted); `never()` denies it (an anchored
+// claim is withheld, fail-closed). Neither touches a model or the network.
+// ---------------------------------------------------------------------------
+
+pub struct FakeVerifier {
+    model: String,
+    supported: bool,
+}
+
+impl FakeVerifier {
+    pub fn always() -> Self {
+        FakeVerifier {
+            model: "fake-judge".to_string(),
+            supported: true,
+        }
+    }
+    pub fn never() -> Self {
+        FakeVerifier {
+            model: "fake-judge".to_string(),
+            supported: false,
+        }
+    }
+}
+
+impl Verifier for FakeVerifier {
+    fn model_id(&self) -> &str {
+        &self.model
+    }
+    fn supports(&self, _span: &str, _claim: &str) -> anyhow::Result<bool> {
+        Ok(self.supported)
     }
 }

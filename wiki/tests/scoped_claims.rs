@@ -4,7 +4,10 @@ mod common;
 
 use std::collections::BTreeSet;
 
-use common::{compile_artifacts, fixtures_dir, scratch, FixedSelector, RecordingSynthesizer};
+use common::{
+    compile_artifacts, fixtures_dir, scratch, verbatim_prefix, FakeVerifier, FixedSelector,
+    RecordingSynthesizer,
+};
 
 use wiki::authz::{AuthzView, GrantOracle};
 use wiki::scope::{ScopeContext, ScopeGate};
@@ -33,33 +36,48 @@ fn unsourced_or_unknown_citation_is_not_written() {
     let selector = FixedSelector { ids: head };
 
     let good = in_scope.clone();
-    let synth = RecordingSynthesizer::new("fake-model", move |_s| {
+    let synth = RecordingSynthesizer::new("fake-model", move |s| {
+        // A verbatim quote from the in-scope doc so the valid claim anchors and
+        // lands. The unsourced/hallucinated claims are refused at the scope gate
+        // before grounding, so their quotes are irrelevant.
+        let good_quote = s
+            .iter()
+            .find(|d| d.doc_id == good)
+            .map(|d| verbatim_prefix(&d.text, 48))
+            .unwrap_or_default();
         vec![
             // Admitted: cites an in-scope source.
             RawClaim {
                 text: "valid".into(),
                 cited_doc_id: good.clone(),
+                quote: good_quote,
                 about_principal: None,
             },
             // Refused: empty citation (unsourced).
             RawClaim {
                 text: "no source".into(),
                 cited_doc_id: String::new(),
+                quote: "n/a".into(),
                 about_principal: None,
             },
             // Refused: cites a document that does not exist / was not provided.
             RawClaim {
                 text: "hallucinated".into(),
                 cited_doc_id: "d999999".into(),
+                quote: "n/a".into(),
                 about_principal: None,
             },
         ]
     });
+    let verifier = FakeVerifier::always();
     let topics = vec![Topic {
         label: "t".into(),
         query: "t".into(),
     }];
-    let layer = derive_scope(&sources, &ctx, &topics, &selector, &synth, &authz).unwrap();
+    let layer = derive_scope(
+        &sources, &ctx, &topics, &selector, &synth, &verifier, &authz,
+    )
+    .unwrap();
 
     // Exactly the one in-scope claim is written; every written claim cites a
     // non-empty, in-scope source.
@@ -102,20 +120,32 @@ fn llm_inferred_ungranted_association_is_flagged_not_widened() {
     };
 
     // The LLM, deriving for the broad scope from an in-scope doc, infers that
-    // the HR principal is associated with it — an access the model denies.
+    // the HR principal is associated with it — an access the model denies. The
+    // claim must be ADMITTED (anchored + supported) for the fail-closed flag to
+    // fire, so it carries a verbatim quote and runs under an always() judge.
     let d = doc.clone();
-    let synth = RecordingSynthesizer::new("fake-model", move |_s| {
+    let synth = RecordingSynthesizer::new("fake-model", move |s| {
+        let quote = s
+            .iter()
+            .find(|x| x.doc_id == d)
+            .map(|x| verbatim_prefix(&x.text, 48))
+            .unwrap_or_default();
         vec![RawClaim {
             text: "this concerns the HR administrator".into(),
             cited_doc_id: d.clone(),
+            quote,
             about_principal: Some(HR.to_string()),
         }]
     });
+    let verifier = FakeVerifier::always();
     let topics = vec![Topic {
         label: "t".into(),
         query: "t".into(),
     }];
-    let layer = derive_scope(&sources, &ctx, &topics, &selector, &synth, &authz).unwrap();
+    let layer = derive_scope(
+        &sources, &ctx, &topics, &selector, &synth, &verifier, &authz,
+    )
+    .unwrap();
 
     // The association is FLAGGED, fail-closed.
     let flag = layer

@@ -28,12 +28,15 @@ pub struct SourceDoc {
 }
 
 /// One raw statement from the synthesizer. `cited_doc_id` is UNTRUSTED until
-/// the pipeline validates it against the in-scope source set; `about_principal`
+/// the pipeline validates it against the in-scope source set; `quote` is the
+/// verbatim source span the model claims supports the fact (slice-4 extractive
+/// anchor — validated downstream against the cited source); `about_principal`
 /// is an optional entity the statement implicates, checked fail-closed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawClaim {
     pub text: String,
     pub cited_doc_id: String,
+    pub quote: String,
     pub about_principal: Option<String>,
 }
 
@@ -68,9 +71,11 @@ pub fn build_prompt(topic: &str, sources: &[SourceDoc]) -> String {
     }
     p.push_str(
         "Output one line per fact, EXACTLY in this format, and nothing else:\n\
-         FACT: <one sentence> || SOURCE: <doc_id> || ABOUT: <person_id or NONE>\n\
-         Cite only doc ids from the list above. Use ABOUT only for a person id the \
-         document names, else NONE. Produce at most 6 facts.",
+         FACT: <one sentence> || SOURCE: <doc_id> || QUOTE: <a short EXACT phrase \
+         copied verbatim from that document that supports the fact> || ABOUT: <person_id or NONE>\n\
+         Cite only doc ids from the list above. The QUOTE must be copied word-for-word from the \
+         cited document (no paraphrase) and must not contain the characters ||. Use ABOUT only for \
+         a person id the document names, else NONE. Produce at most 6 facts.",
     );
     p
 }
@@ -84,6 +89,7 @@ pub fn parse_synthesis(text: &str) -> Vec<RawClaim> {
     let mut out = Vec::new();
     let mut fact: Option<String> = None;
     let mut source: Option<String> = None;
+    let mut quote: Option<String> = None;
     let mut about: Option<String> = None;
 
     for line in cleaned.lines() {
@@ -91,24 +97,29 @@ pub fn parse_synthesis(text: &str) -> Vec<RawClaim> {
             let seg = seg.trim();
             if let Some(v) = seg.strip_prefix("FACT:") {
                 // A new fact begins: flush the previous complete one first.
-                push_claim(&mut fact, &mut source, &mut about, &mut out);
+                push_claim(&mut fact, &mut source, &mut quote, &mut about, &mut out);
                 fact = Some(v.trim().to_string());
             } else if let Some(v) = seg.strip_prefix("SOURCE:") {
                 source = Some(v.trim().to_string());
+            } else if let Some(v) = seg.strip_prefix("QUOTE:") {
+                quote = Some(v.trim().to_string());
             } else if let Some(v) = seg.strip_prefix("ABOUT:") {
                 about = Some(v.trim().to_string());
             }
         }
     }
-    push_claim(&mut fact, &mut source, &mut about, &mut out);
+    push_claim(&mut fact, &mut source, &mut quote, &mut about, &mut out);
     out
 }
 
-/// Emits a claim iff a non-empty fact AND source were collected, then clears
-/// all three slots (so a partial group is dropped, not carried forward).
+/// Emits a claim iff a non-empty fact AND source were collected, then clears all
+/// slots (so a partial group is dropped, not carried forward). A missing QUOTE
+/// becomes an empty span — which the downstream extractive-anchoring check
+/// refuses (fail-closed), so an unquoted claim is never admitted.
 fn push_claim(
     fact: &mut Option<String>,
     source: &mut Option<String>,
+    quote: &mut Option<String>,
     about: &mut Option<String>,
     out: &mut Vec<RawClaim>,
 ) {
@@ -116,11 +127,16 @@ fn push_claim(
         .take()
         .map(|a| a.trim().to_string())
         .filter(|a| !a.is_empty() && !a.eq_ignore_ascii_case("none"));
+    let q = quote
+        .take()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
     if let (Some(f), Some(s)) = (fact.take(), source.take()) {
         if !f.trim().is_empty() && !s.trim().is_empty() {
             out.push(RawClaim {
                 text: f.trim().to_string(),
                 cited_doc_id: s.trim().to_string(),
+                quote: q,
                 about_principal,
             });
         }
@@ -207,18 +223,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_reads_fact_lines_and_strips_thinking() {
+    fn parse_reads_fact_lines_with_quotes_and_strips_thinking() {
         let text = "<think>let me reason... SOURCE could be d9999</think>\n\
-                    FACT: Cold chain is monitored at 2-8C || SOURCE: d0001 || ABOUT: NONE\n\
+                    FACT: Cold chain is monitored at 2-8C || SOURCE: d0001 || QUOTE: between 2C and 8C || ABOUT: NONE\n\
                     noise line\n\
-                    FACT: Pablo owns the QA agent || SOURCE: d0002 || ABOUT: p093\n";
+                    FACT: Pablo owns the QA agent || SOURCE: d0002 || QUOTE: owner of the QA agent || ABOUT: p093\n";
         let claims = parse_synthesis(text);
         assert_eq!(claims.len(), 2);
         assert_eq!(claims[0].cited_doc_id, "d0001");
+        assert_eq!(claims[0].quote, "between 2C and 8C");
         assert_eq!(claims[0].about_principal, None);
         assert_eq!(claims[1].cited_doc_id, "d0002");
+        assert_eq!(claims[1].quote, "owner of the QA agent");
         assert_eq!(claims[1].about_principal.as_deref(), Some("p093"));
         // The reasoning block's stray "d9999" never becomes a citation.
         assert!(claims.iter().all(|c| c.cited_doc_id != "d9999"));
+    }
+
+    #[test]
+    fn a_missing_quote_parses_to_an_empty_span() {
+        // No QUOTE segment -> empty span, which extractive anchoring refuses.
+        let claims = parse_synthesis("FACT: x || SOURCE: d0001 || ABOUT: NONE\n");
+        assert_eq!(claims.len(), 1);
+        assert_eq!(claims[0].quote, "");
     }
 }

@@ -8,7 +8,8 @@
 mod common;
 
 use common::{
-    compile_artifacts, fixtures_dir, hash_tree, scratch, FixedSelector, RecordingSynthesizer,
+    compile_artifacts, fixtures_dir, hash_tree, scratch, FakeVerifier, FixedSelector,
+    RecordingSynthesizer,
 };
 
 use wiki::authz::{AuthzView, GrantOracle};
@@ -41,11 +42,12 @@ fn strip_comments(src: &str) -> String {
     out
 }
 
-const LLM_MODULES: [(&str, &str); 4] = [
+const LLM_MODULES: [(&str, &str); 5] = [
     ("synth.rs", include_str!("../src/synth.rs")),
     ("scope.rs", include_str!("../src/scope.rs")),
     ("scoped.rs", include_str!("../src/scoped.rs")),
     ("compound.rs", include_str!("../src/compound.rs")),
+    ("ground.rs", include_str!("../src/ground.rs")),
 ];
 
 #[test]
@@ -128,11 +130,15 @@ fn scoped_derivation_leaves_authz_artifacts_byte_identical() {
     let ctx = ScopeContext::build(gate, &sources);
     let selector = FixedSelector { ids: head };
     let synth = RecordingSynthesizer::echo("fake-model");
+    let verifier = FakeVerifier::always();
     let topics = vec![Topic {
         label: "t".into(),
         query: "t".into(),
     }];
-    let layer = derive_scope(&sources, &ctx, &topics, &selector, &synth, &authz).unwrap();
+    let layer = derive_scope(
+        &sources, &ctx, &topics, &selector, &synth, &verifier, &authz,
+    )
+    .unwrap();
     assert!(!layer.claims.is_empty());
 
     let after = hash_tree(&artifacts);
@@ -199,6 +205,7 @@ fn compounding_run_leaves_authz_artifacts_byte_identical() {
     let ctx = ScopeContext::build(gate, &sources);
     let selector = FixedSelector { ids: head };
     let synth = RecordingSynthesizer::echo("fake-model");
+    let verifier = FakeVerifier::always();
 
     let mut store = CompoundStore::new();
     let mut allowed_of: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
@@ -211,6 +218,7 @@ fn compounding_run_leaves_authz_artifacts_byte_identical() {
         "q",
         &selector,
         &synth,
+        &verifier,
         &[],
         &allowed_of,
         0,

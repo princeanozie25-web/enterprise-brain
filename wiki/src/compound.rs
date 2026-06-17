@@ -22,6 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{bail, Context, Result};
 
+use crate::ground::{ground_claim, Anchor, Grounded, SupportVerdict, Verifier};
 use crate::scope::{DocSelector, ScopeContext};
 use crate::scoped::TOPIC_K;
 use crate::sources::Sources;
@@ -43,18 +44,33 @@ pub enum SourceRef {
     CompoundedPage { page_id: String },
 }
 
-/// One claim on a compounded page, bound to a typed source.
+/// One claim on a compounded page: bound to a typed source (for the closure)
+/// AND grounded — anchored to a verbatim in-scope span + judge-confirmed support
+/// (slice 4). For a CompoundedPage source the anchor is verbatim in the CITED
+/// PAGE's own text (not a re-anchor at the raw layer); that page's claims were
+/// themselves grounded to raw spans when it was created, so the chain bottoms
+/// out at raw documents by the slice-3 no-laundering closure — a transitive
+/// argument, not a fresh raw-doc re-anchor here.
 #[derive(Debug, Clone)]
 pub struct CompoundClaim {
     text: String,
     source: SourceRef,
+    anchor: Anchor,
+    support: SupportVerdict,
 }
 
 impl CompoundClaim {
-    pub fn new(text: impl Into<String>, source: SourceRef) -> Self {
+    pub fn new(
+        text: impl Into<String>,
+        source: SourceRef,
+        anchor: Anchor,
+        support: SupportVerdict,
+    ) -> Self {
         CompoundClaim {
             text: text.into(),
             source,
+            anchor,
+            support,
         }
     }
     pub fn text(&self) -> &str {
@@ -62,6 +78,12 @@ impl CompoundClaim {
     }
     pub fn source(&self) -> &SourceRef {
         &self.source
+    }
+    pub fn anchor(&self) -> &Anchor {
+        &self.anchor
+    }
+    pub fn support(&self) -> &SupportVerdict {
+        &self.support
     }
 }
 
@@ -78,6 +100,10 @@ pub struct CompoundedPage {
     pub claims: Vec<CompoundClaim>,
     /// Cites the gate refused (out-of-scope / unknown source). Audit only.
     pub rejected: Vec<String>,
+    /// Claims with no verbatim in-scope span — unfounded (slice-4 anchoring).
+    pub refused_unfounded: Vec<String>,
+    /// Claims anchored but judge-unconfirmed — withheld (slice-4, fail-closed).
+    pub withheld: Vec<String>,
 }
 
 impl CompoundedPage {
@@ -293,6 +319,7 @@ pub fn compound_answer(
     query: &str,
     selector: &dyn DocSelector,
     synth: &dyn Synthesizer,
+    verifier: &dyn Verifier,
     eligible: &[&CompoundedPage],
     allowed_of: &BTreeMap<String, BTreeSet<String>>,
     ordinal: u64,
@@ -335,41 +362,62 @@ pub fn compound_answer(
         });
     }
 
+    // The in-scope source bodies (raw docs + eligible-page summaries) grounding
+    // anchors verbatim spans against.
+    let body_of: BTreeMap<&str, &str> = model_sources
+        .iter()
+        .map(|s| (s.doc_id.as_str(), s.text.as_str()))
+        .collect();
+
     // 3. Synthesize over raw + compounded — all within allowed(T).
     let raws = synth.synthesize(question, &model_sources)?;
 
-    // 4. Typed-source gate per claim: cite must be a provided raw doc or a
-    //    provided eligible page; anything else is refused (not written).
+    // 4. Per claim: (a) typed-source/scope gate, then (b) GROUNDING — a verbatim
+    //    in-scope span + judge support, fail-closed. For a CompoundedPage source
+    //    the span is verbatim in that PAGE's text (not a re-anchor at the raw
+    //    layer); the page's own claims were grounded to raw spans when created, so
+    //    the chain bottoms out at raw docs via the no-laundering closure.
+    //    Refused-unfounded / withheld are recorded, not kept.
     let mut claims = Vec::new();
     let mut rejected = Vec::new();
+    let mut refused_unfounded = Vec::new();
+    let mut withheld = Vec::new();
     for raw in raws {
         let source = if raw_ids.contains(&raw.cited_doc_id) {
             let span = match doc_index.get(raw.cited_doc_id.as_str()) {
                 Some(i) => format!("/documents/{i}/body"),
                 None => "/documents/body".to_string(),
             };
-            Some(SourceRef::RawDoc {
+            SourceRef::RawDoc {
                 doc_id: raw.cited_doc_id.clone(),
                 span,
-            })
+            }
         } else if page_ids.contains(&raw.cited_doc_id) {
-            Some(SourceRef::CompoundedPage {
+            SourceRef::CompoundedPage {
                 page_id: raw.cited_doc_id.clone(),
-            })
+            }
         } else {
-            None
+            rejected.push(raw.cited_doc_id.clone());
+            continue;
         };
-        match source {
-            Some(s) => claims.push(CompoundClaim::new(
-                format!(
+
+        let fact = raw.text.trim();
+        let body = body_of
+            .get(raw.cited_doc_id.as_str())
+            .copied()
+            .unwrap_or("");
+        match ground_claim(fact, &raw.cited_doc_id, &raw.quote, body, verifier) {
+            Grounded::Admitted { anchor, support } => {
+                let text = format!(
                     "{} [scope {} via {}]",
-                    raw.text.trim(),
+                    fact,
                     gate.principal_id,
                     synth.model_id()
-                ),
-                s,
-            )),
-            None => rejected.push(raw.cited_doc_id.clone()),
+                );
+                claims.push(CompoundClaim::new(text, source, anchor, support));
+            }
+            Grounded::RefusedUnfounded { .. } => refused_unfounded.push(raw.cited_doc_id.clone()),
+            Grounded::Withheld { .. } => withheld.push(raw.cited_doc_id.clone()),
         }
     }
 
@@ -384,6 +432,8 @@ pub fn compound_answer(
         model: synth.model_id().to_string(),
         claims,
         rejected,
+        refused_unfounded,
+        withheld,
     })
 }
 
@@ -402,13 +452,35 @@ pub fn render_compounded_page(store: &CompoundStore, p: &CompoundedPage) -> Stri
     ));
     s.push_str(&format!("**Question:** {}\n\n", p.question));
 
+    s.push_str(&format!(
+        "Grounding: **{}** admitted (verbatim-anchored + support-checked, fail-closed) · \
+         **{}** refused-unfounded · **{}** withheld-unsupported. \
+         Support is a judge's assessment — anchored + support-checked, NOT proven faithful.\n\n",
+        p.claims.len(),
+        p.refused_unfounded.len(),
+        p.withheld.len()
+    ));
+
     s.push_str(&format!("## Claims ({})\n\n", p.claims.len()));
     for c in &p.claims {
         let cite = match c.source() {
             SourceRef::RawDoc { doc_id, span } => format!("RawDoc {doc_id} {span}"),
             SourceRef::CompoundedPage { page_id } => format!("CompoundedPage {page_id}"),
         };
-        s.push_str(&format!("- {} — `src: {}`\n", c.text(), cite));
+        let a = c.anchor();
+        s.push_str(&format!(
+            "- {} — `src: {}` · `anchor: \"{}\" @{}` · support: {} (judge `{}`)\n",
+            c.text(),
+            cite,
+            a.span_text.replace('\n', " "),
+            a.locator,
+            if c.support().supported {
+                "confirmed"
+            } else {
+                "unconfirmed"
+            },
+            c.support().judge_model,
+        ));
     }
     s.push('\n');
 
@@ -443,6 +515,19 @@ pub fn render_compounded_page(store: &CompoundStore, p: &CompoundedPage) -> Stri
 mod tests {
     use super::*;
 
+    fn anchor(src: &str) -> Anchor {
+        Anchor {
+            source_ref: src.to_string(),
+            span_text: "span".to_string(),
+            locator: format!("{src}@0"),
+        }
+    }
+    fn ok() -> SupportVerdict {
+        SupportVerdict {
+            supported: true,
+            judge_model: "fake".to_string(),
+        }
+    }
     fn raw(text: &str, doc: &str) -> CompoundClaim {
         CompoundClaim::new(
             text,
@@ -450,6 +535,8 @@ mod tests {
                 doc_id: doc.to_string(),
                 span: "/documents/0/body".to_string(),
             },
+            anchor(doc),
+            ok(),
         )
     }
     fn page(id: &str, ord: u64, scope: &str, claims: Vec<CompoundClaim>) -> CompoundedPage {
@@ -464,6 +551,8 @@ mod tests {
             model: "fake".to_string(),
             claims,
             rejected: vec![],
+            refused_unfounded: vec![],
+            withheld: vec![],
         }
     }
     fn set(items: &[&str]) -> BTreeSet<String> {
@@ -498,6 +587,8 @@ mod tests {
                     SourceRef::CompoundedPage {
                         page_id: "cp0-S".into(),
                     },
+                    anchor("cp0-S"),
+                    ok(),
                 ),
                 raw("d", "d3"),
             ],
@@ -541,6 +632,8 @@ mod tests {
                 SourceRef::CompoundedPage {
                     page_id: "cp2-S".into(),
                 },
+                anchor("cp2-S"),
+                ok(),
             )],
         );
         assert!(store.add(bad, &m).is_err(), "forward/unknown cite refused");

@@ -12,12 +12,29 @@ use common::{compile_artifacts, scratch};
 
 use wiki::authz::{AuthzView, GrantOracle};
 use wiki::compound::{CompoundClaim, CompoundStore, CompoundedPage, ScopeStamp, SourceRef};
+use wiki::{Anchor, SupportVerdict};
 
 const SALES: &str = "p091";
 const HR: &str = "p088";
 
 fn allowed(authz: &AuthzView, p: &str) -> BTreeSet<String> {
     authz.allowed_documents(p).into_iter().collect()
+}
+
+/// Placeholder grounding for store-logic tests: the no-laundering/eligibility
+/// invariants are independent of the anchor/support payload.
+fn anc(src: &str) -> Anchor {
+    Anchor {
+        source_ref: src.to_string(),
+        span_text: "span".to_string(),
+        locator: format!("{src}@0"),
+    }
+}
+fn ok() -> SupportVerdict {
+    SupportVerdict {
+        supported: true,
+        judge_model: "fake".to_string(),
+    }
 }
 
 fn raw_claim(text: &str, doc: &str) -> CompoundClaim {
@@ -27,6 +44,8 @@ fn raw_claim(text: &str, doc: &str) -> CompoundClaim {
             doc_id: doc.to_string(),
             span: "/documents/0/body".to_string(),
         },
+        anc(doc),
+        ok(),
     )
 }
 
@@ -42,6 +61,8 @@ fn page(id: &str, ord: u64, scope: &str, snap: &str, claims: Vec<CompoundClaim>)
         model: "fake".to_string(),
         claims,
         rejected: vec![],
+        refused_unfounded: vec![],
+        withheld: vec![],
     }
 }
 
@@ -89,6 +110,8 @@ fn transitive_closure_stays_in_scope_centerpiece() {
                         SourceRef::CompoundedPage {
                             page_id: "cp0000-p091".to_string(),
                         },
+                        anc("cp0000-p091"),
+                        ok(),
                     ),
                     raw_claim("d", &docs[2]),
                 ],

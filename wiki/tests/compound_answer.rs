@@ -5,15 +5,34 @@ mod common;
 
 use std::collections::BTreeSet;
 
-use common::{compile_artifacts, fixtures_dir, scratch, FixedSelector, RecordingSynthesizer};
+use common::{
+    compile_artifacts, fixtures_dir, scratch, verbatim_prefix, FakeVerifier, FixedSelector,
+    RecordingSynthesizer,
+};
 
 use wiki::authz::{AuthzView, GrantOracle};
 use wiki::compound::{compound_answer, CompoundClaim, CompoundedPage, ScopeStamp, SourceRef};
 use wiki::scope::{ScopeContext, ScopeGate};
 use wiki::synth::RawClaim;
-use wiki::Sources;
+use wiki::{Anchor, Sources, SupportVerdict};
 
 const SALES: &str = "p091";
+
+/// A placeholder anchor/support for a PRIOR page's claim (its grounding happened
+/// in the round that produced it; here it is just an input).
+fn anc(src: &str) -> Anchor {
+    Anchor {
+        source_ref: src.to_string(),
+        span_text: "span".to_string(),
+        locator: format!("{src}@0"),
+    }
+}
+fn ok() -> SupportVerdict {
+    SupportVerdict {
+        supported: true,
+        judge_model: "fake".to_string(),
+    }
+}
 
 #[test]
 fn answer_types_cites_refuses_out_of_scope_and_only_sees_in_scope_material() {
@@ -45,32 +64,49 @@ fn answer_types_cites_refuses_out_of_scope_and_only_sees_in_scope_material() {
                 doc_id: good.clone(),
                 span: "/documents/0/body".to_string(),
             },
+            anc(&good),
+            ok(),
         )],
         rejected: vec![],
+        refused_unfounded: vec![],
+        withheld: vec![],
     };
     let eligible: Vec<&CompoundedPage> = vec![&prior];
 
-    // Fake cites: an in-scope raw doc, the prior page, and a bogus id.
+    // Fake cites: an in-scope raw doc, the prior page, and a bogus id. The first
+    // two carry verbatim quotes (drawn from the in-scope source body the model
+    // was handed) so they anchor and land; the bogus cite is refused at the gate
+    // before grounding, so its quote is irrelevant.
     let good_c = good.clone();
-    let synth = RecordingSynthesizer::new("fake", move |_s| {
+    let synth = RecordingSynthesizer::new("fake", move |s| {
+        let quote_of = |id: &str| {
+            s.iter()
+                .find(|d| d.doc_id == id)
+                .map(|d| verbatim_prefix(&d.text, 48))
+                .unwrap_or_default()
+        };
         vec![
             RawClaim {
                 text: "from raw".into(),
                 cited_doc_id: good_c.clone(),
+                quote: quote_of(&good_c),
                 about_principal: None,
             },
             RawClaim {
                 text: "from prior".into(),
                 cited_doc_id: "cp0000-p091".into(),
+                quote: quote_of("cp0000-p091"),
                 about_principal: None,
             },
             RawClaim {
                 text: "bogus".into(),
                 cited_doc_id: "d999999".into(),
+                quote: "irrelevant".into(),
                 about_principal: None,
             },
         ]
     });
+    let verifier = FakeVerifier::always();
 
     let mut allowed_of = std::collections::BTreeMap::new();
     allowed_of.insert(SALES.to_string(), a_sales.clone());
@@ -81,6 +117,7 @@ fn answer_types_cites_refuses_out_of_scope_and_only_sees_in_scope_material() {
         "q2",
         &selector,
         &synth,
+        &verifier,
         &eligible,
         &allowed_of,
         1,
@@ -150,21 +187,28 @@ fn ineligible_page_is_never_fed_to_the_model() {
                 doc_id: "d0001".to_string(),
                 span: "/documents/0/body".to_string(),
             },
+            anc("d0001"),
+            ok(),
         )],
         rejected: vec![],
+        refused_unfounded: vec![],
+        withheld: vec![],
     };
     let eligible: Vec<&CompoundedPage> = vec![&prior];
     let mut allowed_of = std::collections::BTreeMap::new();
     allowed_of.insert(SALES.to_string(), a_sales);
 
-    // The fake tries to cite the (ineligible) prior page.
+    // The fake tries to cite the (ineligible) prior page. It is filtered out
+    // before synthesis, so the cite is refused at the gate (quote irrelevant).
     let synth = RecordingSynthesizer::new("fake", move |_s| {
         vec![RawClaim {
             text: "from stale prior".into(),
             cited_doc_id: "cp0000-p091".into(),
+            quote: "irrelevant".into(),
             about_principal: None,
         }]
     });
+    let verifier = FakeVerifier::always();
     let page = compound_answer(
         &sources,
         &ctx,
@@ -172,6 +216,7 @@ fn ineligible_page_is_never_fed_to_the_model() {
         "q2",
         &selector,
         &synth,
+        &verifier,
         &eligible,
         &allowed_of,
         1,
