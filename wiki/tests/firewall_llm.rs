@@ -11,7 +11,8 @@ use common::{
     compile_artifacts, fixtures_dir, hash_tree, scratch, FixedSelector, RecordingSynthesizer,
 };
 
-use wiki::authz::AuthzView;
+use wiki::authz::{AuthzView, GrantOracle};
+use wiki::compound::{compound_answer, CompoundStore};
 use wiki::scope::{ScopeContext, ScopeGate};
 use wiki::scoped::{derive_scope, Topic};
 use wiki::Sources;
@@ -40,10 +41,11 @@ fn strip_comments(src: &str) -> String {
     out
 }
 
-const LLM_MODULES: [(&str, &str); 3] = [
+const LLM_MODULES: [(&str, &str); 4] = [
     ("synth.rs", include_str!("../src/synth.rs")),
     ("scope.rs", include_str!("../src/scope.rs")),
     ("scoped.rs", include_str!("../src/scoped.rs")),
+    ("compound.rs", include_str!("../src/compound.rs")),
 ];
 
 #[test]
@@ -59,6 +61,11 @@ fn llm_modules_never_link_the_compiler() {
 
 #[test]
 fn llm_modules_have_no_authz_write_or_mutate_path() {
+    // These tokens are authz-WRITE / compile / filesystem-write paths. (An
+    // in-memory `&mut self` — e.g. CompoundStore::add growing the page store —
+    // is legitimate and not an authz mutation; the authz model is read-only by
+    // construction in AuthzView, enforced by the authz-specific scan in
+    // firewall.rs.)
     for (name, src) in LLM_MODULES {
         let code = strip_comments(src);
         for forbidden in [
@@ -70,7 +77,6 @@ fn llm_modules_have_no_authz_write_or_mutate_path() {
             "OpenOptions",
             "remove_file",
             "remove_dir",
-            "&mut self",
         ] {
             assert!(
                 !code.contains(forbidden),
@@ -154,4 +160,68 @@ fn corpus_pin_matches_the_compiled_documents_hash() {
     // A drifted/tampered corpus hashes differently — the pin would refuse it.
     let tampered = retrieval::index::sha256_hex(b"not the compiled corpus");
     assert_ne!(authz.documents_sha256(), Some(tampered.as_str()));
+}
+
+#[test]
+fn compound_module_has_no_widening_toggle() {
+    // No config/flag in the compounding module relaxes source eligibility or
+    // widens derivation scope — fail-closed is not configurable (DoD #4).
+    let code = strip_comments(include_str!("../src/compound.rs"));
+    for forbidden in [
+        "bypass",
+        "allow_widen",
+        "force_eligible",
+        "skip_check",
+        "skip_eligibility",
+        "relax",
+        "override_scope",
+        "widen", // only appears in (stripped) comments, never in code
+    ] {
+        assert!(
+            !code.contains(forbidden),
+            "compound.rs code must not contain a widening path `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn compounding_run_leaves_authz_artifacts_byte_identical() {
+    let artifacts = scratch("firewall_compound_artifacts");
+    compile_artifacts(&artifacts);
+    let before = hash_tree(&artifacts);
+
+    let sources = Sources::load(&fixtures_dir()).unwrap();
+    let authz = AuthzView::load(&artifacts).unwrap();
+    let allowed: std::collections::BTreeSet<String> =
+        authz.allowed_documents("p060").into_iter().collect();
+    let gate = ScopeGate::load(&artifacts, "p060").unwrap();
+    let head: Vec<String> = gate.allowed().iter().take(4).cloned().collect();
+    let ctx = ScopeContext::build(gate, &sources);
+    let selector = FixedSelector { ids: head };
+    let synth = RecordingSynthesizer::echo("fake-model");
+
+    let mut store = CompoundStore::new();
+    let mut allowed_of: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+        std::collections::BTreeMap::new();
+    allowed_of.insert("p060".to_string(), allowed);
+    let page = compound_answer(
+        &sources,
+        &ctx,
+        "q",
+        "q",
+        &selector,
+        &synth,
+        &[],
+        &allowed_of,
+        0,
+    )
+    .unwrap();
+    store.add(page, &allowed_of).unwrap();
+    assert!(store.len() == 1);
+
+    let after = hash_tree(&artifacts);
+    assert_eq!(
+        before, after,
+        "a compounding run must leave the compiled authz model byte-identical"
+    );
 }

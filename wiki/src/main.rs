@@ -15,7 +15,7 @@ use std::time::Duration;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use wiki::{generate, generate_scoped};
+use wiki::{generate, generate_compounded, generate_scoped};
 
 #[derive(Parser)]
 #[command(
@@ -57,6 +57,35 @@ enum Command {
         #[arg(long)]
         out: PathBuf,
         /// Comma-separated principal ids to derive scopes for.
+        #[arg(long, value_delimiter = ',')]
+        scopes: Vec<String>,
+        /// Local generation model id (a CONFIG value; never defaulted silently).
+        #[arg(long)]
+        model: String,
+        /// Local model endpoint (loopback only).
+        #[arg(long, default_value = "http://127.0.0.1:11434")]
+        endpoint: String,
+        /// Per-call deadline in milliseconds.
+        #[arg(long, default_value_t = 120_000)]
+        timeout_ms: u64,
+    },
+    /// Slice 3: query-compounding. Runs 2 rounds per scope, writing scope-stamped
+    /// compounded pages that may source future questions ONLY within an
+    /// authorized scope (fail-closed; no laundering across hops).
+    Compound {
+        /// Directory holding people.json, documents.json, company.json, brm.json.
+        #[arg(long)]
+        fixtures: PathBuf,
+        /// Compiled M1 artifact directory. READ-ONLY.
+        #[arg(long)]
+        artifacts: PathBuf,
+        /// Governed retrieval index directory. READ-ONLY.
+        #[arg(long)]
+        idx: PathBuf,
+        /// Output directory for the compounded pages + report.
+        #[arg(long)]
+        out: PathBuf,
+        /// Comma-separated principal ids (scopes) to compound within.
         #[arg(long, value_delimiter = ',')]
         scopes: Vec<String>,
         /// Local generation model id (a CONFIG value; never defaulted silently).
@@ -136,6 +165,51 @@ fn run() -> Result<()> {
                 report.structural_flags, report.pages_written
             );
             println!("scoped layers written to {}", out.display());
+            Ok(())
+        }
+        Command::Compound {
+            fixtures,
+            artifacts,
+            idx,
+            out,
+            scopes,
+            model,
+            endpoint,
+            timeout_ms,
+        } => {
+            let report = generate_compounded(
+                &fixtures,
+                &artifacts,
+                &idx,
+                &out,
+                &scopes,
+                &endpoint,
+                &model,
+                Duration::from_millis(timeout_ms),
+            )?;
+            println!(
+                "compounding with `{}` (snapshot {}) over {} scope(s):",
+                report.model,
+                report.snapshot,
+                report.scopes.len()
+            );
+            for s in &report.scopes {
+                println!(
+                    "  {} ({} allowed) — r1 {} ({} claims), r2 {} ({} claims); r2 eligible: [{}]",
+                    s.principal_id,
+                    s.allowed_count,
+                    s.round1_page,
+                    s.round1_claims,
+                    s.round2_page,
+                    s.round2_claims,
+                    s.round2_eligible.join(", ")
+                );
+            }
+            println!(
+                "compounded pages written: {} -> {}",
+                report.pages_written,
+                out.display()
+            );
             Ok(())
         }
     }

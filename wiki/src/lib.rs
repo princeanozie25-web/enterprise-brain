@@ -22,6 +22,7 @@
 //!    under `out_dir`.
 
 pub mod authz;
+pub mod compound;
 pub mod derive;
 pub mod provenance;
 pub mod render;
@@ -30,6 +31,7 @@ pub mod scoped;
 pub mod sources;
 pub mod synth;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
@@ -37,6 +39,7 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 
 pub use authz::{AuthzView, GrantOracle};
+pub use compound::{compound_answer, CompoundStore, CompoundedPage, ScopeStamp, SourceRef};
 pub use derive::{derive_all, DerivedLayer};
 pub use provenance::{Claim, Provenance};
 pub use scope::{RetrievalSelector, ScopeContext, ScopeGate};
@@ -209,6 +212,198 @@ fn topics_for_scope(_sources: &Sources, _principal_id: &str) -> Vec<Topic> {
             query: "stock handling temperature customer account".into(),
         },
     ]
+}
+
+// ---------------------------------------------------------------------------
+// Slice 3 — query-compounding (real orchestration)
+// ---------------------------------------------------------------------------
+
+/// Per-scope outcome of a compounding run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompoundScopeResult {
+    pub principal_id: String,
+    pub allowed_count: usize,
+    pub round1_page: String,
+    pub round1_claims: usize,
+    pub round2_page: String,
+    pub round2_claims: usize,
+    /// Compounded pages that were ELIGIBLE as sources for this scope's round-2
+    /// question (fail-closed: only pages whose scope ⊆ this scope, same snapshot).
+    pub round2_eligible: Vec<String>,
+}
+
+/// Summary of a compounding run.
+#[derive(Debug, Clone)]
+pub struct CompoundGenerateReport {
+    pub scopes: Vec<CompoundScopeResult>,
+    pub snapshot: String,
+    pub model: String,
+    pub pages_written: usize,
+}
+
+const ROUND1_Q: &str =
+    "What do the documents in this scope establish about its routine operations, records, and arrangements?";
+const ROUND1_QUERY: &str = "controlled document procedure records storage handling";
+const ROUND2_Q: &str =
+    "Building on the earlier summary, what do the customer and account arrangements and procedures show?";
+const ROUND2_QUERY: &str = "customer account procedure records arrangement returns";
+
+/// Runs the 2-round compounding flow across `principals` with the LIVE model:
+/// round 1 answers a question per scope (raw in-scope sources only); round 2
+/// answers a follow-up per scope, offered the round-1 pages that are FAIL-CLOSED
+/// eligible (same snapshot, `allowed(S) ⊆ allowed(T)`). Every compounded page is
+/// scope-stamped and its transitive closure is asserted within its scope on
+/// write. Reads fixtures/artifacts/idx; writes only under `out_dir`.
+#[allow(clippy::too_many_arguments)]
+pub fn generate_compounded(
+    fixtures_dir: &Path,
+    artifacts_dir: &Path,
+    idx_dir: &Path,
+    out_dir: &Path,
+    principals: &[String],
+    endpoint: &str,
+    model: &str,
+    timeout: Duration,
+) -> Result<CompoundGenerateReport> {
+    let sources = Sources::load(fixtures_dir)?;
+    let authz = AuthzView::load(artifacts_dir)?;
+
+    // Fail-closed corpus pin (as in generate_scoped).
+    let doc_bytes = fs::read(fixtures_dir.join("documents.json"))
+        .context("reading documents.json for the corpus pin")?;
+    let actual = retrieval::index::sha256_hex(&doc_bytes);
+    match authz.documents_sha256() {
+        Some(pinned) if pinned == actual => {}
+        Some(pinned) => bail!(
+            "documents.json drifted from the compiled corpus (compiled {pinned}, current {actual}); refusing"
+        ),
+        None => bail!("artifacts index records no documents.json hash; refusing"),
+    }
+
+    let synth = OllamaSynthesizer::new(endpoint, model, timeout)?;
+    let snap = authz.snapshot_version().to_string();
+
+    // Allowed set per scope (read-only, from the compiled model).
+    let mut allowed_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for p in principals {
+        allowed_of.insert(p.clone(), authz.allowed_documents(p).into_iter().collect());
+    }
+
+    let mut store = CompoundStore::new();
+    let mut r1: BTreeMap<String, (String, usize)> = BTreeMap::new();
+
+    // Round 1 — no prior pages are eligible.
+    for p in principals {
+        let gate = ScopeGate::load(artifacts_dir, p)?;
+        let ctx = ScopeContext::build(gate, &sources);
+        let selector = RetrievalSelector::open(idx_dir, artifacts_dir, p)?;
+        let page = compound_answer(
+            &sources,
+            &ctx,
+            ROUND1_Q,
+            ROUND1_QUERY,
+            &selector,
+            &synth,
+            &[],
+            &allowed_of,
+            store.next_ordinal(),
+        )?;
+        let (id, claims) = (page.page_id.clone(), page.claims.len());
+        store.add(page, &allowed_of)?;
+        r1.insert(p.clone(), (id, claims));
+    }
+
+    // Round 2 — offered the fail-closed eligible prior pages.
+    let mut results = Vec::new();
+    for p in principals {
+        let allowed = allowed_of.get(p).expect("allowed set").clone();
+        // Scope the immutable borrow of `store` so the later `add` (mutable) is free.
+        let (page, eligible_ids) = {
+            let eligible = store.eligible_for(&snap, &allowed, &allowed_of);
+            let eligible_ids: Vec<String> = eligible.iter().map(|e| e.page_id.clone()).collect();
+            let gate = ScopeGate::load(artifacts_dir, p)?;
+            let ctx = ScopeContext::build(gate, &sources);
+            let selector = RetrievalSelector::open(idx_dir, artifacts_dir, p)?;
+            let page = compound_answer(
+                &sources,
+                &ctx,
+                ROUND2_Q,
+                ROUND2_QUERY,
+                &selector,
+                &synth,
+                &eligible,
+                &allowed_of,
+                store.next_ordinal(),
+            )?;
+            (page, eligible_ids)
+        };
+        let (r2_id, r2_claims) = (page.page_id.clone(), page.claims.len());
+        store.add(page, &allowed_of)?;
+        let (r1_id, r1_claims) = r1.get(p).cloned().unwrap_or_default();
+        results.push(CompoundScopeResult {
+            principal_id: p.clone(),
+            allowed_count: allowed.len(),
+            round1_page: r1_id,
+            round1_claims: r1_claims,
+            round2_page: r2_id,
+            round2_claims: r2_claims,
+            round2_eligible: eligible_ids,
+        });
+    }
+
+    // Write every page (with its closure proof) + a run report under out/compounded/.
+    let mut pages = Vec::new();
+    for page in store.pages() {
+        pages.push(render::RenderedPage {
+            relpath: format!("compounded/{}.md", page.page_id),
+            markdown: compound::render_compounded_page(&store, page),
+        });
+    }
+    pages.push(render::RenderedPage {
+        relpath: "compounded/_report.md".to_string(),
+        markdown: render_compound_report(&snap, model, &results),
+    });
+    let pages_written = write_pages(out_dir, &pages)?;
+
+    Ok(CompoundGenerateReport {
+        scopes: results,
+        snapshot: snap,
+        model: model.to_string(),
+        pages_written,
+    })
+}
+
+fn render_compound_report(snapshot: &str, model: &str, results: &[CompoundScopeResult]) -> String {
+    let mut s = String::new();
+    s.push_str("# Compounding run — eligibility + no-laundering report\n\n");
+    s.push_str(&format!(
+        "> snapshot `{snapshot}` · model `{model}`. Every compounded page is scope-stamped; its \
+         transitive raw-doc closure is asserted within its scope on write. Eligibility is \
+         fail-closed (same snapshot AND allowed(S) ⊆ allowed(T)); there is no widening toggle.\n\n"
+    ));
+    for r in results {
+        s.push_str(&format!(
+            "## scope `{}` ({} allowed docs)\n\n",
+            r.principal_id, r.allowed_count
+        ));
+        s.push_str(&format!(
+            "- round 1: `{}` — {} claim(s)\n",
+            r.round1_page, r.round1_claims
+        ));
+        s.push_str(&format!(
+            "- round 2: `{}` — {} claim(s)\n",
+            r.round2_page, r.round2_claims
+        ));
+        s.push_str(&format!(
+            "- round 2 eligible compounded sources: {}\n\n",
+            if r.round2_eligible.is_empty() {
+                "(none)".to_string()
+            } else {
+                r.round2_eligible.join(", ")
+            }
+        ));
+    }
+    s
 }
 
 /// Writes rendered pages under `out_dir` and nowhere else. Refuses any relpath
