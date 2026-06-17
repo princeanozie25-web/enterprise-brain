@@ -19,7 +19,7 @@
 //! no-standing actors. The differentiator vs the omniscient reference graphs
 //! is that ours is artifact-backed and leaks no evidence — beautiful AND true.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
@@ -78,6 +78,22 @@ pub struct GraphSource {
     pub label: String,
 }
 
+/// A real capability/project surfaced from HumanRecord.projects. These records
+/// are already derived from each person's governed Lane seeds; the graph only
+/// groups them by capability id and counts assignments/departments.
+#[derive(Debug, Serialize)]
+pub struct GraphProject {
+    pub departments: Vec<String>,
+    pub id: String,
+    pub initiative_name: String,
+    pub label: String,
+    pub people: usize,
+    pub primary_department_id: String,
+    pub status_counts: BTreeMap<String, usize>,
+    pub strategy_name: String,
+    pub workflow_name: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct GraphEdge {
     pub from: String,
@@ -92,6 +108,7 @@ pub struct GraphResponse {
     pub departments: Vec<GraphDept>,
     pub edges: Vec<GraphEdge>,
     pub people: Vec<GraphPerson>,
+    pub projects: Vec<GraphProject>,
     pub snapshot_version: String,
     pub sources: Vec<GraphSource>,
     pub tools: Vec<GraphTool>,
@@ -155,6 +172,28 @@ fn load_company(fixtures_dir: &Path, expected_sha256: &str) -> Result<GraphCompa
     serde_json::from_slice(&bytes).with_context(|| format!("{} fails parse", path.display()))
 }
 
+#[derive(Debug)]
+struct ProjectAccumulator {
+    department_counts: BTreeMap<String, usize>,
+    departments: BTreeSet<String>,
+    initiative_name: String,
+    label: String,
+    people: BTreeSet<String>,
+    status_counts: BTreeMap<String, usize>,
+    strategy_name: String,
+    workflow_name: String,
+}
+
+fn primary_department(counts: &BTreeMap<String, usize>) -> String {
+    counts
+        .iter()
+        .max_by(|(dept_a, count_a), (dept_b, count_b)| {
+            count_a.cmp(count_b).then_with(|| dept_b.cmp(dept_a))
+        })
+        .map(|(dept, _)| dept.clone())
+        .unwrap_or_default()
+}
+
 // ---------------------------------------------------------------------------
 // The view
 // ---------------------------------------------------------------------------
@@ -190,8 +229,11 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
             tint_key: dept.clone(),
         })
         .collect();
-    let known_depts: BTreeMap<&str, ()> =
-        company.departments.iter().map(|d| (d.as_str(), ())).collect();
+    let known_depts: BTreeMap<&str, ()> = company
+        .departments
+        .iter()
+        .map(|d| (d.as_str(), ()))
+        .collect();
 
     let manager_of: BTreeMap<&str, &str> = company
         .people
@@ -223,6 +265,53 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
             title: record.title.clone(),
         });
     }
+
+    // Capability/project nodes are grouped from the already-governed
+    // HumanRecord.projects rows. No capability without a person assignment is
+    // drawn here, and no source/agent relationship is inferred.
+    let mut project_acc: BTreeMap<String, ProjectAccumulator> = BTreeMap::new();
+    let mut project_person_edges: BTreeSet<(String, String)> = BTreeSet::new();
+    for record in people.roster() {
+        for project in &record.projects {
+            let entry = project_acc
+                .entry(project.capability_id.clone())
+                .or_insert_with(|| ProjectAccumulator {
+                    department_counts: BTreeMap::new(),
+                    departments: BTreeSet::new(),
+                    initiative_name: project.initiative_name.clone(),
+                    label: project.capability_name.clone(),
+                    people: BTreeSet::new(),
+                    status_counts: BTreeMap::new(),
+                    strategy_name: project.strategy_name.clone(),
+                    workflow_name: project.workflow_name.clone(),
+                });
+            entry.people.insert(record.id.clone());
+            entry.departments.insert(record.department_label.clone());
+            *entry
+                .department_counts
+                .entry(record.department_label.clone())
+                .or_default() += 1;
+            *entry
+                .status_counts
+                .entry(project.status.clone())
+                .or_default() += 1;
+            project_person_edges.insert((record.id.clone(), project.capability_id.clone()));
+        }
+    }
+    let projects: Vec<GraphProject> = project_acc
+        .iter()
+        .map(|(id, acc)| GraphProject {
+            departments: acc.departments.iter().cloned().collect(),
+            id: id.clone(),
+            initiative_name: acc.initiative_name.clone(),
+            label: acc.label.clone(),
+            people: acc.people.len(),
+            primary_department_id: primary_department(&acc.department_counts),
+            status_counts: acc.status_counts.clone(),
+            strategy_name: acc.strategy_name.clone(),
+            workflow_name: acc.workflow_name.clone(),
+        })
+        .collect();
 
     // Tools / agents in the outer ring, tinted by their owner's department.
     let mut tools: Vec<GraphTool> = company
@@ -270,6 +359,22 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
             });
         }
     }
+    for (person_id, project_id) in project_person_edges {
+        edges.push(GraphEdge {
+            from: person_id,
+            kind: "works_on".to_string(),
+            to: project_id,
+        });
+    }
+    for project in &projects {
+        for department_id in &project.departments {
+            edges.push(GraphEdge {
+                from: project.id.clone(),
+                kind: "involves_department".to_string(),
+                to: department_id.clone(),
+            });
+        }
+    }
     for dept in &departments {
         if known_depts.contains_key(dept.id.as_str()) {
             edges.push(GraphEdge {
@@ -303,6 +408,7 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
         departments,
         edges,
         people: graph_people,
+        projects,
         snapshot_version: state.snapshot_version.clone(),
         sources,
         tools,

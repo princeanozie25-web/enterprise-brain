@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { select } from "d3-selection";
 import { zoom as d3zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
-import type { GraphEdge, GraphPerson, GraphResponse } from "@/lib/api";
+import type { GraphEdge, GraphPerson, GraphProject, GraphResponse } from "@/lib/api";
 import { DEPARTMENT_TINT, DERIVED, FONT, GEOMETRY, TYPE } from "@/lib/tokens";
 import { PersonAvatar } from "./PersonAvatar";
 
 type Pos = { x: number; y: number };
-export type GraphNodeKind = "org" | "department" | "human" | "agent" | "source";
+export type GraphNodeKind = "org" | "department" | "human" | "agent" | "source" | "project";
 export type SelectedNode = { id: string; kind: GraphNodeKind; label: string };
 
 type DeptArc = { start: number; end: number; center: number; count: number };
@@ -27,6 +27,7 @@ const STAGE = {
   ringDept: 205,
   ringAgents: 258,
   ringSignal: 304,
+  ringProjects: 334,
   ringPermission: 373,
   ringSources: 444,
   ringPeople: 575,
@@ -35,6 +36,7 @@ const STAGE = {
   coreRadius: 32,
   sourceRadius: 8,
   agentSize: 7,
+  projectSize: 9,
   personMember: 8,
   personMemberActive: 18,
   personAnchor: 30,
@@ -92,6 +94,11 @@ function monogram(name: string): string {
   return shortMark(name).slice(0, 2);
 }
 
+function compactProjectLabel(label: string): string {
+  const clean = label.replace(/^Capability:\s*/i, "");
+  return clean.length > 34 ? `${clean.slice(0, 31)}...` : clean;
+}
+
 function computeLayout(graph: GraphResponse): Layout {
   const pos = new Map<string, Pos>();
   const ang = new Map<string, number>();
@@ -146,6 +153,19 @@ function computeLayout(graph: GraphResponse): Layout {
     ang.set(tool.id, angle);
   });
 
+  const projectsSeen = new Map<string, number>();
+  graph.projects.forEach((project, index) => {
+    const base = hubAngle.get(project.primary_department_id);
+    const seen = projectsSeen.get(project.primary_department_id) ?? 0;
+    projectsSeen.set(project.primary_department_id, seen + 1);
+    const angle =
+      base !== undefined
+        ? base + (seen % 2 === 0 ? 1 : -1) * 0.066 * Math.ceil((seen + 1) / 2)
+        : -Math.PI / 2 + (index / Math.max(graph.projects.length, 1)) * 2 * Math.PI;
+    pos.set(project.id, polar(angle, STAGE.ringProjects + jitter(index, 7, 11)));
+    ang.set(project.id, angle);
+  });
+
   graph.sources.forEach((source, index) => {
     const angle = -Math.PI / 2 + (index / Math.max(graph.sources.length, 1)) * 2 * Math.PI;
     pos.set(source.id, polar(angle + jitter(index, 0.05, 7), STAGE.ringSources + jitter(index, 8, 8)));
@@ -160,6 +180,8 @@ const EDGE_STYLE: Record<string, { width: number; opacity: number; dash?: string
   member_of: { width: 0.75, opacity: 0.12 },
   owns_agent: { width: 1.0, opacity: 0.38, dash: "2 5", warm: true },
   system_of: { width: 0.9, opacity: 0.2, dash: "1 8" },
+  works_on: { width: 0.85, opacity: 0.18, dash: "1 7" },
+  involves_department: { width: 0.9, opacity: 0.24, dash: "2 7", warm: true },
   uses: { width: 0.9, opacity: 0.2, dash: "1 8" },
 };
 
@@ -207,6 +229,7 @@ export function OrgGraph({
   const peopleById = useMemo(() => new Map(graph.people.map((p) => [p.id, p])), [graph.people]);
   const toolsById = useMemo(() => new Map(graph.tools.map((t) => [t.id, t])), [graph.tools]);
   const sourcesById = useMemo(() => new Map(graph.sources.map((s) => [s.id, s])), [graph.sources]);
+  const projectsById = useMemo(() => new Map(graph.projects.map((p) => [p.id, p])), [graph.projects]);
   const deptById = useMemo(() => new Map(graph.departments.map((d) => [d.id, d])), [graph.departments]);
   const primaryAnchorIds = useMemo(() => {
     const ids = new Set<string>();
@@ -290,6 +313,18 @@ export function OrgGraph({
     if (tool) return tool.label.toLowerCase().includes(q) || tool.id.toLowerCase().includes(q);
     const source = sourcesById.get(id);
     if (source) return source.label.toLowerCase().includes(q) || source.id.toLowerCase().includes(q);
+    const project = projectsById.get(id);
+    if (project) {
+      return [
+        project.id,
+        project.label,
+        project.workflow_name,
+        project.initiative_name,
+        project.strategy_name,
+        ...project.departments,
+        ...Object.keys(project.status_counts),
+      ].some((value) => value.toLowerCase().includes(q));
+    }
     const dept = deptById.get(id);
     if (dept) return dept.label.toLowerCase().includes(q) || dept.id.toLowerCase().includes(q);
     return id.toLowerCase().includes(q);
@@ -298,7 +333,8 @@ export function OrgGraph({
   const inDept = (id: string): boolean =>
     id === focusDept ||
     peopleById.get(id)?.department_id === focusDept ||
-    toolsById.get(id)?.department_id === focusDept;
+    toolsById.get(id)?.department_id === focusDept ||
+    (focusDept !== null && (projectsById.get(id)?.departments.includes(focusDept) ?? false));
 
   const selectedIsCenter = selectedId === graph.center.id;
   const selectedNeighbors = selectedId !== null ? neighbors.get(selectedId) : undefined;
@@ -315,6 +351,13 @@ export function OrgGraph({
   const op = (id: string): number => {
     if (!dimming || emphasized(id)) return 1;
     return focusDept !== null ? GEOMETRY.graphGhostOpacity : GEOMETRY.graphDimOpacity;
+  };
+
+  const projectVisible = (project: GraphProject): boolean => {
+    if (hidden.has("projects")) return false;
+    if (selectedId === project.id || hover === project.id || matches(project.id) || traceRelated(project.id)) return true;
+    if (hover !== null && (neighbors.get(hover)?.has(project.id) ?? false)) return true;
+    return focusDept !== null && project.departments.includes(focusDept);
   };
 
   const edgeTouchesFocus = (edge: GraphEdge): boolean => {
@@ -342,7 +385,9 @@ export function OrgGraph({
   const edgeHidden = (edge: GraphEdge): boolean =>
     (hidden.has("people") && (peopleById.has(edge.from) || peopleById.has(edge.to))) ||
     (hidden.has("agents") && (toolsById.has(edge.from) || toolsById.has(edge.to))) ||
-    (hidden.has("sources") && (sourcesById.has(edge.from) || sourcesById.has(edge.to)));
+    (hidden.has("sources") && (sourcesById.has(edge.from) || sourcesById.has(edge.to))) ||
+    (projectsById.has(edge.from) && !projectVisible(projectsById.get(edge.from)!)) ||
+    (projectsById.has(edge.to) && !projectVisible(projectsById.get(edge.to)!));
 
   return (
     <div className="relative h-full min-h-0" data-testid="org-graph">
@@ -655,6 +700,87 @@ export function OrgGraph({
                 </g>
               );
             })}
+
+          {graph.projects.filter(projectVisible).map((project) => {
+            const point = at(project.id);
+            const angle = ang.get(project.id) ?? 0;
+            const tint = tintOf(project.primary_department_id);
+            const active =
+              selectedId === project.id || traceRelated(project.id) || hover === project.id || matches(project.id);
+            const size = active ? STAGE.projectSize + 2 : STAGE.projectSize;
+            const labelVisible = active || k >= GEOMETRY.graphLodReveal + 0.4;
+            const labelRadius = size + lab(12);
+            const lx = labelRadius * Math.cos(angle);
+            const ly = labelRadius * Math.sin(angle);
+            const anchorFor = Math.cos(angle) > 0.34 ? "start" : Math.cos(angle) < -0.34 ? "end" : "middle";
+            return (
+              <g
+                key={project.id}
+                transform={`translate(${point.x},${point.y})`}
+                opacity={op(project.id)}
+                style={{ cursor: "pointer" }}
+                onMouseEnter={() => setHover(project.id)}
+                onMouseLeave={() => setHover(null)}
+                onClick={() => onSelectNode({ id: project.id, kind: "project", label: project.label })}
+                data-testid="graph-project"
+                data-id={project.id}
+              >
+                <title>{`${project.label} - ${project.people} people - ${project.workflow_name}`}</title>
+                <path
+                  d={`M0 ${-size}L${size} 0L0 ${size}L${-size} 0Z`}
+                  fill={tint.background}
+                  stroke={active ? C.warm : tint.border}
+                  strokeWidth={active ? 2 : 1.1}
+                  strokeOpacity={active ? 0.94 : 0.74}
+                />
+                <text
+                  y={0.5}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fill={C.ink}
+                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 4), fontWeight: 800 }}
+                >
+                  {project.people}
+                </text>
+                <circle
+                  r={size + 6}
+                  fill="none"
+                  stroke={C.warm}
+                  strokeWidth={active ? 2 : 0}
+                  strokeOpacity={active ? 0.84 : 0}
+                />
+                {labelVisible ? (
+                  <g transform={`translate(${lx},${ly})`}>
+                    <text
+                      textAnchor={anchorFor}
+                      dominantBaseline="middle"
+                      fill={C.ink}
+                      paintOrder="stroke"
+                      stroke={C.paper}
+                      strokeWidth={GEOMETRY.graphLabelHalo}
+                      style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 1), fontWeight: 700 }}
+                      data-testid="graph-project-label"
+                    >
+                      {compactProjectLabel(project.label)}
+                    </text>
+                    <text
+                      y={lab(12)}
+                      textAnchor={anchorFor}
+                      dominantBaseline="middle"
+                      fill={C.inkSoft}
+                      paintOrder="stroke"
+                      stroke={C.paper}
+                      strokeWidth={GEOMETRY.graphLabelHalo}
+                      style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3) }}
+                      data-testid="graph-project-workflow"
+                    >
+                      {compactProjectLabel(project.workflow_name.replace(/^Workflow:\s*/i, ""))}
+                    </text>
+                  </g>
+                ) : null}
+              </g>
+            );
+          })}
 
           {!hidden.has("people") &&
             [...graph.people]

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import * as api from "@/lib/api";
-import type { GraphResponse, NodeSummary, OrgStats } from "@/lib/api";
+import type { AccessRequestRecord, AccessTarget, GraphResponse, NodeSummary, OrgStats, RoleScopeSummary } from "@/lib/api";
 import { COLOR, DERIVED, FONT, TYPE } from "@/lib/tokens";
 import { OrgGraph, type SelectedNode } from "./OrgGraph";
 import { GraphSidebar } from "./GraphSidebar";
@@ -33,9 +33,11 @@ const hiddenRailStyle = {
 };
 
 export function GraphRoom({
+  adminPreview = false,
   actor,
   reducedMotion = false,
 }: {
+  adminPreview?: boolean;
   actor: string | null;
   reducedMotion?: boolean;
 }) {
@@ -43,6 +45,7 @@ export function GraphRoom({
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
   const [stats, setStats] = useState<OrgStats | null>(null);
+  const [roleScope, setRoleScope] = useState<RoleScopeSummary | null>(null);
 
   const [selected, setSelected] = useState<SelectedNode | null>(null);
   const [summary, setSummary] = useState<NodeSummary | null>(null);
@@ -50,6 +53,56 @@ export function GraphRoom({
   const [focusDept, setFocusDept] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [hiddenKinds, setHiddenKinds] = useState<string[]>([]);
+  const [accessAvailable, setAccessAvailable] = useState(false);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessRequests, setAccessRequests] = useState<AccessRequestRecord[]>([]);
+  const [accessInbox, setAccessInbox] = useState<AccessRequestRecord[]>([]);
+  const [accessBusyId, setAccessBusyId] = useState<string | null>(null);
+  const [accessFeedback, setAccessFeedback] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+  const refreshAccessRequests = useCallback(async () => {
+    if (actor === null) {
+      setAccessAvailable(false);
+      setAccessRequests([]);
+      setAccessInbox([]);
+      return;
+    }
+    setAccessLoading(true);
+    try {
+      const [mine, inbox] = await Promise.all([
+        api.getAccessRequests(actor),
+        api.getAccessRequestInbox(actor),
+      ]);
+      const available = mine !== null || inbox !== null;
+      setAccessAvailable(available);
+      setAccessRequests(mine?.requests ?? []);
+      setAccessInbox(inbox?.requests ?? []);
+    } catch {
+      setAccessAvailable(true);
+      setAccessFeedback({ kind: "error", text: "Access requests could not be loaded. Try again." });
+    } finally {
+      setAccessLoading(false);
+    }
+  }, [actor]);
+
+  useEffect(() => {
+    if (!adminPreview || actor === null) {
+      setRoleScope(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .getRoleScope(actor)
+      .then((response) => {
+        if (!cancelled) setRoleScope(response);
+      })
+      .catch(() => {
+        if (!cancelled) setRoleScope(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [actor, adminPreview]);
 
   useEffect(() => {
     if (actor === null) {
@@ -95,8 +148,13 @@ export function GraphRoom({
   }, [actor]);
 
   useEffect(() => {
+    void refreshAccessRequests();
+  }, [refreshAccessRequests]);
+
+  useEffect(() => {
     if (actor === null || selected === null || !SUMMARISED.has(selected.kind)) {
       setSummary(null);
+      setSummaryLoading(false);
       return;
     }
     let cancelled = false;
@@ -123,6 +181,37 @@ export function GraphRoom({
   };
   const toggleKind = (key: string) =>
     setHiddenKinds((cur) => (cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]));
+  const requestAccess = async (target: AccessTarget, justification: string) => {
+    if (actor === null) return;
+    setAccessBusyId(`request:${target.capability_id}`);
+    setAccessFeedback(null);
+    try {
+      await api.postAccessRequest(actor, target, justification);
+      setAccessFeedback({ kind: "success", text: "Request recorded for manager review." });
+      await refreshAccessRequests();
+    } catch {
+      setAccessFeedback({ kind: "error", text: "Request was not recorded. Check the target and try again." });
+    } finally {
+      setAccessBusyId(null);
+    }
+  };
+  const decideAccess = async (requestId: string, decision: "approve" | "deny") => {
+    if (actor === null) return;
+    setAccessBusyId(`${decision}:${requestId}`);
+    setAccessFeedback(null);
+    try {
+      await api.postAccessRequestDecision(actor, requestId, decision);
+      setAccessFeedback({
+        kind: "success",
+        text: decision === "approve" ? "Request approved. Access is not expanded yet." : "Request denied.",
+      });
+      await refreshAccessRequests();
+    } catch {
+      setAccessFeedback({ kind: "error", text: "Decision was not recorded. Refresh and try again." });
+    } finally {
+      setAccessBusyId(null);
+    }
+  };
 
   const connectionCount = graph?.edges.length ?? 0;
   const shellStyle = {
@@ -147,7 +236,16 @@ export function GraphRoom({
         }}
       >
         <div className="ap-soft min-w-0 truncate" style={{ fontSize: TYPE.scale.xs }}>
-          Enterprise Brain / Connections ({connectionCount.toLocaleString("en-US")})
+          <span>
+            {adminPreview ? "Enterprise Brain / Admin Graph" : "Enterprise Brain"} / Connections{" "}
+            ({connectionCount.toLocaleString("en-US")})
+          </span>
+          {adminPreview && (
+            <span className="block truncate" data-testid="admin-graph-preview-banner">
+              Admin view is not server-enforced yet / {roleScope?.enforcement ?? "derived preview"} /{" "}
+              {roleScope?.admin_surface_allowed ? "admin allowed" : "admin not granted"}
+            </span>
+          )}
         </div>
         <div className="relative">
           <svg
@@ -266,20 +364,37 @@ export function GraphRoom({
             />
           </div>
 
+          {accessAvailable && (
+            <AccessRequestRail
+              graph={graph}
+              loading={accessLoading}
+              requests={accessRequests}
+              inbox={accessInbox}
+              busyId={accessBusyId}
+              feedback={accessFeedback}
+              onDecide={decideAccess}
+            />
+          )}
+
           {selected !== null && (
             <div className="fixed right-4 top-[74px] z-20">
               <GraphInspector
+                actor={actor}
                 node={selected}
                 summary={summary}
                 loading={summaryLoading}
                 graph={graph}
+                accessRequests={accessRequests}
+                accessRequestBusy={accessBusyId === `request:${selected.id}`}
+                accessRequestFeedback={accessFeedback}
+                onRequestAccess={requestAccess}
                 onEnterLens={enterLens}
                 onClose={() => setSelected(null)}
               />
             </div>
           )}
 
-          <Legend software={graph.sources.length} agents={graph.tools.length} people={graph.people.length} />
+          <Legend software={graph.sources.length} agents={graph.tools.length} projects={graph.projects.length} people={graph.people.length} />
         </>
       ) : null}
     </div>
@@ -294,7 +409,7 @@ const C = {
   hairline: "var(--hairline)",
 };
 
-function Legend({ software, agents, people }: { software: number; agents: number; people: number }) {
+function Legend({ software, agents, projects, people }: { software: number; agents: number; projects: number; people: number }) {
   const itemStyle = { fontSize: TYPE.scale.xs - 2 };
   const dot = (background: string, square = false) => (
     <span
@@ -327,8 +442,146 @@ function Legend({ software, agents, people }: { software: number; agents: number
         {dot(C.hairline, true)} agents {agents}
       </span>
       <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
+        {dot(C.warm, true)} projects {projects}
+      </span>
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
         {dot(C.ink)} people {people}
       </span>
+    </aside>
+  );
+}
+
+function RailHeading({ children }: { children: ReactNode }) {
+  return (
+    <p className="ap-soft uppercase tracking-wide" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+      {children}
+    </p>
+  );
+}
+
+function AccessRequestRail({
+  graph,
+  loading,
+  requests,
+  inbox,
+  busyId,
+  feedback,
+  onDecide,
+}: {
+  graph: GraphResponse;
+  loading: boolean;
+  requests: AccessRequestRecord[];
+  inbox: AccessRequestRecord[];
+  busyId: string | null;
+  feedback: { kind: "success" | "error"; text: string } | null;
+  onDecide: (requestId: string, decision: "approve" | "deny") => Promise<void>;
+}) {
+  const projectLabel = (request: AccessRequestRecord) => {
+    const project = graph.projects.find((item) => item.id === request.target.capability_id);
+    return project?.label.replace(/^Capability:\s*/i, "") ?? request.target.capability_id;
+  };
+  const recent = requests.slice(-3).reverse();
+
+  return (
+    <aside
+      className="ap-card fixed left-4 top-[74px] z-20 flex w-[292px] max-w-[calc(100vw-32px)] flex-col gap-3 rounded p-3"
+      style={{ background: "color-mix(in srgb, var(--paper) 86%, transparent)", backdropFilter: "blur(14px)" }}
+      data-testid="access-request-rail"
+      aria-label="Access requests"
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+          Access requests
+        </p>
+        {loading && (
+          <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Loading
+          </span>
+        )}
+      </div>
+
+      {feedback && (
+        <p
+          role={feedback.kind === "error" ? "alert" : "status"}
+          className={feedback.kind === "success" ? "ap-register-chrome" : "ap-soft"}
+          style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
+          data-testid="access-rail-feedback"
+        >
+          {feedback.text}
+        </p>
+      )}
+
+      <section className="space-y-1.5">
+        <RailHeading>My status</RailHeading>
+        {recent.length === 0 ? (
+          <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            No access requests recorded.
+          </p>
+        ) : (
+          recent.map((request) => (
+            <div key={request.request_id} className="ap-hairline rounded border px-2 py-1.5" data-testid="access-request-row">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+                  {projectLabel(request)}
+                </span>
+                <span className="ap-soft shrink-0" style={{ fontSize: TYPE.scale.xs }}>
+                  {request.status}
+                </span>
+              </div>
+              <p className="ap-soft mt-1 truncate" style={{ fontSize: TYPE.scale.xs }}>
+                Reviewer {request.approver_id}
+              </p>
+            </div>
+          ))
+        )}
+      </section>
+
+      <section className="space-y-1.5">
+        <RailHeading>Review inbox</RailHeading>
+        {inbox.length === 0 ? (
+          <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            No pending reviews.
+          </p>
+        ) : (
+          inbox.map((request) => (
+            <div key={request.request_id} className="ap-hairline rounded border px-2 py-2" data-testid="access-inbox-row">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+                  {projectLabel(request)}
+                </span>
+                <span className="ap-soft shrink-0" style={{ fontSize: TYPE.scale.xs }}>
+                  {request.requester_id}
+                </span>
+              </div>
+              <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+                {request.justification}
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  disabled={busyId === `approve:${request.request_id}` || busyId === `deny:${request.request_id}`}
+                  onClick={() => void onDecide(request.request_id, "approve")}
+                  className="ap-affordance-button ap-register-chrome rounded px-2 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+                  data-testid="access-approve"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  disabled={busyId === `approve:${request.request_id}` || busyId === `deny:${request.request_id}`}
+                  onClick={() => void onDecide(request.request_id, "deny")}
+                  className="ap-washable ap-register-chrome rounded px-2 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+                  data-testid="access-deny"
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
     </aside>
   );
 }

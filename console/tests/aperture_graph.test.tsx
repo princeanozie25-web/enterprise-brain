@@ -36,6 +36,19 @@ const GRAPH: GraphResponse = {
     { id: "docstore", kind: "source", label: "Document store" },
     { id: "wiki", kind: "source", label: "Wiki" },
   ],
+  projects: [
+    {
+      departments: ["Finance", "IT"],
+      id: "cap31",
+      initiative_name: "Strengthen Workforce Capability",
+      label: "Capability: Access Review 31",
+      people: 2,
+      primary_department_id: "Finance",
+      status_counts: { Active: 1, Planned: 1 },
+      strategy_name: "Strategy: Workforce Capability",
+      workflow_name: "Workflow: Goods-In Verification 31",
+    },
+  ],
   edges: [
     { from: "p060", kind: "member_of", to: "Finance" },
     { from: "p061", kind: "member_of", to: "Finance" },
@@ -48,6 +61,10 @@ const GRAPH: GraphResponse = {
     { from: "p060", kind: "owns_agent", to: "agent_finance_analyst" },
     { from: "docstore", kind: "system_of", to: "org" },
     { from: "wiki", kind: "system_of", to: "org" },
+    { from: "p060", kind: "works_on", to: "cap31" },
+    { from: "p075", kind: "works_on", to: "cap31" },
+    { from: "cap31", kind: "involves_department", to: "Finance" },
+    { from: "cap31", kind: "involves_department", to: "IT" },
   ],
   snapshot_version: "snap",
 };
@@ -61,6 +78,7 @@ const MINIMAL: GraphResponse = {
   ],
   tools: [],
   sources: [],
+  projects: [],
   edges: [{ from: "p046", kind: "member_of", to: "Pharmacy Services" }],
   snapshot_version: "snap",
 };
@@ -79,23 +97,27 @@ function renderGraph(overrides: Partial<React.ComponentProps<typeof OrgGraph>> =
 function personNode(id: string): HTMLElement {
   return screen.getAllByTestId("graph-person").find((el) => el.getAttribute("data-id") === id)!;
 }
+function defaultRenderedEdges(graph: GraphResponse): number {
+  return graph.edges.filter((edge) => edge.kind !== "works_on" && edge.kind !== "involves_department").length;
+}
 
 // ---------------------------------------------------------------------------
 // U-33 STRUCTURE — the concentric rings, all real entities
 // ---------------------------------------------------------------------------
 
 describe("U-33: the graph renders core, hubs, agents, sources, and all people", () => {
-  it("renders every ring of real nodes and the exact edge count", () => {
+  it("renders every baseline ring and keeps project nodes hidden by default", () => {
     renderGraph();
     expect(screen.getByTestId("org-graph")).toBeTruthy();
     expect(screen.getByTestId("graph-center")).toBeTruthy();
     expect(screen.getAllByTestId("graph-dept").length).toBe(GRAPH.departments.length);
     expect(screen.getAllByTestId("graph-tool").length).toBe(GRAPH.tools.length);
     expect(screen.getAllByTestId("graph-source").length).toBe(GRAPH.sources.length);
+    expect(screen.queryAllByTestId("graph-project").length).toBe(0);
     const people = screen.getAllByTestId("graph-person");
     expect(people.length).toBe(GRAPH.people.length);
     expect(people.filter((p) => p.getAttribute("data-ring") === "anchor").length).toBe(2);
-    expect(screen.getAllByTestId("graph-edge").length).toBe(GRAPH.edges.length);
+    expect(screen.getAllByTestId("graph-edge").length).toBe(defaultRenderedEdges(GRAPH));
     expect(screen.getAllByTestId("person-avatar-img").length).toBe(GRAPH.people.length);
   });
 });
@@ -220,10 +242,10 @@ describe("U-40: zooming in reveals members' real names", () => {
 // ---------------------------------------------------------------------------
 
 describe("U-41: edges are curved paths ranked by kind", () => {
-  it("renders every edge as a quadratic path carrying its kind, incl. system_of", () => {
+  it("renders every default edge as a quadratic path carrying its kind, incl. system_of", () => {
     renderGraph();
     const edges = screen.getAllByTestId("graph-edge");
-    expect(edges.length).toBe(GRAPH.edges.length);
+    expect(edges.length).toBe(defaultRenderedEdges(GRAPH));
     for (const e of edges) {
       expect(e.tagName.toLowerCase()).toBe("path");
       expect(e.getAttribute("d") ?? "").toMatch(/^M.*Q/);
@@ -272,6 +294,29 @@ describe("U-44: search lights matches and dims the rest", () => {
   });
 });
 
+describe("U-44b: project/capability traces reveal only when relevant", () => {
+  it("reveals a real capability through search and emits a project selection", () => {
+    const onSelectNode = vi.fn();
+    renderGraph({ query: "Access Review", onSelectNode });
+    const project = screen.getByTestId("graph-project");
+    expect(project.getAttribute("data-id")).toBe("cap31");
+    expect(within(project).getByTestId("graph-project-label").textContent).toBe("Access Review 31");
+    const kinds = new Set(screen.getAllByTestId("graph-edge").map((edge) => edge.getAttribute("data-kind")));
+    expect(kinds.has("works_on")).toBe(true);
+    expect(kinds.has("involves_department")).toBe(true);
+    fireEvent.click(project);
+    expect(onSelectNode).toHaveBeenCalledWith({ id: "cap31", kind: "project", label: "Capability: Access Review 31" });
+  });
+
+  it("selecting a capability traces assigned people and involved departments", () => {
+    renderGraph({ selectedId: "cap31" });
+    expect(screen.getByTestId("graph-project")).toBeTruthy();
+    expect(personNode("p060").getAttribute("opacity")).toBe("1");
+    expect(personNode("p075").getAttribute("opacity")).toBe("1");
+    expect(personNode("p061").getAttribute("opacity")).toBe(String(GEOMETRY.graphDimOpacity));
+  });
+});
+
 describe("U-45: focus mode ghosts the rest and names the department", () => {
   it("a focused department is full + named; other nodes are ghosted", () => {
     renderGraph({ focusDept: "Finance" });
@@ -309,6 +354,7 @@ describe("U-46: the sidebar shows real counts and drives filters + focus", () =>
     expect(within(stat("Documents")).getByTestId("sidebar-stat-value").textContent).toBe("600");
     expect(within(stat("Permission edges")).getByTestId("sidebar-stat-value").textContent).toBe("16,881");
     expect(within(stat("Agents")).getByTestId("sidebar-stat-value").textContent).toBe("4");
+    expect(within(stat("Graph projects")).getByTestId("sidebar-stat-value").textContent).toBe("1");
 
     fireEvent.click(screen.getAllByTestId("filter-toggle").find((b) => b.getAttribute("data-kind") === "agents")!);
     expect(onToggleKind).toHaveBeenCalledWith("agents");
@@ -403,6 +449,54 @@ describe("U-47: the inspector shows the compiled governance", () => {
     expect(screen.getByTestId("inspector-department")).toBeTruthy();
     expect(screen.getByText(/2 people/)).toBeTruthy();
   });
+
+  it("composes a project panel from graph capability data (no endpoint)", () => {
+    render(
+      <GraphInspector
+        node={{ id: "cap31", kind: "project", label: "Capability: Access Review 31" }}
+        summary={null}
+        loading={false}
+        graph={GRAPH}
+        onEnterLens={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("inspector-project")).toBeTruthy();
+    expect(screen.getByText("cap31")).toBeTruthy();
+    expect(screen.getByText("2 people")).toBeTruthy();
+    expect(screen.getByText("Finance")).toBeTruthy();
+    expect(screen.getByText("Active: 1")).toBeTruthy();
+  });
+
+  it("offers a project-only access request form without approver or document fields", async () => {
+    const onRequestAccess = vi.fn().mockResolvedValue(undefined);
+    render(
+      <GraphInspector
+        actor="p060"
+        node={{ id: "cap31", kind: "project", label: "Capability: Access Review 31" }}
+        summary={null}
+        loading={false}
+        graph={GRAPH}
+        accessRequests={[]}
+        onRequestAccess={onRequestAccess}
+        onEnterLens={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("access-request-submit"));
+    expect(screen.getByTestId("access-request-feedback").textContent).toMatch(/short reason/i);
+
+    fireEvent.change(screen.getByTestId("access-request-justification"), {
+      target: { value: "Need this capability context for assigned project work." },
+    });
+    fireEvent.click(screen.getByTestId("access-request-submit"));
+    await waitFor(() =>
+      expect(onRequestAccess).toHaveBeenCalledWith(
+        { kind: "project", capability_id: "cap31" },
+        "Need this capability context for assigned project work.",
+      ),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -439,6 +533,53 @@ function stubGraphFetch() {
   return fetchMock;
 }
 
+function stubGraphFetchWithAccess() {
+  let approved = false;
+  const request = () => ({
+    approver_id: "p060",
+    created_ordinal: 0,
+    decision: approved ? { actor_principal: "p060", decided_ordinal: 1, outcome: "approved" } : undefined,
+    justification: "Need this capability context for assigned project work.",
+    request_id: "ar_test",
+    request_key: "rk",
+    requester_id: "p061",
+    snapshot_version: "snap",
+    status: approved ? "approved" : "pending",
+    target: { kind: "project", capability_id: "cap31" },
+  });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/graph")) return new Response(JSON.stringify(GRAPH), { status: 200 });
+    if (url.endsWith("/node/org/summary"))
+      return new Response(JSON.stringify({ demo_identity_mode: true, id: "org", kind: "org", name: "Bryremead Distribution Ltd", stats: STATS }), { status: 200 });
+    if (url.endsWith("/access-requests/inbox")) {
+      return new Response(
+        JSON.stringify({ actor_id: "p060", demo_identity_mode: true, requests: approved ? [] : [request()], snapshot_version: "snap" }),
+        { status: 200 },
+      );
+    }
+    if (url.endsWith("/access-requests") && init?.method !== "POST") {
+      return new Response(
+        JSON.stringify({ actor_id: "p060", demo_identity_mode: true, requests: [request()], snapshot_version: "snap" }),
+        { status: 200 },
+      );
+    }
+    if (url.endsWith("/access-requests/ar_test/approve")) {
+      approved = true;
+      return new Response(JSON.stringify({ demo_identity_mode: true, request: request(), snapshot_version: "snap" }), { status: 200 });
+    }
+    if (url.includes("/node/")) {
+      return new Response(
+        JSON.stringify({ demo_identity_mode: true, id: "p074", kind: "human", name: "Yuki Moreau" }),
+        { status: 200 },
+      );
+    }
+    return new Response("{\"demo_identity_mode\":true,\"error\":\"not found\"}", { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 describe("U-48: the Org Brain room wires counts, selection, and theme", () => {
   it("shows real counts, opens the inspector on select, and toggles the theme", async () => {
     document.documentElement.setAttribute("data-theme", "dark");
@@ -461,5 +602,19 @@ describe("U-48: the Org Brain room wires counts, selection, and theme", () => {
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     fireEvent.click(screen.getByTestId("theme-toggle"));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+  });
+
+  it("loads access request status and records approver decisions", async () => {
+    const fetchMock = stubGraphFetchWithAccess();
+    render(<GraphRoom actor="p060" />);
+
+    await waitFor(() => expect(screen.getByTestId("access-request-rail")).toBeTruthy());
+    expect(screen.getByTestId("access-inbox-row").textContent).toContain("Need this capability context");
+
+    fireEvent.click(screen.getByTestId("access-approve"));
+    await waitFor(() => expect(screen.getByTestId("access-rail-feedback").textContent).toMatch(/not expanded/i));
+    expect(
+      fetchMock.mock.calls.some((call) => String(call[0]).endsWith("/access-requests/ar_test/approve")),
+    ).toBe(true);
   });
 });
