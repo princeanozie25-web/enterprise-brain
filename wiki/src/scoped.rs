@@ -17,12 +17,15 @@
 //!
 //! SCOPE OF THE GUARANTEE (honest limits, neither weakens non-leakage or
 //! non-widening): a written claim's cite attests that its source is an in-scope
-//! document — provenance + scope — not that the document semantically supports
-//! the sentence (a loose-paraphrasing model is not caught). The fail-closed flag
-//! fires for a structured `ABOUT: <known-principal>` the model does not grant;
-//! an association stated only in free text is surfaced as text, not
-//! machine-flagged. Tightening both (span-quote grounding, free-text entity
-//! extraction) is future work.
+//! document — provenance + scope. Slice 4 adds extractive anchoring + a judge
+//! support-check on top (see `ground.rs`); semantic support is the JUDGE'S
+//! assessment, not a proof — a loose-paraphrasing model is reduced, not provably
+//! caught, and the live admit path admits ~zero on current local judges. The
+//! fail-closed flag fires for a structured `ABOUT: <known-principal>` the model
+//! does not grant; slice 5 (`mentions.rs`) additionally flags FREE-TEXT principal
+//! mentions, but only ROSTER-SURFACE forms (non-roster entities and
+//! apostrophe-elided variants are not caught). Tighter entity recognition and a
+//! write-side compounding-snapshot pin are tracked follow-ups.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -301,13 +304,15 @@ pub fn render_scoped_layer(layer: &ScopedLayer) -> String {
     s.push_str(&format!(
         "> Derived by `{}` reading ONLY this scope's {} authorized document(s). \
          Authorization happened before retrieval; no out-of-scope document reached the model. \
-         Compiled model `{}`.\n\n",
+         Compiled model `{}`. Evidence is over the synthetic Bryremead corpus with a local \
+         model — not a production-scale proof.\n\n",
         layer.model, layer.allowed_count, layer.snapshot_version
     ));
     s.push_str(&format!(
         "Grounding: **{}** admitted (verbatim-anchored + support-checked, fail-closed) · \
          **{}** refused-unfounded (no verbatim in-scope span) · **{}** withheld-unsupported. \
-         Support is a judge's assessment — anchored + support-checked, NOT proven faithful.\n\n",
+         Support is a judge's assessment — anchored + support-checked, NOT proven faithful; on \
+         current local judges the live admit path over-refuses and admits ~zero.\n\n",
         layer.claims.len(),
         layer.refused_unfounded.len(),
         layer.withheld.len()
@@ -362,7 +367,7 @@ pub fn render_scoped_layer(layer: &ScopedLayer) -> String {
             "## ⚠ Free-text mention flags ({}) — slice 5\n\n",
             layer.mention_flags.len()
         ));
-        s.push_str("> Admitted prose NAMED a principal the scope is **not** granted about (or an ambiguous name token). Detected deterministically against the roster — flagged, **not** reconciled; access **NOT** widened.\n\n");
+        s.push_str("> Admitted prose NAMED a principal the scope is **not** granted about (or an ambiguous name token). Detected deterministically against the roster (canonical-surface forms only — non-roster entities and apostrophe-elided name variants are **not** caught) — flagged, **not** reconciled; access **NOT** widened.\n\n");
         for m in &layer.mention_flags {
             let who = match &m.mentioned_id {
                 Some(id) => format!("`{id}`"),
@@ -419,7 +424,8 @@ pub fn render_drift_report(structural_flags: usize, layers: &[ScopedLayer]) -> S
     s.push_str("# Drift lint — standing report\n\n");
     s.push_str(
         "> Fail-closed: this report surfaces divergence between derived structure/content and the \
-         authorization model. It does NOT reconcile and does NOT widen access.\n\n",
+         authorization model. It does NOT reconcile and does NOT widen access. Counts are over the \
+         synthetic Bryremead corpus with local models — evidence, not a production-scale proof.\n\n",
     );
     s.push_str(&format!(
         "- Structural (deterministic, slice 1) fail-closed flags: **{structural_flags}**\n"

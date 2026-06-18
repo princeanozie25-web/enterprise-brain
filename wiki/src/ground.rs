@@ -15,6 +15,13 @@
 //! proof of faithfulness. "anchored + support-checked, fail-closed", never
 //! "proven correct".
 //!
+//! STATUS (honest, not hidden): the REFUSE (unfounded) and WITHHELD (unsupported)
+//! paths are exercised; the live ADMIT path OVER-REFUSES by design and admits
+//! ~zero on the current local judge models — so admit is unrealized end-to-end
+//! pending a stronger judge. "Grounded claims" names the proven
+//! admit/refuse/withhold STATE MACHINE, not a present-tense stream of delivered
+//! admitted claims.
+//!
 //! No authz path here: the judge sees only a span and a claim (both in-scope),
 //! over the workspace's audited loopback-only client. Data never leaves.
 

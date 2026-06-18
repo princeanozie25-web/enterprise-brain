@@ -14,6 +14,16 @@
 //! legitimate cross-domain need is served later by an audited human grant that
 //! ADDS a real authorization, never by relaxing the model's reach.
 //!
+//! WHERE EACH HALF IS ENFORCED (honest): the durable WRITE — `CompoundStore::add`
+//! — enforces the closure ⊆ stamped-scope (no-laundering) and acyclicity; it does
+//! NOT pin or check a snapshot. The snapshot-equality conjunct above is enforced
+//! on the READ side, in eligibility (`is_eligible`/`eligible_for`): it gates
+//! whether a stored page may SOURCE a later question, not whether it may be
+//! stored. A single run uses one snapshot, so the two coincide there; across a
+//! snapshot rotation the snapshot guarantee is the read-side eligibility filter,
+//! not a write-side property of the store. (Pinning the store to one snapshot is
+//! a tracked follow-up.)
+//!
 //! This module consults the authorization model only read-only (allowed sets
 //! are computed from the compiled allowlists upstream and passed in); it has no
 //! authz write path, exactly like slices 1-2.
@@ -476,7 +486,8 @@ pub fn render_compounded_page(store: &CompoundStore, p: &CompoundedPage) -> Stri
     s.push_str(&format!(
         "Grounding: **{}** admitted (verbatim-anchored + support-checked, fail-closed) · \
          **{}** refused-unfounded · **{}** withheld-unsupported. \
-         Support is a judge's assessment — anchored + support-checked, NOT proven faithful.\n\n",
+         Support is a judge's assessment — anchored + support-checked, NOT proven faithful; on \
+         current local judges the live admit path over-refuses and admits ~zero.\n\n",
         p.claims.len(),
         p.refused_unfounded.len(),
         p.withheld.len()
@@ -524,7 +535,7 @@ pub fn render_compounded_page(store: &CompoundStore, p: &CompoundedPage) -> Stri
             "## ⚠ Free-text mention flags ({}) — slice 5\n\n",
             p.mention_flags.len()
         ));
-        s.push_str("> Admitted prose NAMED a principal this scope is **not** granted about (or an ambiguous name token). Deterministic roster match — flagged, **not** reconciled; the granted set is **unchanged**.\n\n");
+        s.push_str("> Admitted prose NAMED a principal this scope is **not** granted about (or an ambiguous name token). Deterministic roster match (canonical-surface forms only — non-roster entities and apostrophe-elided name variants are **not** caught) — flagged, **not** reconciled; the granted set is **unchanged**.\n\n");
         for m in &p.mention_flags {
             let who = match &m.mentioned_id {
                 Some(id) => format!("`{id}`"),

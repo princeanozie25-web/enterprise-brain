@@ -429,11 +429,13 @@ fn render_compound_report(
     let mut s = String::new();
     s.push_str("# Compounding run — eligibility + no-laundering + grounding report\n\n");
     s.push_str(&format!(
-        "> snapshot `{snapshot}` · model `{model}` · judge `{judge_model}`. Every compounded page is \
-         scope-stamped; its transitive raw-doc closure is asserted within its scope on write. \
-         Eligibility is fail-closed (same snapshot AND allowed(S) ⊆ allowed(T)); no widening toggle. \
-         Every admitted claim is verbatim-anchored + support-checked (judge, fail-closed) — anchored \
-         + support-checked, NOT proven faithful.\n\n"
+        "> snapshot `{snapshot}` · model `{model}` · judge `{judge_model}` · synthetic corpus, local \
+         model. On write each page's transitive raw-doc closure is asserted ⊆ its stamped scope \
+         (no laundering) and the citation DAG kept acyclic; the store is NOT snapshot-pinned. \
+         Snapshot-equality is a READ-side eligibility gate — a stored page may SOURCE a later \
+         question only if same snapshot AND allowed(S) ⊆ allowed(T); no widening toggle. \
+         Admitted claims are verbatim-anchored + support-checked (judge, fail-closed) — NOT proven \
+         faithful; on current local judges the live admit path over-refuses and admits ~zero.\n\n"
     ));
     for r in results {
         s.push_str(&format!(

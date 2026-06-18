@@ -2,10 +2,10 @@
 //!
 //! Slices 1–2 flag a STRUCTURED `ABOUT: <principal>` association the model does
 //! not grant. They do NOT catch a principal named only in free-text PROSE. This
-//! module closes that last named limit: every admitted LLM-derived claim's prose
-//! is scanned — deterministically, never with a model — for mentions of known
-//! principals, and a mention of a principal the DERIVING SCOPE is not granted
-//! ABOUT is FLAGGED and surfaced. This is the same fail-closed treatment the
+//! module closes that gap: every admitted LLM-derived claim's prose is scanned —
+//! deterministically, never with a model — for mentions of known principals, and
+//! a mention of a principal the DERIVING SCOPE is not granted ABOUT is FLAGGED
+//! and surfaced. This is the same fail-closed treatment the
 //! structured path already gives: never silently kept, never widening access.
 //! It only ADDS coverage to the existing flag — the granted/displayed set is
 //! unchanged; the flag count goes up, the access never does.
@@ -33,6 +33,15 @@
 //!     full name borne by more than one principal, or a token colliding with a
 //!     common word, is AMBIGUOUS — flagged, never resolved by guessing which
 //!     principal is meant.
+//!
+//! LIMITS (honest, stated not hidden): detection is ROSTER-SURFACE-BOUNDED. It
+//! flags canonical-surface mentions of KNOWN-ROSTER principals; it does NOT
+//! recognize non-roster entities (an external party, a customer org, a nickname),
+//! and apostrophe-elided surname variants (e.g. "O'Brien" written "OBrien") are
+//! currently missed. A miss is the FLAG failing open, never the access gate: the
+//! granted/displayed set is unchanged regardless, so a missed mention is an
+//! un-surfaced disclosure, not a widened grant. Robust entity recognition and
+//! apostrophe normalization are tracked follow-ups, not claimed here.
 
 use std::collections::{BTreeMap, BTreeSet};
 
