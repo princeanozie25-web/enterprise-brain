@@ -32,6 +32,23 @@ interface ScopeBadge {
   source: string;
 }
 
+interface NotificationItem {
+  category: "Requests" | "Approvals" | "Workflow Alerts" | "Grant Expiry" | "Grant Events" | "Team Updates";
+  detail: string;
+  href: string;
+  metric?: string;
+  source: string;
+  title: string;
+}
+
+interface ConnectedSystem {
+  name: string;
+  source: string;
+  status: "Available";
+}
+
+const CONNECTOR_NAMES = ["Gmail", "Outlook", "Teams", "Slack", "Jira", "GitHub", "SharePoint"];
+
 function workflowGroup(status: string): string {
   for (const group of WORKFLOW_GROUPS) {
     if (group.statuses.includes(status)) return group.label;
@@ -84,6 +101,117 @@ function isDepartmentHead(level: RoleScopeSummary["derived_level"] | null | unde
 
 function activeKnowledgeGrants(grants: AccessGrantRecord[], actor: string): AccessGrantRecord[] {
   return grants.filter((grant) => grant.status === "active" && grant.grantee_id === actor);
+}
+
+function buildNotificationItems({
+  actor,
+  grants,
+  inbox,
+  requests,
+  roleScope,
+  workflowItems,
+}: {
+  actor: string;
+  grants: AccessGrantRecord[];
+  inbox: AccessRequestRecord[];
+  requests: AccessRequestRecord[];
+  roleScope: RoleScopeSummary | null;
+  workflowItems: WorkflowItem[];
+}): NotificationItem[] {
+  const notifications: NotificationItem[] = [];
+  const pendingRequests = requests.filter((request) => request.status === "pending");
+  const pendingApprovalCount = inbox.length > 0 ? inbox.length : roleScope?.approval_scope.pending_count ?? 0;
+  const workflowAlerts = workflowItems.filter((item) =>
+    ["pending", "blocked", "denied", "cancelled", "expired", "dismissed"].includes(item.status.toLowerCase()),
+  );
+  const visibleGrants = grants.filter((grant) => grant.grantee_id === actor || grant.approver_id === actor);
+  const grantExpiry = visibleGrants.filter((grant) => grant.status === "expired" || Boolean(grant.expires_at));
+
+  if (requests.length > 0) {
+    notifications.push({
+      category: "Requests",
+      detail:
+        pendingRequests.length > 0
+          ? `${pendingRequests.length} submitted access ${pendingRequests.length === 1 ? "request is" : "requests are"} pending.`
+          : "Submitted access requests have ledger status.",
+      href: "#dashboard-requests",
+      metric: `${requests.length}`,
+      source: "access request ledger",
+      title: "Request status",
+    });
+  }
+
+  if (pendingApprovalCount > 0) {
+    notifications.push({
+      category: "Approvals",
+      detail:
+        inbox.length > 0
+          ? "Requests assigned to this actor are ready for review."
+          : "Role scope reports a pending approval category; no inbox row is rendered here.",
+      href: "#dashboard-requests",
+      metric: `${pendingApprovalCount}`,
+      source: inbox.length > 0 ? "approval inbox" : "server scope",
+      title: "Approval queue",
+    });
+  }
+
+  if (workflowAlerts.length > 0) {
+    notifications.push({
+      category: "Workflow Alerts",
+      detail: "Waiting or blocked workflow rows are projected from real project workflow data.",
+      href: "#dashboard-workflow",
+      metric: `${workflowAlerts.length}`,
+      source: "workflow projection",
+      title: "Workflow attention",
+    });
+  }
+
+  if (grantExpiry.length > 0) {
+    notifications.push({
+      category: "Grant Expiry",
+      detail: "Grant rows with expiry status or expiry metadata are present in the grant ledger.",
+      href: "#dashboard-requests",
+      metric: `${grantExpiry.length}`,
+      source: "grant ledger",
+      title: "Grant expiry status",
+    });
+  }
+
+  if (visibleGrants.length > 0) {
+    notifications.push({
+      category: "Grant Events",
+      detail: "Read grant records visible to this actor are available for status review.",
+      href: "#dashboard-granted-knowledge",
+      metric: `${visibleGrants.length}`,
+      source: "grant ledger",
+      title: "Grant ledger events",
+    });
+  }
+
+  if (roleScope?.team_scope.has_team_scope) {
+    notifications.push({
+      category: "Team Updates",
+      detail: "Team scope exists from reporting-line facts. A team update event stream is not modeled yet.",
+      href: "#dashboard-scope",
+      source: "reporting line",
+      title: "Team scope available",
+    });
+  }
+
+  return notifications;
+}
+
+function deriveConnectedSystems(graph: GraphResponse | null): ConnectedSystem[] {
+  const records = [
+    ...(graph?.sources.map((source) => ({ id: source.id, label: source.label })) ?? []),
+    ...(graph?.tools.map((tool) => ({ id: tool.id, label: tool.label })) ?? []),
+  ];
+
+  return CONNECTOR_NAMES.flatMap((name) => {
+    const match = records.find((record) => record.label.toLowerCase().includes(name.toLowerCase()));
+    if (!match) return [];
+    return [{ name, source: match.id, status: "Available" as const }];
+  });
 }
 
 function deriveScopeBadges({
@@ -619,6 +747,287 @@ function RoleExperienceSummary({ cards }: { cards: RoleExperienceCard[] }) {
   );
 }
 
+function NotificationCenter({ items }: { items: NotificationItem[] }) {
+  return (
+    <details
+      className="group relative"
+      data-testid="dashboard-notification-center"
+      onMouseEnter={(event) => {
+        event.currentTarget.open = true;
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.open = false;
+      }}
+    >
+      <summary
+        className="ap-card ap-washable flex min-h-10 cursor-pointer list-none items-center gap-2 rounded px-3 py-2"
+        data-testid="dashboard-notification-trigger"
+        style={dashboardPanelStyle()}
+      >
+        <span className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+          Notifications
+        </span>
+        <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+          {items.length > 0 ? "real data" : "no active rows"}
+        </span>
+      </summary>
+      <div
+        className="ap-card absolute right-0 z-20 mt-2 w-[min(380px,calc(100vw-2rem))] rounded border p-3 shadow-lg"
+        data-testid="dashboard-notification-dropdown"
+        style={dashboardPanelStyle()}
+      >
+        <div className="mb-2 flex items-baseline justify-between gap-3">
+          <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+            Notification Center
+          </p>
+          <Chip>{items.length > 0 ? "derived" : "empty"}</Chip>
+        </div>
+        {items.length === 0 ? (
+          <EmptyLine>No request, approval, workflow, grant, or team notification rows are visible.</EmptyLine>
+        ) : (
+          <div className="space-y-2">
+            {items.map((item) => (
+              <a
+                key={`${item.category}:${item.title}`}
+                href={item.href}
+                className="ap-washable block rounded border px-3 py-2"
+                data-testid="dashboard-notification-item"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+                      {item.category}
+                    </p>
+                    <p className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                      {item.title}
+                    </p>
+                  </div>
+                  {item.metric && <Chip mono>{item.metric}</Chip>}
+                </div>
+                <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+                  {item.detail}
+                </p>
+                <p className="ap-register-evidence ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+                  {item.source}
+                </p>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function WorkspaceLayer({
+  actor,
+  graph,
+  grants,
+  human,
+  inbox,
+  lens,
+  projectById,
+  requests,
+  roleScope,
+  summary,
+}: {
+  actor: string;
+  graph: GraphResponse | null;
+  grants: AccessGrantRecord[];
+  human: LensResponse["subject_human"];
+  inbox: AccessRequestRecord[];
+  lens: LensResponse;
+  projectById: Map<string, GraphProject>;
+  requests: AccessRequestRecord[];
+  roleScope: RoleScopeSummary | null;
+  summary: NodeSummary | null;
+}) {
+  const systems = deriveConnectedSystems(graph);
+  const directReports = roleScope?.team_scope.direct_report_count ?? human?.manages.length ?? 0;
+  const auditRows = [
+    ...requests.map((request) => ({
+      id: request.request_id,
+      label: "Request",
+      status: request.status,
+      target: request.target.capability_id,
+    })),
+    ...inbox.map((request) => ({
+      id: request.request_id,
+      label: "Approval",
+      status: request.status,
+      target: request.target.capability_id,
+    })),
+    ...grants.map((grant) => ({
+      id: grant.grant_id,
+      label: "Grant",
+      status: grant.status,
+      target: grant.target.capability_id,
+    })),
+  ];
+
+  return (
+    <section
+      className="ap-card mb-4 rounded border p-4"
+      data-testid="dashboard-workspace"
+      id="dashboard-workspace"
+      style={dashboardPanelStyle()}
+    >
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Workspace Layer
+          </p>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+            Work Identity
+          </h2>
+        </div>
+        <Chip>{roleScope?.enforcement ?? "derived only"}</Chip>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <WorkspaceBlock title="Identity">
+            <WorkspaceFact label="Actor" source="current actor" value={actor} />
+            <WorkspaceFact label="Name" source="lens" value={human?.display_name ?? lens.subject.name} />
+            <WorkspaceFact label="Title" source="people record" value={human?.title ?? "Role unavailable"} />
+          </WorkspaceBlock>
+
+          <WorkspaceBlock title="Role">
+            <WorkspaceFact
+              label="Role posture"
+              source="server scope"
+              value={roleScope ? roleLabel(roleScope.derived_level) : "Role posture unavailable"}
+            />
+            <WorkspaceFact
+              label="Confidence"
+              source="server scope"
+              value={roleScope?.confidence ?? "unavailable"}
+            />
+            <WorkspaceFact
+              label="Surface access"
+              source="scope contract"
+              value={roleScope?.admin_surface_allowed ? "Admin candidate" : "daily work only"}
+            />
+          </WorkspaceBlock>
+
+          <WorkspaceBlock title="Department">
+            <WorkspaceFact
+              label="Department"
+              source="lens"
+              value={human?.department_label ?? lens.subject.department ?? "Department unavailable"}
+            />
+            <WorkspaceFact label="Manager" source="people record" value={human?.reports_to ?? "Manager unavailable"} />
+            <WorkspaceFact
+              label="Team"
+              source="reporting line"
+              value={directReports > 0 ? `${directReports} direct ${directReports === 1 ? "report" : "reports"}` : "No team scope"}
+            />
+          </WorkspaceBlock>
+
+          <WorkspaceBlock title="Security">
+            <WorkspaceFact label="Band" source="scope" value={String(lens.subject.band ?? "unavailable")} />
+            <WorkspaceFact label="Groups" source="scope" value={lens.subject.groups.join(", ") || "No groups visible"} />
+            <WorkspaceFact label="Sites" source="scope" value={lens.subject.sites.join(", ") || "No sites visible"} />
+            <WorkspaceFact label="Restricted surfaces" source="scope contract" value="Unavailable on this dashboard" />
+          </WorkspaceBlock>
+        </div>
+
+        <div className="space-y-3">
+          <WorkspaceBlock title="Connected Systems">
+            <div className="grid grid-cols-1 gap-2" data-testid="dashboard-connected-systems">
+              {systems.length === 0 ? (
+                <EmptyLine compact>No supported connected systems are visible through this graph.</EmptyLine>
+              ) : (
+                systems.map((system) => (
+                  <div
+                    key={`${system.name}:${system.source}`}
+                    className="ap-card flex items-center justify-between gap-3 rounded p-2"
+                    data-testid="dashboard-connected-system"
+                  >
+                    <div className="min-w-0">
+                      <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                        {system.name}
+                      </p>
+                      <p className="ap-register-evidence ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+                        {system.source}
+                      </p>
+                    </div>
+                    <Chip>{system.status}</Chip>
+                  </div>
+                ))
+              )}
+            </div>
+          </WorkspaceBlock>
+
+          <WorkspaceBlock title="Preferences">
+            <WorkspaceFact label="Workspace preferences" source="not modeled" value="Unavailable" />
+          </WorkspaceBlock>
+
+          <WorkspaceBlock title="Agent Preferences">
+            <WorkspaceFact label="Owned agents" source="node summary" value={`${summary?.agents_owned?.length ?? 0} owned agents visible`} />
+          </WorkspaceBlock>
+
+          <WorkspaceBlock title="Audit Activity">
+            <div className="space-y-2" data-testid="dashboard-audit-activity">
+              {auditRows.length === 0 ? (
+                <EmptyLine compact>No request, approval, or grant ledger rows are visible.</EmptyLine>
+              ) : (
+                auditRows.slice(0, 5).map((row) => {
+                  const project = projectById.get(row.target);
+                  return (
+                    <div key={`${row.label}:${row.id}`} className="ap-card rounded p-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                            {row.label} {row.id}
+                          </p>
+                          <p className="ap-soft mt-1 truncate" style={{ fontSize: TYPE.scale.xs }}>
+                            {project?.label.replace(/^Capability:\s*/i, "") ?? row.target}
+                          </p>
+                        </div>
+                        <Chip>{row.status}</Chip>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </WorkspaceBlock>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WorkspaceBlock({ children, title }: { children: React.ReactNode; title: string }) {
+  return (
+    <section className="ap-card rounded border p-3">
+      <h3 className="ap-register-chrome mb-2" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+        {title}
+      </h3>
+      <div className="space-y-2">{children}</div>
+    </section>
+  );
+}
+
+function WorkspaceFact({ label, source, value }: { label: string; source: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+          {label}
+        </p>
+        <p className="ap-soft mt-1 break-words" style={{ fontSize: TYPE.scale.xs }}>
+          {value}
+        </p>
+      </div>
+      <span className="ap-register-evidence ap-soft shrink-0" style={{ fontSize: TYPE.scale.xs }}>
+        {source}
+      </span>
+    </div>
+  );
+}
+
 export function EmployeeDashboard({ actor }: { actor: string | null }) {
   const [lens, setLens] = useState<LensResponse | null>(null);
   const [graph, setGraph] = useState<GraphResponse | null>(null);
@@ -784,6 +1193,14 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
     roleScope,
     workflowItems,
   });
+  const notificationItems = buildNotificationItems({
+    actor,
+    grants,
+    inbox,
+    requests,
+    roleScope,
+    workflowItems,
+  });
 
   async function revokeGrant(grantId: string) {
     if (!actor) return;
@@ -828,18 +1245,34 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
               {human?.department_label ? ` / ${human.department_label}` : ""}
             </p>
           </div>
-          <a
-            href={`/ask?as=${encodeURIComponent(actor)}`}
-            className="ap-affordance-button ap-register-chrome rounded px-3 py-2"
-            style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
-            data-testid="dashboard-ask-link"
-          >
-            Ask Enterprise Brain
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <NotificationCenter items={notificationItems} />
+            <a
+              href={`/ask?as=${encodeURIComponent(actor)}`}
+              className="ap-affordance-button ap-register-chrome min-h-10 rounded px-3 py-2"
+              style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
+              data-testid="dashboard-ask-link"
+            >
+              Ask Enterprise Brain
+            </a>
+          </div>
         </div>
       </header>
 
       <CommandPods pods={commandPods} />
+
+      <WorkspaceLayer
+        actor={actor}
+        graph={graph}
+        grants={grants}
+        human={human}
+        inbox={inbox}
+        lens={lens}
+        projectById={projectById}
+        requests={requests}
+        roleScope={roleScope}
+        summary={summary}
+      />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-4">

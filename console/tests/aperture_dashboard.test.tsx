@@ -116,8 +116,11 @@ const GRAPH: GraphResponse = {
     },
   ],
   snapshot_version: "snap",
-  sources: [],
-  tools: [],
+  sources: [
+    { id: "source_slack", kind: "source", label: "Slack" },
+    { id: "source_sharepoint", kind: "source", label: "SharePoint" },
+  ],
+  tools: [{ id: "tool_github", kind: "tool", label: "GitHub" }],
 };
 
 const SUMMARY: NodeSummary = {
@@ -416,6 +419,35 @@ describe("EmployeeDashboard", () => {
 
     expect(screen.getByTestId("dashboard-user-name").textContent).toBe("Felix Osei");
     expect(screen.getByTestId("dashboard-ask-link").getAttribute("href")).toBe("/ask?as=p060");
+    const notifications = screen.getByTestId("dashboard-notification-center");
+    expect(notifications.textContent).toContain("Notifications");
+    expect(notifications.textContent).toContain("Request status");
+    expect(notifications.textContent).toContain("Approval queue");
+    expect(notifications.textContent).toContain("Workflow attention");
+    expect(notifications.textContent).toContain("Grant ledger events");
+    expect(notifications.textContent).toContain("Team scope available");
+    expect(notifications.textContent).not.toMatch(/unread/i);
+
+    const workspace = screen.getByTestId("dashboard-workspace");
+    expect(workspace.textContent).toContain("Work Identity");
+    expect(workspace.textContent).toContain("Identity");
+    expect(workspace.textContent).toContain("Role");
+    expect(workspace.textContent).toContain("Department");
+    expect(workspace.textContent).toContain("Manager");
+    expect(workspace.textContent).toContain("Connected Systems");
+    expect(workspace.textContent).toContain("Preferences");
+    expect(workspace.textContent).toContain("Agent Preferences");
+    expect(workspace.textContent).toContain("Security");
+    expect(workspace.textContent).toContain("Audit Activity");
+    expect(workspace.textContent).toContain("Ingrid Cohen");
+    const systems = screen.getByTestId("dashboard-connected-systems");
+    expect(systems.textContent).toContain("Slack");
+    expect(systems.textContent).toContain("SharePoint");
+    expect(systems.textContent).toContain("GitHub");
+    expect(systems.textContent).toContain("Available");
+    expect(systems.textContent).not.toContain("Gmail");
+    expect(systems.textContent).not.toContain("Not Connected");
+
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("My Work Pod");
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Project Context Pod");
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Team Lead Pod");
@@ -513,6 +545,9 @@ describe("EmployeeDashboard", () => {
     expect(pods.textContent).not.toContain("Approval Queue Pod");
     expect(pods.textContent).not.toContain("Executive Candidate Pod");
     expect(pods.textContent).not.toContain("Granted Knowledge Pod");
+    const notifications = screen.getByTestId("dashboard-notification-center");
+    expect(notifications.textContent).not.toContain("Team scope available");
+    expect(notifications.textContent).not.toContain("Approval queue");
 
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Employee baseline");
