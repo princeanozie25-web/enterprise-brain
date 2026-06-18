@@ -420,6 +420,223 @@ function Panel({
   );
 }
 
+const TODAY_WORKFLOW_STATUSES = new Set(["pending", "blocked"]);
+
+type CockpitAction = "Review" | "Open" | "Ask" | "Request" | "Approve" | "Continue";
+
+interface CockpitItem {
+  action: CockpitAction;
+  detail: string;
+  href: string;
+  metric: string;
+  source: string;
+  title: string;
+  tone: "attention" | "steady" | "ask" | "waiting" | "manager";
+}
+
+interface TodayCockpitModel {
+  askWithContext: CockpitItem[];
+  continueWork: CockpitItem[];
+  managerRows: CockpitItem[];
+  needsAttention: CockpitItem[];
+  waitingOn: CockpitItem[];
+}
+
+function plural(count: number, singular: string, pluralLabel = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : pluralLabel}`;
+}
+
+function capabilityTitle(capabilityId: string, projectById: Map<string, GraphProject>): string {
+  return projectById.get(capabilityId)?.label.replace(/^Capability:\s*/i, "") ?? capabilityId;
+}
+
+function projectHref(actor: string, capabilityId: string): string {
+  return `/project?cap=${encodeURIComponent(capabilityId)}&as=${encodeURIComponent(actor)}`;
+}
+
+function askGrantHref(actor: string, grant: AccessGrantRecord): string {
+  return `/ask?as=${encodeURIComponent(actor)}&grant=${encodeURIComponent(
+    grant.grant_id,
+  )}&cap=${encodeURIComponent(grant.target.capability_id)}`;
+}
+
+function buildTodayCockpit({
+  actor,
+  grants,
+  inbox,
+  projectById,
+  projects,
+  requests,
+  roleScope,
+  workflowItems,
+}: {
+  actor: string;
+  grants: AccessGrantRecord[];
+  inbox: AccessRequestRecord[];
+  projectById: Map<string, GraphProject>;
+  projects: ProjectRecord[];
+  requests: AccessRequestRecord[];
+  roleScope: RoleScopeSummary | null;
+  workflowItems: WorkflowItem[];
+}): TodayCockpitModel {
+  const activeGrants = activeKnowledgeGrants(grants, actor);
+  const visibleGrants = grants.filter((grant) => grant.grantee_id === actor || grant.approver_id === actor);
+  const grantStatusRows = visibleGrants.filter((grant) => grant.status !== "active" || Boolean(grant.expires_at));
+  const pendingRequests = requests.filter((request) => request.status === "pending");
+  const waitingWorkflowItems = workflowItems.filter((item) => TODAY_WORKFLOW_STATUSES.has(item.status.toLowerCase()));
+  const activeWorkflowItems = workflowItems.filter((item) => item.status.toLowerCase() === "active");
+  const departmentId = roleScope?.department_scope.department_id ?? null;
+  const departmentCapabilityIds = new Set(
+    projects.flatMap((project) => {
+      const graphProject = projectById.get(project.capability_id);
+      if (!departmentId || !graphProject) return [];
+      return graphProject.departments.includes(departmentId) || graphProject.primary_department_id === departmentId
+        ? [project.capability_id]
+        : [];
+    }),
+  );
+  const departmentWorkflowItems = workflowItems.filter((item) => departmentCapabilityIds.has(item.capability_id));
+
+  const needsAttention: CockpitItem[] = [];
+  if (inbox.length > 0) {
+    const firstRequest = inbox[0];
+    needsAttention.push({
+      action: "Approve",
+      detail: "Requests assigned to this Work Identity are ready for review.",
+      href: "#dashboard-requests",
+      metric: plural(inbox.length, "request"),
+      source: "approval inbox",
+      title: "Approval queue",
+      tone: "attention",
+    });
+    if (firstRequest) {
+      needsAttention[needsAttention.length - 1].detail = `Review ${capabilityTitle(
+        firstRequest.target.capability_id,
+        projectById,
+      )} and other assigned request rows.`;
+    }
+  }
+  if (waitingWorkflowItems.length > 0) {
+    const firstItem = waitingWorkflowItems[0];
+    needsAttention.push({
+      action: "Open",
+      detail: `${firstItem.title} is waiting or blocked in real project workflow data.`,
+      href: projectHref(actor, firstItem.capability_id),
+      metric: plural(waitingWorkflowItems.length, "workflow row"),
+      source: "workflow projection",
+      title: "Workflow waiting",
+      tone: "attention",
+    });
+  }
+  if (grantStatusRows.length > 0) {
+    needsAttention.push({
+      action: "Review",
+      detail: "Grant rows with expiry, revoked, or non-active status are present for this Work Identity.",
+      href: "#dashboard-requests",
+      metric: plural(grantStatusRows.length, "grant row"),
+      source: "grant ledger",
+      title: "Grant status",
+      tone: "attention",
+    });
+  }
+
+  const continueWork: CockpitItem[] = [];
+  if (activeWorkflowItems.length > 0) {
+    const firstItem = activeWorkflowItems[0];
+    continueWork.push({
+      action: "Continue",
+      detail: `${firstItem.title} is active in your assigned workflow.`,
+      href: projectHref(actor, firstItem.capability_id),
+      metric: plural(activeWorkflowItems.length, "active row"),
+      source: "workflow projection",
+      title: "Continue active workflow",
+      tone: "steady",
+    });
+  }
+  if (projects.length > 0) {
+    const firstProject = projects[0];
+    continueWork.push({
+      action: "Open",
+      detail: `${firstProject.capability_name} is assigned to this Work Identity.`,
+      href: projectHref(actor, firstProject.capability_id),
+      metric: plural(projects.length, "project"),
+      source: "Work Identity projects",
+      title: "Open project work",
+      tone: "steady",
+    });
+  }
+
+  const askWithContext: CockpitItem[] = [];
+  if (activeGrants.length > 0) {
+    const firstGrant = activeGrants[0];
+    askWithContext.push({
+      action: "Ask",
+      detail: `${capabilityTitle(firstGrant.target.capability_id, projectById)} is available through an active read grant.`,
+      href: askGrantHref(actor, firstGrant),
+      metric: plural(activeGrants.length, "active grant"),
+      source: "grant ledger",
+      title: "Ask with granted knowledge",
+      tone: "ask",
+    });
+  }
+
+  const waitingOn: CockpitItem[] = [];
+  if (pendingRequests.length > 0) {
+    waitingOn.push({
+      action: "Review",
+      detail: "Submitted access requests are still pending approval.",
+      href: "#dashboard-requests",
+      metric: plural(pendingRequests.length, "request"),
+      source: "request ledger",
+      title: "Waiting on approval",
+      tone: "waiting",
+    });
+  }
+
+  const managerRows: CockpitItem[] = [];
+  if (inbox.length > 0) {
+    managerRows.push({
+      action: "Approve",
+      detail: "Only loaded request inbox rows become manager review actions.",
+      href: "#dashboard-requests",
+      metric: plural(inbox.length, "inbox row"),
+      source: "approval inbox",
+      title: "Team requests",
+      tone: "manager",
+    });
+  }
+  if (roleScope?.team_scope.has_team_scope) {
+    managerRows.push({
+      action: "Open",
+      detail: "Team scope is derived from reporting-line facts. Team workflow rows are not modeled here.",
+      href: "#dashboard-scope",
+      metric: plural(roleScope.team_scope.direct_report_count, "direct report"),
+      source: "reporting line",
+      title: "Team context",
+      tone: "manager",
+    });
+  }
+  if (isDepartmentHead(roleScope?.derived_level) && departmentId) {
+    managerRows.push({
+      action: "Open",
+      detail: "Department workflow summary is limited to projects already visible to this Work Identity.",
+      href: "#dashboard-role-aware-workflow",
+      metric: `${departmentId} / ${plural(departmentWorkflowItems.length, "workflow row")}`,
+      source: "server scope",
+      title: "Department workflow summary",
+      tone: "manager",
+    });
+  }
+
+  return {
+    askWithContext,
+    continueWork,
+    managerRows,
+    needsAttention,
+    waitingOn,
+  };
+}
+
 interface CommandPodModel {
   callToAction?: string;
   detail: string;
@@ -629,6 +846,147 @@ function CommandPod({ delayIndex, pod }: { delayIndex: number; pod: CommandPodMo
       }}
     >
       {content}
+    </MotionAnchor>
+  );
+}
+
+function TodayCockpit({ model }: { model: TodayCockpitModel }) {
+  const attentionCount = model.needsAttention.length;
+  return (
+    <MotionSection
+      className="ap-card mb-4 rounded border p-4"
+      data-testid="dashboard-today-cockpit"
+      style={dashboardPanelStyle()}
+    >
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Today
+          </p>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+            What needs attention?
+          </h2>
+          <p className="ap-soft mt-2 max-w-2xl" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
+            Daily work is summarized from loaded requests, approval inbox rows, grants, workflows, and assigned projects.
+          </p>
+        </div>
+        <Chip>{plural(attentionCount, "attention row")}</Chip>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+        <CockpitSection
+          emptyLabel="No approval, waiting workflow, or grant-status rows are present."
+          items={model.needsAttention}
+          testId="dashboard-today-needs-attention"
+          title="Needs Attention"
+        />
+        <CockpitSection
+          emptyLabel="No active project workflow rows are available."
+          items={model.continueWork}
+          testId="dashboard-today-continue-work"
+          title="Continue Work"
+        />
+        <CockpitSection
+          emptyLabel="No active read grants are available for Ask."
+          items={model.askWithContext}
+          testId="dashboard-today-ask-context"
+          title="Ask With Context"
+        />
+        <CockpitSection
+          emptyLabel="No submitted access requests are waiting on approval."
+          items={model.waitingOn}
+          testId="dashboard-today-waiting-on"
+          title="Waiting On"
+        />
+      </div>
+
+      {model.managerRows.length > 0 && (
+        <section className="mt-3" data-testid="dashboard-today-manager-context">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+              Manager Context
+            </h3>
+            <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+              real scope only
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
+            {model.managerRows.map((item, index) => (
+              <CockpitRow item={item} key={`${item.title}:${item.metric}`} delayIndex={index} />
+            ))}
+          </div>
+        </section>
+      )}
+    </MotionSection>
+  );
+}
+
+function CockpitSection({
+  emptyLabel,
+  items,
+  testId,
+  title,
+}: {
+  emptyLabel: string;
+  items: CockpitItem[];
+  testId: string;
+  title: string;
+}) {
+  return (
+    <section className="ap-card rounded border p-3" data-testid={testId}>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+          {title}
+        </h3>
+        <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+          {items.length}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <EmptyLine>{emptyLabel}</EmptyLine>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <CockpitRow item={item} key={`${item.title}:${item.metric}`} delayIndex={index} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CockpitRow({ delayIndex, item }: { delayIndex: number; item: CockpitItem }) {
+  return (
+    <MotionAnchor
+      href={item.href}
+      className="ap-card ap-washable block rounded border p-3"
+      delayIndex={delayIndex}
+      data-cockpit-action={item.action.toLowerCase()}
+      data-cockpit-tone={item.tone}
+      data-testid="dashboard-today-row"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            {item.metric}
+          </p>
+          <h4 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+            {item.title}
+          </h4>
+        </div>
+        <span
+          className="ap-affordance-button ap-register-chrome rounded px-2 py-1"
+          style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+        >
+          {item.action}
+        </span>
+      </div>
+      <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+        {item.detail}
+      </p>
+      <p className="ap-register-evidence ap-soft mt-2" style={{ fontSize: TYPE.scale.xs }}>
+        {item.source}
+      </p>
     </MotionAnchor>
   );
 }
@@ -1522,6 +1880,16 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
     roleScope,
     workflowItems,
   });
+  const todayCockpit = buildTodayCockpit({
+    actor,
+    grants,
+    inbox,
+    projectById,
+    projects,
+    requests,
+    roleScope,
+    workflowItems,
+  });
 
   async function revokeGrant(grantId: string) {
     if (!actor) return;
@@ -1579,6 +1947,8 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
           </div>
         </div>
       </header>
+
+      <TodayCockpit model={todayCockpit} />
 
       <CommandPods pods={commandPods} />
 

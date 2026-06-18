@@ -222,6 +222,24 @@ const EXECUTIVE_CANDIDATE_ROLE_SCOPE: RoleScopeSummary = {
   ],
 };
 
+const TEAM_LEAD_ROLE_SCOPE: RoleScopeSummary = {
+  ...EMPLOYEE_ROLE_SCOPE,
+  approval_scope: {
+    has_approval_scope: true,
+    pending_count: 1,
+  },
+  derived_level: "team_lead",
+  reasons: [
+    "Work Identity record is present",
+    "reporting line has 1 direct report",
+    "sensitive surfaces remain disallowed by this contract",
+  ],
+  team_scope: {
+    direct_report_count: 1,
+    has_team_scope: true,
+  },
+};
+
 const REQUESTS: AccessRequestsResponse = {
   actor_id: "p060",
   demo_identity_mode: true,
@@ -315,6 +333,23 @@ const INBOX: AccessRequestsResponse = {
   snapshot_version: "snap",
 };
 
+const INBOX_WITH_REQUEST: AccessRequestsResponse = {
+  ...INBOX,
+  requests: [
+    {
+      approver_id: "p060",
+      created_ordinal: 2,
+      justification: "Needs approved project context.",
+      request_id: "ar_team_approval",
+      request_key: "team-key",
+      requester_id: "p061",
+      snapshot_version: "snap",
+      status: "pending",
+      target: { kind: "project", capability_id: "cap31" },
+    },
+  ],
+};
+
 const WORKFLOW: ProjectWorkflowResponse = {
   actor_id: "p060",
   capability_id: "cap31",
@@ -361,6 +396,17 @@ const WORKFLOW: ProjectWorkflowResponse = {
     workflow: { id: "wf11", name: "Goods-In Verification 31" },
   },
   snapshot_version: "snap",
+};
+
+const QUIET_WORKFLOW: ProjectWorkflowResponse = {
+  ...WORKFLOW,
+  items: [
+    {
+      ...WORKFLOW.items[0],
+      item_id: "box_active_quiet",
+      status: "active",
+    },
+  ],
 };
 
 function stubDashboardFetch({
@@ -428,6 +474,19 @@ describe("EmployeeDashboard", () => {
     expect(notifications.textContent).toContain("Team scope available");
     expect(notifications.textContent).toContain("Department context available");
     expect(notifications.textContent).not.toMatch(/unread/i);
+
+    const today = screen.getByTestId("dashboard-today-cockpit");
+    expect(today.textContent).toContain("Today");
+    expect(today.textContent).toContain("What needs attention?");
+    expect(today.textContent).toContain("Workflow waiting");
+    expect(today.textContent).toContain("Continue active workflow");
+    expect(today.textContent).toContain("Ask with granted knowledge");
+    expect(today.textContent).toContain("Waiting on approval");
+    expect(today.textContent).toContain("Manager Context");
+    expect(today.textContent).toContain("Team context");
+    expect(today.textContent).toContain("Department workflow summary");
+    expect(screen.getByTestId("dashboard-today-needs-attention").textContent).not.toContain("Approval queue");
+    expect(today.textContent).not.toMatch(/unread|overdue|risk score|bursar|governance/i);
 
     const commandLayer = screen.getByTestId("dashboard-workflow-command");
     expect(commandLayer.textContent).toContain("Workflow Command");
@@ -568,6 +627,12 @@ describe("EmployeeDashboard", () => {
     expect(pods.textContent).not.toContain("Approval Queue");
     expect(pods.textContent).not.toContain("Executive Candidate");
     expect(pods.textContent).not.toContain("Granted Knowledge");
+    const today = screen.getByTestId("dashboard-today-cockpit");
+    expect(today.textContent).toContain("Today");
+    expect(today.textContent).toContain("Needs Attention");
+    expect(today.textContent).not.toContain("Manager Context");
+    expect(screen.queryByTestId("dashboard-today-manager-context")).toBeNull();
+    expect(today.textContent).not.toMatch(/unread|overdue|risk score|bursar|governance/i);
     const notifications = screen.getByTestId("dashboard-notification-center");
     expect(notifications.textContent).not.toContain("Team scope available");
     expect(notifications.textContent).not.toContain("Department context available");
@@ -595,6 +660,59 @@ describe("EmployeeDashboard", () => {
     expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
 
+  it("shows an honest Today empty state when no real attention rows exist", async () => {
+    stubDashboardFetch({
+      grants: { ...GRANTS, grants: [] },
+      inbox: { ...INBOX, requests: [] },
+      lens: EMPLOYEE_LENS,
+      requests: { ...REQUESTS, requests: [] },
+      roleScope: EMPLOYEE_ROLE_SCOPE,
+      summary: { ...SUMMARY, agents_owned: [] },
+      workflow: QUIET_WORKFLOW,
+    });
+    const { container } = render(<EmployeeDashboard actor="p060" />);
+    await waitFor(() => expect(screen.getByTestId("employee-dashboard")).toBeTruthy());
+
+    const today = screen.getByTestId("dashboard-today-cockpit");
+    const needsAttention = screen.getByTestId("dashboard-today-needs-attention");
+    expect(today.textContent).toContain("0 attention rows");
+    expect(needsAttention.textContent).toContain("No approval, waiting workflow, or grant-status rows are present.");
+    expect(today.textContent).toContain("Continue active workflow");
+    expect(today.textContent).toContain("No active read grants are available for Ask.");
+    expect(today.textContent).toContain("No submitted access requests are waiting on approval.");
+    expect(today.textContent).not.toMatch(/unread|notification count|overdue|risk score|bursar|governance/i);
+    expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
+    expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
+  });
+
+  it("adds team lead cockpit value only from real inbox and team scope rows", async () => {
+    stubDashboardFetch({
+      grants: { ...GRANTS, grants: [] },
+      inbox: INBOX_WITH_REQUEST,
+      lens: EMPLOYEE_LENS,
+      requests: { ...REQUESTS, requests: [] },
+      roleScope: TEAM_LEAD_ROLE_SCOPE,
+      summary: { ...SUMMARY, agents_owned: [] },
+    });
+    const { container } = render(<EmployeeDashboard actor="p060" />);
+    await waitFor(() => expect(screen.getByTestId("employee-dashboard")).toBeTruthy());
+
+    const today = screen.getByTestId("dashboard-today-cockpit");
+    const managerContext = screen.getByTestId("dashboard-today-manager-context");
+    expect(today.textContent).toContain("Approval queue");
+    expect(today.textContent).toContain("Approve");
+    expect(managerContext.textContent).toContain("Team requests");
+    expect(managerContext.textContent).toContain("Team context");
+    expect(managerContext.textContent).toContain("Team workflow rows are not modeled here");
+    expect(managerContext.textContent).not.toContain("Department workflow summary");
+    expect(screen.getByTestId("dashboard-employee-workflow-layer").textContent).toContain("Employee Layer");
+    expect(screen.getByTestId("dashboard-team-workflow-layer").textContent).toContain("1 direct report");
+    expect(screen.queryByTestId("dashboard-department-workflow-layer")).toBeNull();
+    expect(today.textContent).not.toMatch(/unread|notification count|overdue|risk score|bursar|governance/i);
+    expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
+    expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
+  });
+
   it("labels executive candidates without unlocking elevated dashboard pods", async () => {
     stubDashboardFetch({
       grants: { ...GRANTS, grants: [] },
@@ -613,6 +731,10 @@ describe("EmployeeDashboard", () => {
     expect(pods.textContent).not.toContain("Team Context");
     expect(pods.textContent).not.toContain("Department Context");
     expect(pods.textContent).not.toContain("Approval Queue");
+    const today = screen.getByTestId("dashboard-today-cockpit");
+    expect(today.textContent).toContain("Today");
+    expect(today.textContent).not.toContain("Manager Context");
+    expect(today.textContent).not.toMatch(/admin|bursar|governance|unread|notification count/i);
 
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Executive candidate");
