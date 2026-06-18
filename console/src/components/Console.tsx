@@ -79,6 +79,7 @@ export function Console({
   const [entryGrantId, setEntryGrantId] = useState<string | null>(null);
   const [grantContext, setGrantContext] = useState<AccessGrantRecord | null>(null);
   const [grantContextUnavailable, setGrantContextUnavailable] = useState(false);
+  const [reduced, setReduced] = useState(true);
   /** AR-2: ?subject=… — the click-to-lens door from the Org Graph; opens the
    * subject's lens (cross-lens, audited) once on the /lens page. */
   const [entrySubject, setEntrySubject] = useState<string | null>(null);
@@ -134,6 +135,10 @@ export function Console({
     if (subject.length > 0) {
       setEntrySubject(subject);
     }
+  }, []);
+
+  useEffect(() => {
+    setReduced(prefersReducedMotion());
   }, []);
 
   useEffect(() => {
@@ -250,7 +255,6 @@ export function Console({
     [principal],
   );
 
-  const reduced = prefersReducedMotion();
   const irisClass = reduced ? iris.fadeIn : iris.irisIn;
 
   return (
@@ -310,7 +314,7 @@ export function Console({
 
       <div
         key={principal ?? "no-lens"}
-        className={`mx-auto flex max-w-6xl gap-6 p-4 ${irisClass}`}
+        className={`mx-auto flex max-w-6xl flex-col gap-6 p-4 md:flex-row ${irisClass}`}
         data-testid="iris-stage"
       >
         {view === "adminGraph" ? (
@@ -337,7 +341,7 @@ export function Console({
           <ProjectSurface actor={principal} capabilityId={entryCapability} />
         ) : (
           <>
-            <aside className="w-72 shrink-0">
+            <aside className="w-full md:w-72 md:shrink-0">
               <IdentityRail principal={principal} scope={scope} />
             </aside>
 
