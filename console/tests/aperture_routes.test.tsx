@@ -123,23 +123,57 @@ describe("route separation", () => {
     render(<ProductHome />);
 
     expect(screen.getByTestId("root-home")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Company Operating System" })).toBeTruthy();
+    expect(screen.getByText("Governed knowledge")).toBeTruthy();
+    expect(screen.getByText("Governed workflows")).toBeTruthy();
+    expect(screen.getByText("Governed spend")).toBeTruthy();
+    expect(screen.getByTestId("root-demo-flow").textContent).toContain("Work Identity");
+    expect(screen.getByTestId("root-demo-flow").textContent).toContain("Granted Knowledge");
+    expect(screen.getByTestId("root-demo-flow").textContent).toContain("Bursar Ledger Room");
     expect(screen.getByTestId("root-link-me").getAttribute("href")).toBe("/me");
+    expect(screen.getByTestId("root-link-me").textContent).toContain("Work Identity");
     expect(screen.getByTestId("root-link-project").getAttribute("href")).toBe("/project");
+    expect(screen.getByTestId("root-link-project").textContent).toContain("Workflow Command");
     expect(screen.getByTestId("root-link-ask").getAttribute("href")).toBe("/ask");
+    expect(screen.getByTestId("root-link-ask").textContent).toContain("Permission-aware Ask");
     expect(screen.getByTestId("root-link-admin-graph").getAttribute("href")).toBe("/admin/graph");
+    expect(screen.getByTestId("root-link-admin-graph").textContent).toContain("Operating Map");
     expect(screen.getByTestId("root-link-admin-bursar").getAttribute("href")).toBe("/admin/bursar");
+    expect(screen.getByTestId("root-link-admin-bursar").textContent).toContain("Bursar Ledger Room");
     expect(screen.getByTestId("root-admin-note").textContent).toContain("derived-only");
+    expect(screen.getByTestId("root-admin-note").textContent).toContain("ledger producers");
+    expect(screen.getByTestId("root-home").textContent ?? "").not.toMatch(/supplier|invoice|procurement/i);
   });
 
   it("keeps product navigation split across daily, project, ask, and admin-domain surfaces", () => {
     render(<Console view="me" />);
 
     expect(screen.getByTestId("view-door-me").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("view-door-me").textContent).toBe("Work Identity");
     expect(screen.getByTestId("view-door-project").getAttribute("href")).toBe("/project");
+    expect(screen.getByTestId("view-door-project").textContent).toBe("Workflow Command");
     expect(screen.getByTestId("view-door-ask").getAttribute("href")).toBe("/ask");
     expect(screen.getByTestId("view-door-admin-graph").getAttribute("href")).toBe("/admin/graph");
+    expect(screen.getByTestId("view-door-admin-graph").textContent).toBe("Operating Map");
     expect(screen.queryByTestId("view-door-bursar")).toBeNull();
-    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("not full auth enforced yet");
+    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("not server-enforced");
+  });
+
+  it("renders direct Ask and Workflow Command route shells without fabricating access", () => {
+    const ask = render(<Console view="ask" />);
+    expect(screen.getByRole("heading", { name: "Ask" })).toBeTruthy();
+    expect(screen.getByText("Permission-aware Ask with scope, provenance, and fail-closed grant checks.")).toBeTruthy();
+    expect(screen.queryByTestId("view-door-bursar")).toBeNull();
+    ask.unmount();
+
+    render(<Console view="project" />);
+    const empty = screen.getByTestId("project-empty");
+    expect(empty.textContent).toContain("No Work Identity is selected.");
+    expect(empty.textContent).toContain("real capability-backed workflow");
+    expect(screen.getByTestId("project-empty-work-identity-link").getAttribute("href")).toBe("/me");
+    expect(screen.getByTestId("project-empty-operating-map-link").getAttribute("href")).toBe("/admin/graph");
+    expect(screen.queryByTestId("view-door-bursar")).toBeNull();
+    expect(document.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
 
   it("renders Bursar as an honest Ledger-room placeholder without fake spend data", () => {
@@ -159,6 +193,7 @@ describe("route separation", () => {
     expect(text).toContain("Same console: the answer, and the governed spend it cost");
     expect(text).not.toMatch(/supplier|invoice|procurement|duplicate payment|savings opportunity/i);
     expect(text).not.toMatch(/spend total|total spend|model call total|token total|total tokens/i);
+    expect(text).not.toMatch(/budget used|cost chart|ledger row|savings/i);
     expect(text).not.toMatch(/£|\$[0-9]|[0-9][0-9,]*\s*tokens?/i);
     expect(screen.queryByTestId("bursar-ledger-row")).toBeNull();
     expect(screen.queryByTestId("bursar-cost-chart")).toBeNull();

@@ -237,7 +237,7 @@ export function GraphRoom({
       >
         <div className="ap-soft min-w-0 truncate" style={{ fontSize: TYPE.scale.xs }}>
           <span>
-            {adminPreview ? "Enterprise Brain / Admin Graph" : "Enterprise Brain"} / Connections{" "}
+            {adminPreview ? "Enterprise Brain / Operating Map" : "Enterprise Brain"} / Connections{" "}
             ({connectionCount.toLocaleString("en-US")})
           </span>
           {adminPreview && (

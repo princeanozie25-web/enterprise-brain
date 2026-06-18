@@ -259,19 +259,37 @@ export function Console({
 
       <nav className="ap-card border-x-0 border-t-0" aria-label="Rooms" data-testid="view-switcher">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-1.5">
-          <ViewDoor label="Me" href="/me" active={view === "me"} principal={principal} />
-          <ViewDoor label="Project" href="/project" active={view === "project"} principal={principal} />
+          <ViewDoor label="Work Identity" href="/me" active={view === "me"} principal={principal} testId="view-door-me" />
+          <ViewDoor
+            label="Workflow Command"
+            href="/project"
+            active={view === "project"}
+            principal={principal}
+            testId="view-door-project"
+          />
           <ViewDoor label="Ask" href="/ask" active={view === "ask"} principal={principal} />
-          <ViewDoor label="Admin Graph" href="/admin/graph" active={view === "adminGraph"} principal={principal} />
+          <ViewDoor
+            label="Operating Map"
+            href="/admin/graph"
+            active={view === "adminGraph"}
+            principal={principal}
+            testId="view-door-admin-graph"
+          />
           {(view === "adminBursar" || view === "adminGraph") && (
-            <ViewDoor label="Bursar" href="/admin/bursar" active={view === "adminBursar"} principal={principal} />
+            <ViewDoor
+              label="Bursar Ledger"
+              href="/admin/bursar"
+              active={view === "adminBursar"}
+              principal={principal}
+              testId="view-door-bursar"
+            />
           )}
           <span
             className="ap-register-evidence ap-soft rounded px-1.5 py-0.5"
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="admin-preview-badge"
           >
-            derived access posture only / not full auth enforced yet
+            derived posture only / admin and spend authority not server-enforced here
           </span>
           <ViewDoor label="Lens" href="/lens" active={view === "lens"} principal={principal} />
           <ViewDoor label="Atlas" href="/atlas" active={view === "atlas"} principal={principal} />
@@ -336,7 +354,7 @@ export function Console({
               Ask
             </h1>
             <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
-              Scope, provenance, and honest degradation, at a glance.
+              Permission-aware Ask with scope, provenance, and fail-closed grant checks.
             </p>
           </header>
 
@@ -537,13 +555,15 @@ function ViewDoor({
   href,
   active,
   principal,
+  testId,
 }: {
   label: string;
   href: string;
   active: boolean;
   principal: string | null;
+  testId?: string;
 }) {
-  const testid = `view-door-${label.toLowerCase().replace(/\s+/g, "-")}`;
+  const testid = testId ?? `view-door-${label.toLowerCase().replace(/\s+/g, "-")}`;
   if (active) {
     return (
       <span

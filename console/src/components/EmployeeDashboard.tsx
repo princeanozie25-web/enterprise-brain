@@ -339,7 +339,7 @@ function deriveScopeBadges({
     badges.push({
       detail: department,
       label: "Department context",
-      source: "profile",
+      source: "people record",
     });
   }
   if (human?.seniority) {
@@ -360,7 +360,7 @@ function deriveScopeBadges({
     badges.push({
       detail: `${projectCount} assigned ${projectCount === 1 ? "project" : "projects"}`,
       label: "Project scope",
-      source: "profile projects",
+      source: "Work Identity projects",
     });
   }
   if (agentCount > 0) {
@@ -1423,7 +1423,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   if (actor === null) {
     return (
       <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="employee-dashboard-empty">
-        Select a lens to open your dashboard.
+        Select a lens to open Work Identity.
       </p>
     );
   }
@@ -1441,7 +1441,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   if (!available || lens === null) {
     return (
       <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="employee-dashboard-unavailable">
-        Your dashboard is not available through this lens.
+        Work Identity is not available through this lens.
       </p>
     );
   }
@@ -1704,7 +1704,7 @@ function GrantedKnowledgeList({
               style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
               data-testid="dashboard-open-grant-ask"
             >
-              Open In Ask
+              Open in Ask
             </a>
           </article>
         );
@@ -1717,7 +1717,7 @@ function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
   return (
     <div data-testid="dashboard-scope" id="dashboard-scope">
       <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-        Derived from visible profile, reporting, project, agent, and request facts. Server-side
+        Derived from visible Work Identity, reporting, project, agent, and request facts. Server-side
         authorization is still handled by the existing scoped APIs; this label is derived, not
         enforced.
       </p>

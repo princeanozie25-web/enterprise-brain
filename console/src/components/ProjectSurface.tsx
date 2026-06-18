@@ -33,6 +33,53 @@ function HeaderValue({ label, children }: { label: string; children: React.React
   );
 }
 
+function ProjectEntryState({
+  actor,
+  detail,
+  testId,
+  title,
+}: {
+  actor: string | null;
+  detail: string;
+  testId: string;
+  title: string;
+}) {
+  const carry = actor === null ? "" : `?as=${encodeURIComponent(actor)}`;
+  return (
+    <main className="min-w-0 flex-1" data-testid={testId}>
+      <section className="ap-card rounded p-4">
+        <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+          Workflow Command
+        </p>
+        <h1 className="ap-register-chrome mt-2" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+          {title}
+        </h1>
+        <p className="ap-soft mt-2 max-w-2xl" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
+          {detail}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a
+            className="ap-affordance-button ap-register-chrome rounded px-3 py-2"
+            data-testid="project-empty-work-identity-link"
+            href={`/me${carry}`}
+            style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+          >
+            Open Work Identity
+          </a>
+          <a
+            className="ap-washable ap-register-chrome rounded border px-3 py-2"
+            data-testid="project-empty-operating-map-link"
+            href={`/admin/graph${carry}`}
+            style={{ borderColor: "var(--hairline)", fontSize: TYPE.scale.xs, fontWeight: 600 }}
+          >
+            Open Operating Map
+          </a>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 export function ProjectSurface({
   actor,
   capabilityId,
@@ -93,17 +140,23 @@ export function ProjectSurface({
 
   if (actor === null) {
     return (
-      <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="project-empty">
-        Select a lens to begin.
-      </p>
+      <ProjectEntryState
+        actor={actor}
+        detail="Select Work Identity first, then open a real capability-backed workflow from the actor's project list or the Operating Map."
+        testId="project-empty"
+        title="No Work Identity is selected."
+      />
     );
   }
 
   if (capabilityId === null) {
     return (
-      <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="project-missing-capability">
-        Open a project from the graph to view its workflow.
-      </p>
+      <ProjectEntryState
+        actor={actor}
+        detail="Workflow Command opens when a real capability id is carried from Work Identity or the Operating Map. This page does not fabricate project state."
+        testId="project-missing-capability"
+        title="No capability-backed workflow is selected."
+      />
     );
   }
 
@@ -131,10 +184,10 @@ export function ProjectSurface({
           </div>
           <div className="ap-card flex shrink-0 gap-1 rounded p-1" data-testid="project-tabs">
             <TabButton active={tab === "graph"} onClick={() => setTab("graph")}>
-              Graph View
+              Operating Map Trace
             </TabButton>
             <TabButton active={tab === "workflow"} onClick={() => setTab("workflow")}>
-              Workflow View
+              Workflow Command
             </TabButton>
           </div>
         </div>

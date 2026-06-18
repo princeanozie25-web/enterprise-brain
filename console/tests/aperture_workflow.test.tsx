@@ -170,6 +170,8 @@ describe("workflow projection UI", () => {
   it("groups real workflow items by status without evidence rows", () => {
     const { container } = render(<WorkflowView workflow={WORKFLOW} roleScope={ROLE_SCOPE} />);
     const groups = screen.getAllByTestId("workflow-group");
+    expect(screen.getByRole("heading", { name: "Workflow Command" })).toBeTruthy();
+    expect(container.textContent).toContain(`${WORKFLOW.items.length} real items`);
     expect(groups.length).toBe(5);
     expect(within(groups[0]).getAllByTestId("workflow-item").length).toBe(1);
     expect(within(groups[2]).getAllByTestId("workflow-item").length).toBe(1);
@@ -185,13 +187,16 @@ describe("workflow projection UI", () => {
     expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
     expect(container.textContent ?? "").not.toContain("document_id");
     expect(container.textContent ?? "").not.toContain("evidence");
+    expect(container.textContent ?? "").not.toMatch(/unread|notification|metric|fake/i);
   });
 
-  it("renders the project surface with Graph View and Workflow View tabs", async () => {
+  it("renders the project surface with Operating Map Trace and Workflow Command tabs", async () => {
     stubProjectFetch();
     render(<ProjectSurface actor="p060" capabilityId="cap31" />);
     await waitFor(() => expect(screen.getByTestId("project-title").textContent).toBe("Access Review 31"));
     expect(screen.getByTestId("workflow-view")).toBeTruthy();
+    expect(screen.getByTestId("project-tabs").textContent).toContain("Operating Map Trace");
+    expect(screen.getByTestId("project-tabs").textContent).toContain("Workflow Command");
 
     fireEvent.click(screen.getAllByTestId("project-tab")[0]);
     expect(screen.getByTestId("project-graph-view")).toBeTruthy();
@@ -203,5 +208,19 @@ describe("workflow projection UI", () => {
     expect(screen.getByTestId("workflow-role-posture").textContent).toContain("Employee focus");
     expect(document.querySelector("[data-testid='bursar-surface']")).toBeNull();
     expect(document.querySelector("a[href='/admin/bursar']")).toBeNull();
+  });
+
+  it("renders an honest direct project route empty state without fake workflow data", () => {
+    const { container } = render(<ProjectSurface actor="p060" capabilityId={null} />);
+
+    const empty = screen.getByTestId("project-missing-capability");
+    expect(empty.textContent).toContain("No capability-backed workflow is selected.");
+    expect(empty.textContent).toContain("does not fabricate project state");
+    expect(screen.getByTestId("project-empty-work-identity-link").getAttribute("href")).toBe("/me?as=p060");
+    expect(screen.getByTestId("project-empty-operating-map-link").getAttribute("href")).toBe(
+      "/admin/graph?as=p060",
+    );
+    expect(container.querySelector("[data-testid='workflow-item']")).toBeNull();
+    expect(container.textContent ?? "").not.toMatch(/bursar|supplier|invoice|procurement|spend total|token total/i);
   });
 });

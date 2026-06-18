@@ -95,7 +95,7 @@ export function WorkflowView({
             className="ap-register-chrome"
             style={{ fontSize: TYPE.scale.lg, fontWeight: 600, lineHeight: TYPE.line.display }}
           >
-            Workflow Board
+            Workflow Command
           </h2>
           <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
             {workflow.provenance.workflow.name}

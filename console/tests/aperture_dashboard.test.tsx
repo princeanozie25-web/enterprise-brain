@@ -155,7 +155,7 @@ const ROLE_SCOPE: RoleScopeSummary = {
     project_count: 1,
   },
   reasons: [
-    "humanized actor profile is present",
+    "Work Identity record is present",
     "reporting line has 2 direct reports",
     "sensitive surfaces remain disallowed by this contract",
   ],
@@ -196,7 +196,7 @@ const EMPLOYEE_ROLE_SCOPE: RoleScopeSummary = {
     project_count: 1,
   },
   reasons: [
-    "humanized actor profile is present",
+    "Work Identity record is present",
     "project scope has 1 visible capability assignments",
     "sensitive surfaces remain disallowed by this contract",
   ],
@@ -216,7 +216,7 @@ const EXECUTIVE_CANDIDATE_ROLE_SCOPE: RoleScopeSummary = {
   },
   derived_level: "executive_candidate",
   reasons: [
-    "humanized actor profile is present",
+    "Work Identity record is present",
     "executive-like title/department is only a candidate signal",
     "sensitive surfaces remain disallowed by this contract",
   ],
@@ -539,7 +539,9 @@ describe("EmployeeDashboard", () => {
     expect(text).not.toContain("document_id");
     expect(text).not.toContain("d0196");
     expect(text).not.toMatch(/denied count|hidden/i);
+    expect(text).not.toMatch(/\bprofile\b/i);
     expect(text).not.toMatch(/bursar|governance/i);
+    expect(text).not.toMatch(/supplier|invoice|procurement|spend total|token total/i);
     expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
     expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
@@ -588,6 +590,7 @@ describe("EmployeeDashboard", () => {
     expect(screen.queryByTestId("dashboard-open-grant-ask")).toBeNull();
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/bursar|governance/i);
+    expect(text).not.toMatch(/supplier|invoice|procurement|spend total|token total/i);
     expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
     expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
@@ -621,6 +624,7 @@ describe("EmployeeDashboard", () => {
     expect(screen.queryByTestId("dashboard-department-workflow-layer")).toBeNull();
     expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
     expect(container.textContent ?? "").not.toMatch(/bursar|governance/i);
+    expect(container.textContent ?? "").not.toMatch(/supplier|invoice|procurement|spend total|token total/i);
     expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
     expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
