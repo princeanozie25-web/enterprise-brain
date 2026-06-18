@@ -2,6 +2,7 @@
 
 import { TYPE } from "@/lib/tokens";
 import { MotionArticle, MotionSection } from "./MotionPrimitives";
+import { DemoIdentityNotice } from "./TrustPosture";
 
 const DOCTRINE = [
   {
@@ -98,12 +99,14 @@ export function BursarSurface() {
             </p>
           </div>
           <div className="flex content-start items-start gap-2 lg:flex-col">
-            <StatusChip>route /admin/bursar</StatusChip>
-            <StatusChip>UI-only surface</StatusChip>
+            <StatusChip>admin-side preview</StatusChip>
+            <StatusChip>finance authority pending</StatusChip>
             <StatusChip>no ledger fixture</StatusChip>
           </div>
         </div>
       </MotionSection>
+
+      <DemoIdentityNotice className="mb-4" context="bursar" testId="bursar-demo-identity-mode" />
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]" aria-label="Bursar doctrine">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

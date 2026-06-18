@@ -535,7 +535,7 @@ describe("EmployeeDashboard", () => {
     expect(project.getAttribute("href")).toBe("/project?cap=cap31&as=p060");
 
     const scope = screen.getByTestId("dashboard-scope");
-    expect(scope.textContent).toContain("derived, not enforced");
+    expect(scope.textContent).toContain("permission preview");
     expect(scope.textContent).toContain("Role posture");
     expect(scope.textContent).toContain("Department head signal");
     expect(scope.textContent).toContain("Department context");
@@ -544,7 +544,12 @@ describe("EmployeeDashboard", () => {
     expect(scope.textContent).toContain("Project scope");
     expect(scope.textContent).toContain("Read grants");
     expect(scope.textContent).toContain("Surface limits");
-    expect(scope.textContent).toContain("Enforcement status");
+    expect(scope.textContent).toContain("Identity boundary");
+    expect(scope.textContent).toContain("Production identity binding");
+
+    const identityMode = screen.getByTestId("dashboard-demo-identity-mode");
+    expect(identityMode.textContent).toContain("Demo Identity Mode");
+    expect(identityMode.textContent).toContain("Production identity is not connected");
 
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Department head");
@@ -552,6 +557,7 @@ describe("EmployeeDashboard", () => {
     expect(roleExperience.textContent).toContain("Approval scope");
     expect(roleExperience.textContent).toContain("Granted knowledge");
     expect(roleExperience.textContent).toContain("Surface boundary");
+    expect(roleExperience.textContent).toContain("permission preview");
     expect(roleExperience.textContent).not.toMatch(/bursar|governance/i);
 
     const roleWorkflow = screen.getByTestId("dashboard-role-aware-workflow");
@@ -648,6 +654,7 @@ describe("EmployeeDashboard", () => {
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Employee baseline");
     expect(roleExperience.textContent).toContain("Surface boundary");
+    expect(roleExperience.textContent).toContain("permission preview");
     expect(roleExperience.textContent).not.toContain("Team scope");
     expect(roleExperience.textContent).not.toContain("Department head");
     expect(roleExperience.textContent).not.toContain("Approval queue");
@@ -738,7 +745,7 @@ describe("EmployeeDashboard", () => {
 
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Executive candidate");
-    expect(roleExperience.textContent).toContain("not enforced");
+    expect(roleExperience.textContent).toContain("label only");
     expect(roleExperience.textContent).toContain("Surface boundary");
     expect(screen.getByTestId("dashboard-employee-workflow-layer").textContent).toContain("Employee Layer");
     expect(screen.getByTestId("dashboard-executive-workflow-label").textContent).toContain("label only");

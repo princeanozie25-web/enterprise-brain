@@ -18,6 +18,7 @@ import { TYPE } from "@/lib/tokens";
 import { MotionAnchor, MotionArticle, MotionSection } from "./MotionPrimitives";
 import { PersonAvatar } from "./PersonAvatar";
 import { Skeleton } from "./Skeleton";
+import { DemoIdentityNotice } from "./TrustPosture";
 
 const WORKFLOW_GROUPS = [
   { label: "In Progress", statuses: ["active"] },
@@ -90,7 +91,7 @@ function roleLabel(level: RoleScopeSummary["derived_level"]): string {
     case "executive_candidate":
       return "Executive candidate signal";
     case "super_admin_candidate":
-      return "Super admin candidate signal";
+      return "Restricted-surface candidate signal";
     case "team_lead":
       return "Team lead signal";
     case "employee":
@@ -105,6 +106,10 @@ function isExecutiveCandidate(level: RoleScopeSummary["derived_level"] | null | 
 
 function isDepartmentHead(level: RoleScopeSummary["derived_level"] | null | undefined): boolean {
   return level === "department_head";
+}
+
+function scopeModeLabel(roleScope: RoleScopeSummary | null | undefined): string {
+  return roleScope ? "permission preview" : "scope unavailable";
 }
 
 function activeKnowledgeGrants(grants: AccessGrantRecord[], actor: string): AccessGrantRecord[] {
@@ -316,9 +321,9 @@ function deriveScopeBadges({
       });
     }
     badges.push({
-      detail: "restricted admin-domain surfaces unavailable",
+      detail: "restricted surfaces unavailable",
       label: "Surface limits",
-      source: roleScope.enforcement,
+      source: "scope contract",
     });
 
     return badges;
@@ -1046,7 +1051,7 @@ function buildRoleExperienceCards({
   }
   if (isDepartmentHead(roleScope?.derived_level)) {
     cards.push({
-      detail: "Department context is label-only until server enforcement exists.",
+      detail: "Department context is previewed from visible Work Identity scope.",
       label: "Department head",
       metric: roleScope?.department_scope.department_id ?? "department",
       source: "server scope",
@@ -1074,7 +1079,7 @@ function buildRoleExperienceCards({
     cards.push({
       detail: "Candidate signal is shown honestly and unlocks nothing.",
       label: "Executive candidate",
-      metric: "not enforced",
+      metric: "label only",
       source: "server scope",
       tone: "candidate",
     });
@@ -1082,7 +1087,7 @@ function buildRoleExperienceCards({
   cards.push({
     detail: "Restricted surfaces remain unavailable in this dashboard.",
     label: "Surface boundary",
-    metric: roleScope?.enforcement ?? "derived only",
+    metric: scopeModeLabel(roleScope),
     source: "scope contract",
     tone: "limited",
   });
@@ -1348,8 +1353,10 @@ function WorkspaceLayer({
             Work Identity
           </h2>
         </div>
-        <Chip>{roleScope?.enforcement ?? "derived only"}</Chip>
+        <Chip>{scopeModeLabel(roleScope)}</Chip>
       </div>
+
+      <DemoIdentityNotice className="mb-3" compact context="employee" testId="dashboard-demo-identity-mode" />
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1373,7 +1380,7 @@ function WorkspaceLayer({
             <WorkspaceFact
               label="Surface access"
               source="scope contract"
-              value={roleScope?.admin_surface_allowed ? "Admin candidate" : "daily work only"}
+              value={roleScope?.admin_surface_allowed ? "restricted preview candidate" : "daily work only"}
             />
           </WorkspaceBlock>
 
@@ -1543,7 +1550,7 @@ function RoleAwareWorkflowLayer({
             My work plus visible leadership context
           </h2>
         </div>
-        <Chip>{roleScope?.enforcement ?? "derived only"}</Chip>
+        <Chip>{scopeModeLabel(roleScope)}</Chip>
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-4">
@@ -1631,13 +1638,13 @@ function RoleAwareWorkflowLayer({
 
         {hasExecutiveSignal && (
           <WorkflowLayerCard
-            detail="Candidate signal is displayed without unlocking restricted admin-domain workflows."
+            detail="Candidate signal is displayed without unlocking restricted workflows."
             metric="label only"
             testId="dashboard-executive-workflow-label"
             title="Executive Candidate"
           >
             <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-              Elevated workflow surfaces require explicit server-enforced privileges.
+              Elevated workflow surfaces require production authority binding.
             </p>
           </WorkflowLayerCard>
         )}
@@ -1988,7 +1995,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
 
           <Panel
             title="Scope Posture"
-            action={<Chip>derived, not enforced</Chip>}
+            action={<Chip>permission preview</Chip>}
           >
             <ScopePosture badges={scopeBadges} />
           </Panel>
@@ -2147,11 +2154,11 @@ function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
       </div>
       <div className="ap-card mt-3 rounded p-2">
         <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
-          Enforcement status
+          Identity boundary
         </p>
         <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-          This dashboard labels the selected Work Identity posture only. It does not create admin access,
-          expose restricted admin-domain data, or replace server-side graph, Work Identity, and workflow filtering.
+          This permission preview labels the selected Work Identity posture only. Production identity binding
+          is not connected in this build, and restricted surfaces remain unavailable here.
         </p>
       </div>
     </div>

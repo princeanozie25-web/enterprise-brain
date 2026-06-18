@@ -246,7 +246,8 @@ describe("U-9: the demo caption is furniture", () => {
 
     const expectBanner = () => {
       const banner = screen.getByTestId("demo-banner");
-      expect(banner.textContent).toContain("Demo identity mode");
+      expect(banner.textContent).toContain("Demo Identity Mode");
+      expect(banner.textContent).toContain("Production identity is not connected");
       expect(within(banner).queryAllByRole("button")).toEqual([]);
     };
 

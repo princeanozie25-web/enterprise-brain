@@ -140,9 +140,14 @@ describe("route separation", () => {
     expect(screen.getByTestId("root-link-admin-graph").textContent).toContain("Operating Map");
     expect(screen.getByTestId("root-link-admin-bursar").getAttribute("href")).toBe("/admin/bursar");
     expect(screen.getByTestId("root-link-admin-bursar").textContent).toContain("Bursar Ledger Room");
-    expect(screen.getByTestId("root-admin-note").textContent).toContain("derived-only");
+    expect(screen.getByTestId("root-demo-identity-mode").textContent).toContain("Demo Identity Mode");
+    expect(screen.getByTestId("root-demo-identity-mode").textContent).toContain("Production identity is not connected");
+    expect(screen.getByTestId("root-buyer-trust-posture").textContent).toContain("Enterprise identity boundary");
+    expect(screen.getByTestId("root-buyer-trust-posture").textContent).toContain("Admin and Bursar routes are separated");
+    expect(screen.getByTestId("root-admin-note").textContent).toContain("Production");
     expect(screen.getByTestId("root-admin-note").textContent).toContain("ledger producers");
     expect(screen.getByTestId("root-home").textContent ?? "").not.toMatch(/supplier|invoice|procurement/i);
+    expect(screen.getByTestId("root-home").textContent ?? "").not.toMatch(/derived-only|derived only|SOC2|SOC 2|ISO27001|ISO 27001|certified|certification|live SSO|live IAM/i);
   });
 
   it("keeps product navigation split across daily, project, ask, and admin-domain surfaces", () => {
@@ -156,7 +161,9 @@ describe("route separation", () => {
     expect(screen.getByTestId("view-door-admin-graph").getAttribute("href")).toBe("/admin/graph");
     expect(screen.getByTestId("view-door-admin-graph").textContent).toBe("Operating Map");
     expect(screen.queryByTestId("view-door-bursar")).toBeNull();
-    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("not server-enforced");
+    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("Demo Identity Mode");
+    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("production authority binding is not connected");
+    expect(screen.getByTestId("shell-demo-identity-mode").textContent).toContain("Production identity is not connected");
   });
 
   it("renders direct Ask and Workflow Command route shells without fabricating access", () => {
@@ -189,18 +196,23 @@ describe("route separation", () => {
     expect(text).toContain("Reconcile every call");
     expect(text).toContain("ledger.v1.1 expected");
     expect(text).toContain("producer not connected in this UI surface");
+    expect(text).toContain("admin-side preview");
+    expect(text).toContain("finance authority pending");
+    expect(text).toContain("Demo Identity Mode");
+    expect(text).toContain("Production identity is not connected");
     expect(text).toContain("No ledger fixture is connected in this workspace yet.");
     expect(text).toContain("Same console: the answer, and the governed spend it cost");
     expect(text).not.toMatch(/supplier|invoice|procurement|duplicate payment|savings opportunity/i);
     expect(text).not.toMatch(/spend total|total spend|model call total|token total|total tokens/i);
     expect(text).not.toMatch(/budget used|cost chart|ledger row|savings/i);
+    expect(text).not.toMatch(/SOC2|SOC 2|ISO27001|ISO 27001|certified|certification|live SSO|live IAM/i);
     expect(text).not.toMatch(/£|\$[0-9]|[0-9][0-9,]*\s*tokens?/i);
     expect(screen.queryByTestId("bursar-ledger-row")).toBeNull();
     expect(screen.queryByTestId("bursar-cost-chart")).toBeNull();
     expect(screen.getByTestId("view-door-bursar").getAttribute("aria-current")).toBe("page");
   });
 
-  it("renders the admin graph shell as a derived preview, not a security claim", async () => {
+  it("renders the admin graph shell as a Demo Identity Mode preview, not a security claim", async () => {
     stubRouteFetch();
     window.history.pushState({}, "", "/admin/graph?as=p060");
 
@@ -208,9 +220,11 @@ describe("route separation", () => {
 
     await waitFor(() => expect(screen.getByTestId("graph-room")).toBeTruthy());
     await waitFor(() => {
-      expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("derived_only");
+      expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("Demo Identity Mode");
     });
+    expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("production admin authority not connected");
     expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("admin not granted");
     expect(screen.getByTestId("view-door-admin-graph").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("graph-room").textContent ?? "").not.toMatch(/derived-only|derived only|SOC2|SOC 2|ISO27001|ISO 27001|certified|certification|live SSO|live IAM/i);
   });
 });

@@ -243,8 +243,8 @@ export function GraphRoom({
           </span>
           {adminPreview && (
             <span className="block truncate" data-testid="admin-graph-preview-banner">
-              Preview only: admin view is not server-enforced yet / {roleScope?.enforcement ?? "derived preview"} /{" "}
-              {roleScope?.admin_surface_allowed ? "admin allowed" : "admin not granted"}
+              Demo Identity Mode: admin-side preview, production admin authority not connected /{" "}
+              {roleScope?.admin_surface_allowed ? "admin allowed by preview scope" : "admin not granted"}
             </span>
           )}
         </div>

@@ -129,7 +129,7 @@ export function LensBar({
         style={{ fontSize: TYPE.scale.xs, color: COLOR.inkSoft }}
         data-testid="demo-banner"
       >
-        Demo identity mode: selecting a Work Identity sets the permission scope for this console. It is not authentication.
+        Demo Identity Mode: Work Identity selection previews permission boundaries in this local pilot workspace. Production identity is not connected.
       </div>
     </header>
   );

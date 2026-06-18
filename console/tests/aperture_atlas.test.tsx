@@ -241,7 +241,8 @@ describe("U-17: an actor switch clears the Atlas room", () => {
     expect(screen.getByTestId("view-door-project").getAttribute("href")).toBe("/project");
     expect(screen.getByTestId("view-door-ask").getAttribute("href")).toBe("/ask");
     expect(screen.getByTestId("view-door-admin-graph").getAttribute("href")).toBe("/admin/graph");
-    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("not server-enforced");
+    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("Demo Identity Mode");
+    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("production authority binding is not connected");
     expect(screen.getByTestId("view-door-lens").getAttribute("href")).toBe("/lens");
     expect(screen.getByTestId("view-door-atlas").getAttribute("aria-current")).toBe("page");
     expect(screen.queryByTestId("ledger-door")).toBeNull();

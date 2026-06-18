@@ -26,6 +26,7 @@ import { MotionPanel, MotionSection } from "./MotionPrimitives";
 import { ProjectSurface } from "./ProjectSurface";
 import { ResultsList } from "./ResultsList";
 import { Skeleton } from "./Skeleton";
+import { DemoIdentityNotice } from "./TrustPosture";
 import iris from "./LensBar.module.css";
 
 /**
@@ -305,7 +306,7 @@ export function Console({
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="admin-preview-badge"
           >
-            preview mode: admin and spend authority are derived here, not server-enforced
+            Demo Identity Mode: admin and spend rooms are previews; production authority binding is not connected
           </span>
           <ViewDoor label="Knowledge View" href="/lens" active={view === "lens"} principal={principal} testId="view-door-lens" />
           <ViewDoor label="Capability Map" href="/atlas" active={view === "atlas"} principal={principal} testId="view-door-atlas" />
@@ -316,6 +317,16 @@ export function Console({
       {journeySurface !== null && (
         <div className="mx-auto max-w-6xl px-4 pt-4">
           <GuidedJourney adminLinks={view === "adminBursar"} current={journeySurface} principal={principal} />
+        </div>
+      )}
+
+      {view !== "adminGraph" && (
+        <div className="mx-auto max-w-6xl px-4 pt-4">
+          <DemoIdentityNotice
+            compact
+            context={view === "adminBursar" ? "bursar" : "standard"}
+            testId="shell-demo-identity-mode"
+          />
         </div>
       )}
 

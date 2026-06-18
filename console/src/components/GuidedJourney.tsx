@@ -66,7 +66,7 @@ function journeySteps(principal: string | null): JourneyStep[] {
     },
     {
       adminOnly: true,
-      detail: "Review governed model spend when ledger data is connected.",
+      detail: "Admin-side spend preview; ledger data and authority are not connected here.",
       href: "/admin/bursar",
       key: "bursar-ledger-room",
       label: "Bursar Ledger Room",

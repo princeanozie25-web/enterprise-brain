@@ -1,6 +1,7 @@
 import { TYPE } from "@/lib/tokens";
 import { GuidedJourney } from "./GuidedJourney";
 import { MotionAnchor, MotionArticle, MotionPanel, MotionSection } from "./MotionPrimitives";
+import { BuyerTrustPosture, DemoIdentityNotice } from "./TrustPosture";
 
 const DESTINATIONS = [
   {
@@ -22,15 +23,15 @@ const DESTINATIONS = [
     testid: "root-link-ask",
   },
   {
-    detail: "View the company operating map as a derived admin preview. It is not a server-enforced admin gate yet.",
+    detail: "Open the admin-side operating map as a pilot preview. Production admin authority is not connected in this build.",
     href: "/admin/graph?as=p060",
-    label: "Operating Map",
+    label: "Operating Map Preview",
     testid: "root-link-admin-graph",
   },
   {
-    detail: "Open the governed spend axis. No connected ledger fixture or enforced Bursar role exists in this UI surface yet.",
+    detail: "Open the admin, finance, and executive-domain spend room. Neither a ledger fixture nor Bursar authority is connected here.",
     href: "/admin/bursar",
-    label: "Bursar Ledger Room",
+    label: "Bursar Ledger Room Preview",
     testid: "root-link-admin-bursar",
   },
 ];
@@ -81,6 +82,10 @@ export function ProductHome() {
 
       <GuidedJourney adminLinks current="home" principal={null} testId="root-demo-flow" />
 
+      <DemoIdentityNotice context="standard" testId="root-demo-identity-mode" />
+
+      <BuyerTrustPosture testId="root-buyer-trust-posture" />
+
       <MotionSection className="grid grid-cols-1 gap-3 md:grid-cols-[1.15fr_0.95fr_1.05fr]" aria-label="Product doctrine" delayIndex={2}>
         {PRINCIPLES.map((principle, index) => (
           <MotionArticle key={principle.label} className="ap-card rounded p-3" delayIndex={2 + index}>
@@ -129,9 +134,8 @@ export function ProductHome() {
           Authorization boundary
         </p>
         <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-          Operating Map and Bursar Ledger Room are route-separated. Admin authority and governed
-          spend authority remain derived-only in this UI surface until server-enforced authorization
-          and ledger producers are connected.
+          Operating Map and Bursar Ledger Room are route-separated admin-side previews. Production
+          admin authority, Bursar authority, and ledger producers are not connected in this build.
         </p>
       </MotionSection>
     </main>
