@@ -426,7 +426,19 @@ describe("EmployeeDashboard", () => {
     expect(notifications.textContent).toContain("Workflow attention");
     expect(notifications.textContent).toContain("Grant ledger events");
     expect(notifications.textContent).toContain("Team scope available");
+    expect(notifications.textContent).toContain("Department context available");
     expect(notifications.textContent).not.toMatch(/unread/i);
+
+    const commandLayer = screen.getByTestId("dashboard-workflow-command");
+    expect(commandLayer.textContent).toContain("Workflow Command");
+    expect(commandLayer.textContent).toContain("Requests");
+    expect(commandLayer.textContent).toContain("Approvals");
+    expect(commandLayer.textContent).toContain("Department Updates");
+    const approvalCommand = screen
+      .getAllByTestId("dashboard-workflow-command-item")
+      .find((item) => item.textContent?.includes("Approvals"));
+    expect(approvalCommand?.textContent).toContain("Approval scope exists");
+    expect(approvalCommand?.textContent).not.toContain("1");
 
     const workspace = screen.getByTestId("dashboard-workspace");
     expect(workspace.textContent).toContain("Work Identity");
@@ -452,7 +464,7 @@ describe("EmployeeDashboard", () => {
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Project Context Pod");
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Team Lead Pod");
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Department Context Pod");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Approval Queue Pod");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).not.toContain("Approval Queue Pod");
     expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Granted Knowledge Pod");
     expect(screen.getByTestId("dashboard-command-pods").textContent).not.toContain("Executive Candidate Pod");
     const askPod = screen.getByTestId("dashboard-ask-pod");
@@ -478,10 +490,17 @@ describe("EmployeeDashboard", () => {
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Department head");
     expect(roleExperience.textContent).toContain("Team scope");
-    expect(roleExperience.textContent).toContain("Approval queue");
+    expect(roleExperience.textContent).toContain("Approval scope");
     expect(roleExperience.textContent).toContain("Granted knowledge");
     expect(roleExperience.textContent).toContain("Surface boundary");
     expect(roleExperience.textContent).not.toMatch(/bursar|governance/i);
+
+    const roleWorkflow = screen.getByTestId("dashboard-role-aware-workflow");
+    expect(roleWorkflow.textContent).toContain("Employee Layer + Leadership Layer");
+    expect(screen.getByTestId("dashboard-employee-workflow-layer").textContent).toContain("2 workflow items");
+    expect(screen.getByTestId("dashboard-team-workflow-layer").textContent).toContain("2 direct reports");
+    expect(screen.getByTestId("dashboard-department-workflow-layer").textContent).toContain("Finance");
+    expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
 
     const workflowGroups = screen.getAllByTestId("dashboard-workflow-group");
     expect(within(workflowGroups[0]).getAllByTestId("dashboard-workflow-item").length).toBe(1);
@@ -547,7 +566,15 @@ describe("EmployeeDashboard", () => {
     expect(pods.textContent).not.toContain("Granted Knowledge Pod");
     const notifications = screen.getByTestId("dashboard-notification-center");
     expect(notifications.textContent).not.toContain("Team scope available");
+    expect(notifications.textContent).not.toContain("Department context available");
     expect(notifications.textContent).not.toContain("Approval queue");
+
+    expect(screen.getByTestId("dashboard-workflow-command").textContent).not.toMatch(/Team Updates|Department Updates/);
+    expect(screen.getByTestId("dashboard-employee-workflow-layer").textContent).toContain("Employee Layer");
+    expect(screen.queryByTestId("dashboard-team-workflow-layer")).toBeNull();
+    expect(screen.queryByTestId("dashboard-department-workflow-layer")).toBeNull();
+    expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
+    expect(screen.queryByTestId("dashboard-executive-workflow-label")).toBeNull();
 
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Employee baseline");
@@ -584,6 +611,11 @@ describe("EmployeeDashboard", () => {
     expect(roleExperience.textContent).toContain("Executive candidate");
     expect(roleExperience.textContent).toContain("not enforced");
     expect(roleExperience.textContent).toContain("Surface boundary");
+    expect(screen.getByTestId("dashboard-employee-workflow-layer").textContent).toContain("Employee Layer");
+    expect(screen.getByTestId("dashboard-executive-workflow-label").textContent).toContain("label only");
+    expect(screen.queryByTestId("dashboard-team-workflow-layer")).toBeNull();
+    expect(screen.queryByTestId("dashboard-department-workflow-layer")).toBeNull();
+    expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
     expect(container.textContent ?? "").not.toMatch(/bursar|governance/i);
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import type { ProjectWorkflowResponse, WorkflowItem } from "@/lib/api";
+import type { ProjectWorkflowResponse, RoleScopeSummary, WorkflowItem } from "@/lib/api";
 import { TYPE } from "@/lib/tokens";
 import { Skeleton } from "./Skeleton";
 
@@ -56,10 +56,12 @@ export function WorkflowView({
   workflow,
   loading = false,
   available = true,
+  roleScope = null,
 }: {
   workflow: ProjectWorkflowResponse | null;
   loading?: boolean;
   available?: boolean;
+  roleScope?: RoleScopeSummary | null;
 }) {
   if (loading) {
     return (
@@ -106,6 +108,8 @@ export function WorkflowView({
           {workflow.items.length} real items
         </span>
       </div>
+
+      <WorkflowRolePosture workflow={workflow} roleScope={roleScope} />
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-5">
         {GROUPS.map((group) => {
@@ -160,6 +164,90 @@ export function WorkflowView({
         })}
       </div>
     </section>
+  );
+}
+
+function WorkflowRolePosture({
+  roleScope,
+  workflow,
+}: {
+  roleScope: RoleScopeSummary | null;
+  workflow: ProjectWorkflowResponse;
+}) {
+  const approvalRows = workflow.items.filter(
+    (item) =>
+      item.kind === "access_request" &&
+      item.approver_id === workflow.actor_id &&
+      ["pending", "active"].includes(item.status.toLowerCase()),
+  );
+  const teamScope = roleScope?.team_scope.has_team_scope ? roleScope.team_scope.direct_report_count : 0;
+  const departmentId = roleScope?.department_scope.department_id ?? null;
+  const executiveSignal =
+    roleScope?.derived_level === "executive_candidate" || roleScope?.derived_level === "super_admin_candidate";
+
+  return (
+    <div
+      className="ap-card mb-4 grid grid-cols-1 gap-2 rounded border p-3 md:grid-cols-4"
+      data-testid="workflow-role-posture"
+    >
+      <WorkflowPostureFact
+        detail="Personal workflow remains primary."
+        label="Employee focus"
+        value={`${workflow.items.length} rows`}
+      />
+      {teamScope > 0 && (
+        <WorkflowPostureFact
+          detail="Team workflow rows are not added unless exposed by the workflow projection."
+          label="Team context"
+          value={`${teamScope} direct ${teamScope === 1 ? "report" : "reports"}`}
+        />
+      )}
+      {departmentId && roleScope?.derived_level === "department_head" && (
+        <WorkflowPostureFact
+          detail="Department context is label-only on this project surface."
+          label="Department context"
+          value={departmentId}
+        />
+      )}
+      {approvalRows.length > 0 && (
+        <WorkflowPostureFact
+          detail="Approval waiting states are real access-request workflow rows."
+          label="Approval waiting"
+          value={`${approvalRows.length} rows`}
+        />
+      )}
+      {executiveSignal && (
+        <WorkflowPostureFact
+          detail="Candidate signal does not unlock restricted admin-domain workflow."
+          label="Executive candidate"
+          value="label only"
+        />
+      )}
+    </div>
+  );
+}
+
+function WorkflowPostureFact({
+  detail,
+  label,
+  value,
+}: {
+  detail: string;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="ap-washable rounded border px-2 py-2" data-testid="workflow-role-posture-fact">
+      <div className="flex items-start justify-between gap-2">
+        <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+          {label}
+        </p>
+        <Chip>{value}</Chip>
+      </div>
+      <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+        {detail}
+      </p>
+    </div>
   );
 }
 

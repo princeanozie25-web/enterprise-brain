@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
-import type { GraphProject, GraphResponse, ProjectWorkflowResponse } from "@/lib/api";
+import type { GraphProject, GraphResponse, ProjectWorkflowResponse, RoleScopeSummary } from "@/lib/api";
 import { TYPE } from "@/lib/tokens";
 import { Skeleton } from "./Skeleton";
 import { WorkflowView } from "./WorkflowView";
@@ -43,6 +43,7 @@ export function ProjectSurface({
   const [tab, setTab] = useState<ProjectTab>("workflow");
   const [workflow, setWorkflow] = useState<ProjectWorkflowResponse | null>(null);
   const [graph, setGraph] = useState<GraphResponse | null>(null);
+  const [roleScope, setRoleScope] = useState<RoleScopeSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
 
@@ -50,6 +51,7 @@ export function ProjectSurface({
     if (actor === null || capabilityId === null) {
       setWorkflow(null);
       setGraph(null);
+      setRoleScope(null);
       setAvailable(true);
       setLoading(false);
       return;
@@ -57,11 +59,12 @@ export function ProjectSurface({
     let cancelled = false;
     setLoading(true);
     setAvailable(true);
-    Promise.all([api.getProjectWorkflow(actor, capabilityId), api.getGraph(actor)])
-      .then(([workflowResponse, graphResponse]) => {
+    Promise.all([api.getProjectWorkflow(actor, capabilityId), api.getGraph(actor), api.getRoleScope(actor)])
+      .then(([workflowResponse, graphResponse, roleScopeResponse]) => {
         if (!cancelled) {
           setWorkflow(workflowResponse);
           setGraph(graphResponse);
+          setRoleScope(roleScopeResponse);
           setAvailable(workflowResponse !== null);
         }
       })
@@ -69,6 +72,7 @@ export function ProjectSurface({
         if (!cancelled) {
           setWorkflow(null);
           setGraph(null);
+          setRoleScope(null);
           setAvailable(false);
         }
       })
@@ -157,7 +161,7 @@ export function ProjectSurface({
       )}
 
       {!loading && available && tab === "workflow" && (
-        <WorkflowView workflow={workflow} loading={false} available={available} />
+        <WorkflowView workflow={workflow} loading={false} available={available} roleScope={roleScope} />
       )}
 
       {!loading && available && tab === "graph" && (

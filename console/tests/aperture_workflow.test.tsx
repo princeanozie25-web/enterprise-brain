@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-import type { GraphResponse, ProjectWorkflowResponse } from "@/lib/api";
+import type { GraphResponse, ProjectWorkflowResponse, RoleScopeSummary } from "@/lib/api";
 import { ProjectSurface } from "@/components/ProjectSurface";
 import { WorkflowView } from "@/components/WorkflowView";
 
@@ -116,6 +116,35 @@ const GRAPH: GraphResponse = {
   tools: [],
 };
 
+const ROLE_SCOPE: RoleScopeSummary = {
+  actor_id: "p060",
+  admin_surface_allowed: false,
+  approval_scope: {
+    has_approval_scope: true,
+    pending_count: 0,
+  },
+  bursar_surface_allowed: false,
+  confidence: "high",
+  demo_identity_mode: true,
+  department_scope: {
+    band: 5,
+    department_id: "Finance",
+    seniority: "Leadership",
+  },
+  derived_level: "department_head",
+  enforcement: "derived_only",
+  governance_surface_allowed: false,
+  project_scope: {
+    capability_ids: ["cap31"],
+    project_count: 1,
+  },
+  reasons: ["reporting line has direct reports", "sensitive surfaces remain disallowed"],
+  team_scope: {
+    direct_report_count: 2,
+    has_team_scope: true,
+  },
+};
+
 function stubProjectFetch() {
   vi.stubGlobal(
     "fetch",
@@ -127,6 +156,9 @@ function stubProjectFetch() {
       if (url.endsWith("/graph")) {
         return new Response(JSON.stringify(GRAPH), { status: 200 });
       }
+      if (url.endsWith("/me/scope")) {
+        return new Response(JSON.stringify(ROLE_SCOPE), { status: 200 });
+      }
       return new Response("{\"demo_identity_mode\":true,\"error\":\"not found\"}", {
         status: 404,
       });
@@ -136,7 +168,7 @@ function stubProjectFetch() {
 
 describe("workflow projection UI", () => {
   it("groups real workflow items by status without evidence rows", () => {
-    const { container } = render(<WorkflowView workflow={WORKFLOW} />);
+    const { container } = render(<WorkflowView workflow={WORKFLOW} roleScope={ROLE_SCOPE} />);
     const groups = screen.getAllByTestId("workflow-group");
     expect(groups.length).toBe(5);
     expect(within(groups[0]).getAllByTestId("workflow-item").length).toBe(1);
@@ -144,6 +176,11 @@ describe("workflow projection UI", () => {
     expect(within(groups[4]).getAllByTestId("workflow-item").length).toBe(1);
     expect(screen.getByText("Access request for Access Review 31")).toBeTruthy();
     expect(screen.getByText("agent agent_finance_analyst")).toBeTruthy();
+    const posture = screen.getByTestId("workflow-role-posture");
+    expect(posture.textContent).toContain("Employee focus");
+    expect(posture.textContent).toContain("Team context");
+    expect(posture.textContent).toContain("Department context");
+    expect(posture.textContent).not.toMatch(/bursar|governance/i);
     expect(container.textContent ?? "").not.toContain("document_id");
     expect(container.textContent ?? "").not.toContain("evidence");
   });
@@ -161,5 +198,6 @@ describe("workflow projection UI", () => {
 
     fireEvent.click(screen.getAllByTestId("project-tab")[1]);
     expect(screen.getByTestId("workflow-view")).toBeTruthy();
+    expect(screen.getByTestId("workflow-role-posture").textContent).toContain("Employee focus");
   });
 });

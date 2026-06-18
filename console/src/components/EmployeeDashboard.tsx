@@ -33,7 +33,14 @@ interface ScopeBadge {
 }
 
 interface NotificationItem {
-  category: "Requests" | "Approvals" | "Workflow Alerts" | "Grant Expiry" | "Grant Events" | "Team Updates";
+  category:
+    | "Requests"
+    | "Approvals"
+    | "Workflow Alerts"
+    | "Grant Expiry"
+    | "Grant Events"
+    | "Team Updates"
+    | "Department Updates";
   detail: string;
   href: string;
   metric?: string;
@@ -120,7 +127,6 @@ function buildNotificationItems({
 }): NotificationItem[] {
   const notifications: NotificationItem[] = [];
   const pendingRequests = requests.filter((request) => request.status === "pending");
-  const pendingApprovalCount = inbox.length > 0 ? inbox.length : roleScope?.approval_scope.pending_count ?? 0;
   const workflowAlerts = workflowItems.filter((item) =>
     ["pending", "blocked", "denied", "cancelled", "expired", "dismissed"].includes(item.status.toLowerCase()),
   );
@@ -141,15 +147,15 @@ function buildNotificationItems({
     });
   }
 
-  if (pendingApprovalCount > 0) {
+  if (inbox.length > 0 || roleScope?.approval_scope.has_approval_scope) {
     notifications.push({
       category: "Approvals",
       detail:
         inbox.length > 0
           ? "Requests assigned to this actor are ready for review."
-          : "Role scope reports a pending approval category; no inbox row is rendered here.",
+          : "Approval scope exists, but no request inbox rows are visible here.",
       href: "#dashboard-requests",
-      metric: `${pendingApprovalCount}`,
+      metric: inbox.length > 0 ? `${inbox.length}` : undefined,
       source: inbox.length > 0 ? "approval inbox" : "server scope",
       title: "Approval queue",
     });
@@ -195,6 +201,16 @@ function buildNotificationItems({
       href: "#dashboard-scope",
       source: "reporting line",
       title: "Team scope available",
+    });
+  }
+
+  if (isDepartmentHead(roleScope?.derived_level) && roleScope?.department_scope.department_id) {
+    notifications.push({
+      category: "Department Updates",
+      detail: "Department posture is derived from server scope. A department update event stream is not modeled yet.",
+      href: "#dashboard-role-aware-workflow",
+      source: "server scope",
+      title: "Department context available",
     });
   }
 
@@ -442,7 +458,7 @@ function buildCommandPods({
   const projectCount = roleScope?.project_scope.project_count ?? projects.length;
   const firstCapabilityId = roleScope?.project_scope.capability_ids[0] ?? projects[0]?.capability_id;
   const department = roleScope?.department_scope.department_id ?? null;
-  const pendingApprovals = roleScope?.approval_scope.pending_count ?? inbox.length;
+  const pendingApprovals = inbox.length;
   const agentCount = summary?.agents_owned?.length ?? 0;
   const activeGrants = activeKnowledgeGrants(grants, actor);
   const pods: CommandPodModel[] = [
@@ -675,14 +691,21 @@ function buildRoleExperienceCards({
       tone: "active",
     });
   }
-  if ((roleScope?.approval_scope.pending_count ?? inbox.length) > 0) {
-    const pending = roleScope?.approval_scope.pending_count ?? inbox.length;
+  if (inbox.length > 0) {
     cards.push({
       detail: "Only requests assigned to this actor appear here.",
       label: "Approval queue",
-      metric: `${pending} pending`,
+      metric: `${inbox.length} pending`,
       source: "request inbox",
       tone: "active",
+    });
+  } else if (roleScope?.approval_scope.has_approval_scope) {
+    cards.push({
+      detail: "Approval posture exists, but no request inbox rows are visible.",
+      label: "Approval scope",
+      metric: "no rows",
+      source: "server scope",
+      tone: "limited",
     });
   }
   if (isExecutiveCandidate(roleScope?.derived_level)) {
@@ -816,6 +839,86 @@ function NotificationCenter({ items }: { items: NotificationItem[] }) {
         )}
       </div>
     </details>
+  );
+}
+
+function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
+  return (
+    <section
+      className="ap-card mb-4 rounded border p-2"
+      data-testid="dashboard-workflow-command"
+      style={dashboardPanelStyle()}
+    >
+      <details className="group">
+        <summary
+          className="ap-washable flex min-h-10 cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded px-3 py-2"
+          data-testid="dashboard-workflow-command-trigger"
+        >
+          <div className="min-w-0">
+            <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+              Workflow Command
+            </p>
+            <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+              Requests, approvals, workflow alerts, grants, and role-scope updates.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {items.length === 0 ? (
+              <Chip>empty</Chip>
+            ) : (
+              items.slice(0, 5).map((item) => (
+                <span
+                  key={`${item.category}:${item.title}:chip`}
+                  className="ap-hairline ap-register-chrome ap-soft rounded border px-2 py-1"
+                  style={{ fontSize: TYPE.scale.xs }}
+                  data-testid="dashboard-workflow-command-category"
+                >
+                  {item.category}
+                  {item.metric ? ` ${item.metric}` : ""}
+                </span>
+              ))
+            )}
+          </div>
+        </summary>
+        <div
+          className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4"
+          data-testid="dashboard-workflow-command-menu"
+        >
+          {items.length === 0 ? (
+            <div className="ap-card rounded border p-3">
+              <EmptyLine compact>No command categories are backed by current request, workflow, or grant rows.</EmptyLine>
+            </div>
+          ) : (
+            items.map((item) => (
+              <a
+                key={`${item.category}:${item.title}:command`}
+                href={item.href}
+                className="ap-washable block rounded border p-3"
+                data-testid="dashboard-workflow-command-item"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+                      {item.category}
+                    </p>
+                    <p className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                      {item.title}
+                    </p>
+                  </div>
+                  {item.metric && <Chip mono>{item.metric}</Chip>}
+                </div>
+                <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+                  {item.detail}
+                </p>
+                <p className="ap-register-evidence ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+                  {item.source}
+                </p>
+              </a>
+            ))
+          )}
+        </div>
+      </details>
+    </section>
   );
 }
 
@@ -1025,6 +1128,188 @@ function WorkspaceFact({ label, source, value }: { label: string; source: string
         {source}
       </span>
     </div>
+  );
+}
+
+function RoleAwareWorkflowLayer({
+  actor,
+  inbox,
+  projectById,
+  projects,
+  requests,
+  roleScope,
+  workflowItems,
+}: {
+  actor: string;
+  inbox: AccessRequestRecord[];
+  projectById: Map<string, GraphProject>;
+  projects: ProjectRecord[];
+  requests: AccessRequestRecord[];
+  roleScope: RoleScopeSummary | null;
+  workflowItems: WorkflowItem[];
+}) {
+  const departmentId = roleScope?.department_scope.department_id ?? null;
+  const departmentCapabilityIds = new Set(
+    projects.flatMap((project) => {
+      const graphProject = projectById.get(project.capability_id);
+      if (!departmentId || !graphProject) return [];
+      return graphProject.departments.includes(departmentId) || graphProject.primary_department_id === departmentId
+        ? [project.capability_id]
+        : [];
+    }),
+  );
+  const departmentWorkflowItems = workflowItems.filter((item) => departmentCapabilityIds.has(item.capability_id));
+  const hasTeamLayer = Boolean(roleScope?.team_scope.has_team_scope);
+  const hasDepartmentLayer = isDepartmentHead(roleScope?.derived_level) && departmentId !== null;
+  const hasExecutiveSignal = isExecutiveCandidate(roleScope?.derived_level);
+
+  return (
+    <section
+      className="ap-card mb-4 rounded border p-4"
+      data-testid="dashboard-role-aware-workflow"
+      id="dashboard-role-aware-workflow"
+      style={dashboardPanelStyle()}
+    >
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Additive Workflow Experience
+          </p>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+            Employee Layer + Leadership Layer
+          </h2>
+        </div>
+        <Chip>{roleScope?.enforcement ?? "derived only"}</Chip>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-4">
+        <WorkflowLayerCard
+          detail="Personal execution remains visible for every actor."
+          metric={`${workflowItems.length} workflow ${workflowItems.length === 1 ? "item" : "items"}`}
+          testId="dashboard-employee-workflow-layer"
+          title="Employee Layer"
+        >
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <Chip>{projects.length} projects</Chip>
+            <Chip>{requests.length} requests</Chip>
+            <Chip mono>actor {actor}</Chip>
+          </div>
+        </WorkflowLayerCard>
+
+        {hasTeamLayer && (
+          <WorkflowLayerCard
+            detail="Team posture is derived from reporting-line facts."
+            metric={`${roleScope?.team_scope.direct_report_count ?? 0} direct ${
+              roleScope?.team_scope.direct_report_count === 1 ? "report" : "reports"
+            }`}
+            testId="dashboard-team-workflow-layer"
+            title="Team Layer"
+          >
+            <p
+              className="ap-soft mt-3 rounded border px-2 py-2"
+              data-testid="dashboard-leadership-empty"
+              style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
+            >
+              Team workflow rows are not exposed by the current API.
+            </p>
+          </WorkflowLayerCard>
+        )}
+
+        {hasDepartmentLayer && (
+          <WorkflowLayerCard
+            detail="Department context is limited to projects already visible to this actor."
+            metric={departmentId}
+            testId="dashboard-department-workflow-layer"
+            title="Department Layer"
+          >
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              <Chip>{departmentCapabilityIds.size} visible projects</Chip>
+              <Chip>{departmentWorkflowItems.length} workflow rows</Chip>
+            </div>
+            {departmentCapabilityIds.size === 0 && (
+              <p
+                className="ap-soft mt-3 rounded border px-2 py-2"
+                data-testid="dashboard-leadership-empty"
+                style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
+              >
+                No department project rows are visible through this actor lens.
+              </p>
+            )}
+          </WorkflowLayerCard>
+        )}
+
+        {inbox.length > 0 && (
+          <WorkflowLayerCard
+            detail="Only loaded request inbox rows become approval workflow actions."
+            metric={`${inbox.length} pending`}
+            testId="dashboard-approval-workflow-layer"
+            title="Approval Layer"
+          >
+            <div className="mt-3 space-y-1.5">
+              {inbox.slice(0, 3).map((request) => (
+                <a
+                  key={request.request_id}
+                  href={`/project?cap=${encodeURIComponent(request.target.capability_id)}&as=${encodeURIComponent(actor)}`}
+                  className="ap-washable block rounded border px-2 py-1"
+                  data-testid="dashboard-approval-workflow-row"
+                >
+                  <span className="ap-register-chrome block truncate" style={{ fontSize: TYPE.scale.xs }}>
+                    {request.target.capability_id}
+                  </span>
+                  <span className="ap-register-evidence ap-soft block truncate" style={{ fontSize: TYPE.scale.xs }}>
+                    {request.status}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </WorkflowLayerCard>
+        )}
+
+        {hasExecutiveSignal && (
+          <WorkflowLayerCard
+            detail="Candidate signal is displayed without unlocking restricted admin-domain workflows."
+            metric="label only"
+            testId="dashboard-executive-workflow-label"
+            title="Executive Candidate"
+          >
+            <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+              Elevated workflow surfaces require explicit server-enforced privileges.
+            </p>
+          </WorkflowLayerCard>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function WorkflowLayerCard({
+  children,
+  detail,
+  metric,
+  testId,
+  title,
+}: {
+  children: React.ReactNode;
+  detail: string;
+  metric: string;
+  testId: string;
+  title: string;
+}) {
+  return (
+    <article className="ap-card rounded border p-3" data-testid={testId}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+            {title}
+          </p>
+          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            {detail}
+          </p>
+        </div>
+        <Chip>{metric}</Chip>
+      </div>
+      {children}
+    </article>
   );
 }
 
@@ -1260,6 +1545,18 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
       </header>
 
       <CommandPods pods={commandPods} />
+
+      <WorkflowCommandSubbar items={notificationItems} />
+
+      <RoleAwareWorkflowLayer
+        actor={actor}
+        inbox={inbox}
+        projectById={projectById}
+        projects={projects}
+        requests={requests}
+        roleScope={roleScope}
+        workflowItems={workflowItems}
+      />
 
       <WorkspaceLayer
         actor={actor}
