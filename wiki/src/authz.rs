@@ -52,6 +52,11 @@ struct ArtifactView {
 struct IndexRowView {
     principal_id: String,
     artifact_file: String,
+    /// sha256 of the artifact bytes, recorded by the compiler. Verified on load
+    /// (a required field: a missing hash fails closed at parse). This is the same
+    /// `artifact_sha256` integrity check `retrieval::search::PrincipalScope` and
+    /// the compiler's `verify_artifacts` enforce.
+    artifact_sha256: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -98,11 +103,27 @@ impl AuthzView {
             let path = artifacts_dir.join(&row.artifact_file);
             let bytes = fs::read(&path)
                 .with_context(|| format!("cannot read authz artifact {}", path.display()))?;
+            // Fail closed: the artifact BYTES must match the content hash the index
+            // records for them, BEFORE we parse or trust them. This is the same
+            // `artifact_sha256` discipline `retrieval::search::PrincipalScope::load`
+            // and the compiler's `verify_artifacts` enforce (same `sha256_hex` over
+            // the raw bytes). A tampered artifact — labels left intact, index.json
+            // not rehashed — is refused here in release, not silently trusted into a
+            // widened grant.
+            let actual_sha256 = retrieval::index::sha256_hex(&bytes);
+            if actual_sha256 != row.artifact_sha256 {
+                bail!(
+                    "authz artifact {} does not match the hash recorded in index.json \
+                     (recorded {}, actual {}); refusing a tampered model",
+                    path.display(),
+                    row.artifact_sha256,
+                    actual_sha256
+                );
+            }
             let artifact: ArtifactView = serde_json::from_slice(&bytes)
                 .with_context(|| format!("authz artifact {} fails to parse", path.display()))?;
-            // Fail closed: the artifact must pin the same snapshot as the index
-            // (mirrors the compiler's own verify discipline; never silently
-            // accept a mismatched model, even in release).
+            // Fail closed: the artifact must pin the same snapshot as the index —
+            // never silently accept a mismatched model, even in release.
             if artifact.snapshot_version != index.snapshot_version {
                 bail!(
                     "authz artifact {} pins snapshot {} but the index pins {}; refusing",
