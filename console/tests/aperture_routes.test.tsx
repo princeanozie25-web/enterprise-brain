@@ -142,18 +142,26 @@ describe("route separation", () => {
     expect(screen.getByTestId("admin-preview-badge").textContent).toContain("not full auth enforced yet");
   });
 
-  it("renders Bursar as an honest finance placeholder without fake spend data", () => {
+  it("renders Bursar as an honest Ledger-room placeholder without fake spend data", () => {
     render(<Console view="adminBursar" />);
 
     const surface = screen.getByTestId("bursar-surface");
-    expect(surface.textContent).toContain("Finance intelligence surface");
-    expect(surface.textContent).toContain("not server-enforced yet");
-    expect(surface.textContent).toContain("no spend data connected");
-    expect(surface.textContent).toContain("Bursar data model is not connected");
-    expect(surface.textContent).toContain("supplier master");
-    expect(surface.textContent).toContain("invoice ledger");
-    expect(surface.textContent).toContain("Read grants for project context do not unlock");
-    expect(surface.textContent).not.toMatch(/£|\$|savings found|duplicate payments found/i);
+    const text = surface.textContent ?? "";
+    expect(text).toContain("Bursar Ledger Room");
+    expect(text).toContain("Governed spend for Enterprise Brain model actions.");
+    expect(text).toContain("Authorization before spend");
+    expect(text).toContain("Fail closed by default");
+    expect(text).toContain("Audit before effect");
+    expect(text).toContain("Reconcile every call");
+    expect(text).toContain("ledger.v1.1 expected");
+    expect(text).toContain("producer not connected in this UI lane");
+    expect(text).toContain("No ledger fixture is connected in this workspace yet.");
+    expect(text).toContain("Same console: the answer, and the governed spend it cost");
+    expect(text).not.toMatch(/supplier|invoice|procurement|duplicate payment|savings opportunity/i);
+    expect(text).not.toMatch(/spend total|total spend|model call total|token total|total tokens/i);
+    expect(text).not.toMatch(/£|\$[0-9]|[0-9][0-9,]*\s*tokens?/i);
+    expect(screen.queryByTestId("bursar-ledger-row")).toBeNull();
+    expect(screen.queryByTestId("bursar-cost-chart")).toBeNull();
     expect(screen.getByTestId("view-door-bursar").getAttribute("aria-current")).toBe("page");
   });
 

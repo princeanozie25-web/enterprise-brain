@@ -181,6 +181,8 @@ describe("workflow projection UI", () => {
     expect(posture.textContent).toContain("Team context");
     expect(posture.textContent).toContain("Department context");
     expect(posture.textContent).not.toMatch(/bursar|governance/i);
+    expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
+    expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
     expect(container.textContent ?? "").not.toContain("document_id");
     expect(container.textContent ?? "").not.toContain("evidence");
   });
@@ -199,5 +201,7 @@ describe("workflow projection UI", () => {
     fireEvent.click(screen.getAllByTestId("project-tab")[1]);
     expect(screen.getByTestId("workflow-view")).toBeTruthy();
     expect(screen.getByTestId("workflow-role-posture").textContent).toContain("Employee focus");
+    expect(document.querySelector("[data-testid='bursar-surface']")).toBeNull();
+    expect(document.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
 });

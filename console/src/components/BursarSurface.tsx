@@ -2,25 +2,43 @@
 
 import { TYPE } from "@/lib/tokens";
 
-const REQUIRED_SOURCES = [
-  "supplier master",
-  "invoice ledger",
-  "purchase orders",
-  "payment runs",
-  "approval authority",
-  "duplicate-spend rules",
+const DOCTRINE = [
+  {
+    detail: "A model action must have spend authority before work begins.",
+    label: "Authorization before spend",
+  },
+  {
+    detail: "No compiled budget envelope means no model call.",
+    label: "Fail closed by default",
+  },
+  {
+    detail: "Attempts are recorded before any permitted action proceeds.",
+    label: "Audit before effect",
+  },
+  {
+    detail: "Ledger data will reconcile authorization, model, effort, token, and USD caps.",
+    label: "Reconcile every call",
+  },
+];
+
+const CONTRACT = [
+  "ledger.v1.1 expected",
+  "read-only report surface",
+  "producer not connected in this UI lane",
+  "no live rows available yet",
 ];
 
 const BOUNDARIES = [
-  "No suppliers, invoices, spend, savings, or duplicate-payment facts are connected yet.",
-  "Read grants for project context do not unlock this finance/admin surface.",
-  "Current role scope is derived_only and does not create finance authority.",
+  "Enterprise Brain governs what the model may know and do.",
+  "Bursar governs what the model may spend.",
+  "Employee and workflow surfaces do not expose this room.",
+  "Read grants do not create Bursar authority.",
 ];
 
 function bursarPanelStyle(): React.CSSProperties {
   return {
     backdropFilter: "blur(18px)",
-    background: "color-mix(in srgb, var(--paper) 86%, transparent)",
+    background: "color-mix(in srgb, var(--paper) 88%, transparent)",
     boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent)",
   };
 }
@@ -36,28 +54,15 @@ function StatusChip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ReadinessCard({
-  detail,
-  label,
-  status,
-}: {
-  detail: string;
-  label: string;
-  status: string;
-}) {
+function DoctrineCard({ detail, label }: { detail: string; label: string }) {
   return (
-    <article className="ap-card rounded border p-3" style={bursarPanelStyle()}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
-            {label}
-          </h2>
-          <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-            {detail}
-          </p>
-        </div>
-        <StatusChip>{status}</StatusChip>
-      </div>
+    <article className="ap-card rounded border p-3" data-testid="bursar-doctrine-card" style={bursarPanelStyle()}>
+      <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+        {label}
+      </p>
+      <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+        {detail}
+      </p>
     </article>
   );
 }
@@ -65,102 +70,104 @@ function ReadinessCard({
 export function BursarSurface() {
   return (
     <main className="min-w-0 flex-1" data-testid="bursar-surface">
-      <header className="ap-card mb-4 overflow-hidden rounded p-4" style={bursarPanelStyle()}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      <header className="ap-card mb-4 overflow-hidden rounded border p-5" style={bursarPanelStyle()}>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_0.65fr]">
           <div className="max-w-3xl">
             <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-              Admin finance domain
+              Governed spend axis
             </p>
             <h1
               className="ap-register-chrome mt-2"
               style={{ fontSize: TYPE.scale.xl, fontWeight: 600, lineHeight: TYPE.line.display }}
             >
-              Finance intelligence surface
+              Bursar Ledger Room
             </h1>
-            <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
-              Bursar belongs under admin finance. It is not exposed on the standard employee
-              dashboard, and it is not unlocked by project read grants.
+            <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.md, lineHeight: TYPE.line.body }}>
+              Governed spend for Enterprise Brain model actions.
+            </p>
+            <p className="ap-soft mt-3 max-w-2xl" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
+              This route is a UI-only placeholder for the future Ledger room. It will sit beside
+              answers when real ledger data is connected, showing the governed spend that was capped,
+              authorized, audited, and reconciled.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex content-start items-start gap-2 lg:flex-col">
             <StatusChip>route /admin/bursar</StatusChip>
-            <StatusChip>not server-enforced yet</StatusChip>
-            <StatusChip>no spend data connected</StatusChip>
+            <StatusChip>UI-only lane</StatusChip>
+            <StatusChip>no ledger fixture</StatusChip>
           </div>
         </div>
       </header>
 
-      <section className="grid grid-cols-1 gap-3 lg:grid-cols-3" aria-label="Bursar readiness">
-        <ReadinessCard
-          label="Access posture"
-          detail="Future visibility needs explicit finance/admin authorization. Today the role contract only reports derived_only posture."
-          status="candidate only"
-        />
-        <ReadinessCard
-          label="Data posture"
-          detail="The repo has finance documents and a finance agent, but no structured supplier, invoice, payment, spend, savings, or duplicate-payment store."
-          status="not connected"
-        />
-        <ReadinessCard
-          label="Grant posture"
-          detail="Approved project read grants stay scoped to project/capability context and do not become finance-domain grants."
-          status="not granted"
-        />
-      </section>
-
-      <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="ap-card rounded border p-4" style={bursarPanelStyle()} data-testid="bursar-empty-state">
-          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-            Unavailable state
-          </p>
-          <h2 className="ap-register-chrome mt-2" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
-            Bursar data model is not connected.
-          </h2>
-          <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
-            This placeholder is intentionally empty. It does not show fake supplier names, fake invoice
-            counts, fake spend totals, fake savings, or fake duplicate-payment findings.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <StatusChip>no charts</StatusChip>
-            <StatusChip>no metrics</StatusChip>
-            <StatusChip>no synthetic rows</StatusChip>
-          </div>
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]" aria-label="Bursar doctrine">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {DOCTRINE.map((item) => (
+            <DoctrineCard key={item.label} detail={item.detail} label={item.label} />
+          ))}
         </div>
 
-        <div className="ap-card rounded border p-4" style={bursarPanelStyle()} data-testid="bursar-source-map">
-          <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
-            Required source map
+        <section className="ap-card rounded border p-4" data-testid="bursar-contract-panel" style={bursarPanelStyle()}>
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Ledger contract panel
           </p>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {REQUIRED_SOURCES.map((source) => (
-              <div key={source} className="ap-card rounded p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
-                    {source}
-                  </span>
-                  <StatusChip>missing</StatusChip>
-                </div>
+          <h2 className="ap-register-chrome mt-2" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+            ledger.v1.1 is expected before rows render.
+          </h2>
+          <div className="mt-4 grid grid-cols-1 gap-2">
+            {CONTRACT.map((line) => (
+              <div key={line} className="ap-hairline flex items-center justify-between gap-3 border-t py-2">
+                <span className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm }}>
+                  {line}
+                </span>
+                <StatusChip>{line === "ledger.v1.1 expected" ? "expected" : "unavailable"}</StatusChip>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       </section>
 
-      <section className="ap-card mt-4 rounded border p-4" style={bursarPanelStyle()} data-testid="bursar-governance-warning">
-        <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
-          Governance boundary
-        </p>
-        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
-          {BOUNDARIES.map((boundary) => (
-            <p
-              key={boundary}
-              className="ap-soft rounded border px-3 py-2"
-              style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
-            >
-              {boundary}
-            </p>
-          ))}
-        </div>
+      <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[0.88fr_1.12fr]">
+        <section className="ap-card rounded border p-4" data-testid="bursar-empty-state" style={bursarPanelStyle()}>
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Honest unavailable state
+          </p>
+          <h2 className="ap-register-chrome mt-2" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+            No ledger fixture is connected in this workspace yet.
+          </h2>
+          <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
+            When the producer is connected, this room will show authorized model actions, their
+            compiled budget envelope, cap posture, reconciliation status, and append-only audit trail.
+            Until then it renders no live rows, no charts, and no totals.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <StatusChip>no fake data</StatusChip>
+            <StatusChip>no charts</StatusChip>
+            <StatusChip>no totals</StatusChip>
+          </div>
+        </section>
+
+        <section className="ap-card rounded border p-4" data-testid="bursar-future-beat" style={bursarPanelStyle()}>
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Future demo beat
+          </p>
+          <blockquote
+            className="ap-register-chrome mt-2"
+            style={{ fontSize: TYPE.scale.lg, fontWeight: 600, lineHeight: TYPE.line.display }}
+          >
+            Same console: the answer, and the governed spend it cost - capped, authorized, audited.
+          </blockquote>
+          <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+            {BOUNDARIES.map((boundary) => (
+              <p
+                key={boundary}
+                className="ap-hairline rounded border px-3 py-2"
+                style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
+              >
+                {boundary}
+              </p>
+            ))}
+          </div>
+        </section>
       </section>
     </main>
   );

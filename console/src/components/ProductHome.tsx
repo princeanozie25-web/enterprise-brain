@@ -26,7 +26,7 @@ const DESTINATIONS = [
     testid: "root-link-admin-graph",
   },
   {
-    detail: "Open the finance intelligence placeholder. No Bursar data or enforced finance role exists yet.",
+    detail: "Open the governed model-spend placeholder. No ledger data or enforced Bursar role exists yet.",
     href: "/admin/bursar",
     label: "Bursar",
     testid: "root-link-admin-bursar",
@@ -86,7 +86,7 @@ export function ProductHome() {
           Admin enforcement note
         </p>
         <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-          Admin Graph and Bursar are route-separated, but admin and finance access are still marked
+          Admin Graph and Bursar are route-separated, but admin and spend authority are still marked
           as derived-only until a server-enforced authorization primitive exists.
         </p>
       </section>

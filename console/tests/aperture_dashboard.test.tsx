@@ -540,6 +540,8 @@ describe("EmployeeDashboard", () => {
     expect(text).not.toContain("d0196");
     expect(text).not.toMatch(/denied count|hidden/i);
     expect(text).not.toMatch(/bursar|governance/i);
+    expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
+    expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
 
   it("keeps ordinary employee pods to employee-safe surfaces only", async () => {
@@ -586,6 +588,8 @@ describe("EmployeeDashboard", () => {
     expect(screen.queryByTestId("dashboard-open-grant-ask")).toBeNull();
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/bursar|governance/i);
+    expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
+    expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
 
   it("labels executive candidates without unlocking elevated dashboard pods", async () => {
@@ -617,5 +621,7 @@ describe("EmployeeDashboard", () => {
     expect(screen.queryByTestId("dashboard-department-workflow-layer")).toBeNull();
     expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
     expect(container.textContent ?? "").not.toMatch(/bursar|governance/i);
+    expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
+    expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
 });
