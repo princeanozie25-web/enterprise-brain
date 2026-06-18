@@ -35,13 +35,17 @@
 //!     principal is meant.
 //!
 //! LIMITS (honest, stated not hidden): detection is ROSTER-SURFACE-BOUNDED. It
-//! flags canonical-surface mentions of KNOWN-ROSTER principals; it does NOT
-//! recognize non-roster entities (an external party, a customer org, a nickname),
-//! and apostrophe-elided surname variants (e.g. "O'Brien" written "OBrien") are
-//! currently missed. A miss is the FLAG failing open, never the access gate: the
-//! granted/displayed set is unchanged regardless, so a missed mention is an
-//! un-surfaced disclosure, not a widened grant. Robust entity recognition and
-//! apostrophe normalization are tracked follow-ups, not claimed here.
+//! flags canonical-surface mentions of KNOWN-ROSTER principals, apostrophe
+//! variants INCLUDED ("O'Brien" and "OBrien" both flag — see `name_tokens`). It
+//! does NOT identify non-roster entities (an external party, a customer org, a
+//! nickname) — resolving those would need a model, which this deterministic
+//! matcher deliberately is not. A non-roster miss is the FLAG failing open, never
+//! the access gate: the granted/displayed set is unchanged regardless, so a
+//! missed mention is an un-surfaced disclosure, not a widened grant. A coarse
+//! "flag every unknown capitalized token as ambiguous" heuristic is a DELIBERATE
+//! NON-GOAL: derived prose here is dense with capitalized non-person entities
+//! (account/site/org names, record categories), so it would flood the report with
+//! false flags and bury the real ones — narrowing the guarantee is the honest call.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -334,10 +338,22 @@ impl Roster {
 }
 
 /// Lowercased alphanumeric name tokens of length ≥ 2 (drops initials and
-/// punctuation). The same tokenizer is applied to roster names and to prose, so
+/// punctuation). The same tokenizer is applied to roster names AND to prose, so
 /// matching is symmetric and deterministic.
+///
+/// Apostrophes (ASCII `'` and the unicode right single quote `’`) are STRIPPED —
+/// not treated as separators — so an apostrophe-elided surname in prose
+/// ("OBrien") and the roster form ("O'Brien") collapse to the SAME token
+/// ("obrien"). Because this is the single shared tokenizer, the normalization is
+/// guaranteed symmetric. It only removes apostrophes; distinct letter sequences
+/// stay distinct, so two genuinely different surnames never collide.
 fn name_tokens(s: &str) -> Vec<String> {
-    s.split(|c: char| !c.is_alphanumeric())
+    let without_apostrophes: String = s
+        .chars()
+        .filter(|c| !matches!(c, '\'' | '\u{2019}'))
+        .collect();
+    without_apostrophes
+        .split(|c: char| !c.is_alphanumeric())
         .filter(|w| w.chars().count() >= 2)
         .map(str::to_lowercase)
         .collect()
@@ -371,6 +387,8 @@ mod tests {
                 ("p3", "Samir Nakamura"),
                 ("p4", "Samir Mwangi"),
                 ("p5", "Zara Lee"),
+                ("p6", "Aisha O'Brien"),
+                ("p7", "Diego O'Brien"),
             ]
             .into_iter()
             .map(|(a, b)| (a.to_string(), b.to_string()))
@@ -477,6 +495,58 @@ mod tests {
                 surface: "Zara Lee".into()
             }]
         );
+    }
+
+    #[test]
+    fn apostrophe_variants_resolve_to_the_same_principal() {
+        let r = roster();
+        // Roster holds "Aisha O'Brien" (p6, a unique full name). Prose written
+        // WITHOUT the apostrophe, with the ASCII apostrophe, and with the unicode
+        // right-single-quote all resolve to p6 — the fail-open is closed.
+        let resolves_p6 = |prose: &str| match r.detect(prose).as_slice() {
+            [Mention::Resolved { principal_id, .. }] => assert_eq!(principal_id, "p6", "{prose:?}"),
+            other => panic!("expected one Resolved p6 for {prose:?}, got {other:?}"),
+        };
+        resolves_p6("signed by Aisha OBrien today"); // elided — a MISS before the fix
+        resolves_p6("signed by Aisha O'Brien today"); // ASCII apostrophe
+        resolves_p6("signed by Aisha O\u{2019}Brien today"); // unicode right single quote
+    }
+
+    #[test]
+    fn apostrophe_strip_keeps_distinct_surnames_distinct() {
+        let r = roster();
+        // A different surname must NOT collide with O'Brien via the strip.
+        assert!(
+            r.detect("a memo from Obrienne").is_empty(),
+            "distinct surname does not collide with O'Brien"
+        );
+        // The shared bare surname is AMBIGUOUS (p6 + p7), never guessed.
+        match r.detect("approved by OBrien").as_slice() {
+            [Mention::Ambiguous { candidates, .. }] => {
+                assert_eq!(candidates, &vec!["p6".to_string(), "p7".to_string()]);
+            }
+            other => panic!("expected one Ambiguous, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn granted_about_obrien_suppresses_even_when_elided() {
+        let mut r = roster();
+        // A governed subject-doc about Aisha O'Brien (p6).
+        r.subject_docs
+            .insert("p6".to_string(), vec!["d_hr_p6".to_string()]);
+        let granted: BTreeSet<String> = ["d_hr_p6".to_string()].into_iter().collect();
+        let ungranted: BTreeSet<String> = ["d_other".to_string()].into_iter().collect();
+        // Granted-about p6 -> the elided mention is NOT flagged (the additive gate
+        // still respects "granted about").
+        assert!(r
+            .flag_prose("S", &granted, "Aisha OBrien signed it", "src")
+            .is_empty());
+        // Not granted-about p6 -> the elided mention IS flagged, resolved to p6.
+        let flags = r.flag_prose("S", &ungranted, "Aisha OBrien signed it", "src");
+        assert_eq!(flags.len(), 1);
+        assert_eq!(flags[0].mentioned_id.as_deref(), Some("p6"));
+        assert!(!flags[0].ambiguous);
     }
 
     #[test]

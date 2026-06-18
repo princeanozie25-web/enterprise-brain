@@ -35,6 +35,7 @@ use wiki::Sources;
 const BOARD: &str = "p060"; // granted 0 HR docs -> granted about nobody.
 const HRADMIN: &str = "p088"; // granted all 30 HR records -> granted about their subjects.
 const HASSAN: &str = "p008"; // Hassan Walsh — subject of HR record d0091.
+const AISHA_OBRIEN: &str = "p105"; // "Aisha O'Brien" — unique full name; no HR record, so no scope is granted-about her.
 
 /// A synthesizer that emits ONE claim whose prose is `prose`, citing the first
 /// in-scope source with a verbatim quote (so grounding admits it). The prose is
@@ -338,5 +339,38 @@ fn mention_flagging_leaves_authz_artifacts_byte_identical() {
     assert_eq!(
         before, after,
         "free-text mention flagging must leave the compiled authz model byte-identical"
+    );
+}
+
+/// P1-e (CENTERPIECE): an apostrophe-elided surname in admitted prose ("Aisha
+/// OBrien") is now FLAGGED against the roster's "Aisha O'Brien" principal the
+/// deriving scope is not granted about — and the ASCII `'` and unicode `’`
+/// apostrophe forms flag identically. Before the fix the elided form produced NO
+/// flag (the fail-open). The claim is still admitted alongside the flag (additive:
+/// the flag-set grows, the granted/displayed set does not).
+#[test]
+fn apostrophe_elided_surname_is_flagged() {
+    let (artifacts, sources, authz) = setup("mf_apostrophe");
+    // p060 is granted about nobody, so naming Aisha O'Brien is a leak it must flag.
+    let flags_aisha = |prose: &'static str| -> bool {
+        let synth = prose_synth(prose);
+        let layer = derive_with(&artifacts, &sources, &authz, BOARD, &synth);
+        assert_eq!(layer.claims.len(), 1, "claim still admitted for {prose:?}");
+        layer
+            .mention_flags
+            .iter()
+            .any(|m| m.mentioned_id.as_deref() == Some(AISHA_OBRIEN))
+    };
+    assert!(
+        flags_aisha("Aisha OBrien approved the figures."),
+        "the apostrophe-ELIDED surname now flags (was a miss before the fix)"
+    );
+    assert!(
+        flags_aisha("Aisha O'Brien approved the figures."),
+        "the ASCII-apostrophe form flags identically"
+    );
+    assert!(
+        flags_aisha("Aisha O\u{2019}Brien approved the figures."),
+        "the unicode right-single-quote form flags identically"
     );
 }

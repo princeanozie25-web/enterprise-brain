@@ -565,7 +565,7 @@ pub fn render_compounded_page(store: &CompoundStore, p: &CompoundedPage) -> Stri
             "## ⚠ Free-text mention flags ({}) — slice 5\n\n",
             p.mention_flags.len()
         ));
-        s.push_str("> Admitted prose NAMED a principal this scope is **not** granted about (or an ambiguous name token). Deterministic roster match (canonical-surface forms only — non-roster entities and apostrophe-elided name variants are **not** caught) — flagged, **not** reconciled; the granted set is **unchanged**.\n\n");
+        s.push_str("> Admitted prose NAMED a principal this scope is **not** granted about (or an ambiguous name token). Deterministic roster match (known-roster principals only, apostrophe variants included — non-roster entities are **not** identified) — flagged, **not** reconciled; the granted set is **unchanged**.\n\n");
         for m in &p.mention_flags {
             let who = match &m.mentioned_id {
                 Some(id) => format!("`{id}`"),

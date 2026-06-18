@@ -23,9 +23,9 @@
 //! caught, and the live admit path admits ~zero on current local judges. The
 //! fail-closed flag fires for a structured `ABOUT: <known-principal>` the model
 //! does not grant; slice 5 (`mentions.rs`) additionally flags FREE-TEXT principal
-//! mentions, but only ROSTER-SURFACE forms (non-roster entities and
-//! apostrophe-elided variants are not caught). Tighter entity recognition and a
-//! write-side compounding-snapshot pin are tracked follow-ups.
+//! mentions (known-roster principals, apostrophe variants included), but does NOT
+//! identify non-roster entities — that would need a model, a deliberate non-goal
+//! for this deterministic matcher.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -367,7 +367,7 @@ pub fn render_scoped_layer(layer: &ScopedLayer) -> String {
             "## ⚠ Free-text mention flags ({}) — slice 5\n\n",
             layer.mention_flags.len()
         ));
-        s.push_str("> Admitted prose NAMED a principal the scope is **not** granted about (or an ambiguous name token). Detected deterministically against the roster (canonical-surface forms only — non-roster entities and apostrophe-elided name variants are **not** caught) — flagged, **not** reconciled; access **NOT** widened.\n\n");
+        s.push_str("> Admitted prose NAMED a principal the scope is **not** granted about (or an ambiguous name token). Detected deterministically against the roster (known-roster principals only, apostrophe variants included — non-roster entities are **not** identified) — flagged, **not** reconciled; access **NOT** widened.\n\n");
         for m in &layer.mention_flags {
             let who = match &m.mentioned_id {
                 Some(id) => format!("`{id}`"),
