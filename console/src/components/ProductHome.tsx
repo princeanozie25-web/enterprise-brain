@@ -25,6 +25,12 @@ const DESTINATIONS = [
     label: "Admin Graph",
     testid: "root-link-admin-graph",
   },
+  {
+    detail: "Open the finance intelligence placeholder. No Bursar data or enforced finance role exists yet.",
+    href: "/admin/bursar",
+    label: "Bursar",
+    testid: "root-link-admin-bursar",
+  },
 ];
 
 export function ProductHome() {
@@ -41,8 +47,8 @@ export function ProductHome() {
           Choose the surface for the work you are doing.
         </h1>
         <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
-          Employee work, project execution, questions, and the admin graph are separate routes. This
-          home route does not infer access or redirect by role.
+          Employee work, project execution, questions, and admin-domain previews are separate
+          routes. This home route does not infer access or redirect by role.
         </p>
       </header>
 
@@ -80,8 +86,8 @@ export function ProductHome() {
           Admin enforcement note
         </p>
         <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-          Admin Graph is route-separated, but admin access is still marked as derived-only until a
-          server-enforced authorization primitive exists.
+          Admin Graph and Bursar are route-separated, but admin and finance access are still marked
+          as derived-only until a server-enforced authorization primitive exists.
         </p>
       </section>
     </main>

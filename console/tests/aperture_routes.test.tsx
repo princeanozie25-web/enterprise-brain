@@ -127,17 +127,34 @@ describe("route separation", () => {
     expect(screen.getByTestId("root-link-project").getAttribute("href")).toBe("/project");
     expect(screen.getByTestId("root-link-ask").getAttribute("href")).toBe("/ask");
     expect(screen.getByTestId("root-link-admin-graph").getAttribute("href")).toBe("/admin/graph");
+    expect(screen.getByTestId("root-link-admin-bursar").getAttribute("href")).toBe("/admin/bursar");
     expect(screen.getByTestId("root-admin-note").textContent).toContain("derived-only");
   });
 
-  it("keeps product navigation split across daily, project, ask, and admin graph surfaces", () => {
+  it("keeps product navigation split across daily, project, ask, and admin-domain surfaces", () => {
     render(<Console view="me" />);
 
     expect(screen.getByTestId("view-door-me").getAttribute("aria-current")).toBe("page");
     expect(screen.getByTestId("view-door-project").getAttribute("href")).toBe("/project");
     expect(screen.getByTestId("view-door-ask").getAttribute("href")).toBe("/ask");
     expect(screen.getByTestId("view-door-admin-graph").getAttribute("href")).toBe("/admin/graph");
+    expect(screen.queryByTestId("view-door-bursar")).toBeNull();
     expect(screen.getByTestId("admin-preview-badge").textContent).toContain("not full auth enforced yet");
+  });
+
+  it("renders Bursar as an honest finance placeholder without fake spend data", () => {
+    render(<Console view="adminBursar" />);
+
+    const surface = screen.getByTestId("bursar-surface");
+    expect(surface.textContent).toContain("Finance intelligence surface");
+    expect(surface.textContent).toContain("not server-enforced yet");
+    expect(surface.textContent).toContain("no spend data connected");
+    expect(surface.textContent).toContain("Bursar data model is not connected");
+    expect(surface.textContent).toContain("supplier master");
+    expect(surface.textContent).toContain("invoice ledger");
+    expect(surface.textContent).toContain("Read grants for project context do not unlock");
+    expect(surface.textContent).not.toMatch(/£|\$|savings found|duplicate payments found/i);
+    expect(screen.getByTestId("view-door-bursar").getAttribute("aria-current")).toBe("page");
   });
 
   it("renders the admin graph shell as a derived preview, not a security claim", async () => {

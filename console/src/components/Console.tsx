@@ -12,6 +12,7 @@ import type {
 import { DERIVED, TYPE } from "@/lib/tokens";
 import { AnswerCard } from "./AnswerCard";
 import { AtlasRoom } from "./AtlasRoom";
+import { BursarSurface } from "./BursarSurface";
 import { DocInspector } from "./DocInspector";
 import { EmployeeDashboard } from "./EmployeeDashboard";
 import { ExportButton } from "./ExportButton";
@@ -57,7 +58,7 @@ function entryDoorActor(search: string): string | null {
 export function Console({
   view = "ask",
 }: {
-  view?: "adminGraph" | "ask" | "lens" | "atlas" | "lane" | "project" | "me";
+  view?: "adminBursar" | "adminGraph" | "ask" | "lens" | "atlas" | "lane" | "project" | "me";
 }) {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
@@ -257,11 +258,14 @@ export function Console({
       <LensBar principal={principal} onSwitch={switchPrincipal} />
 
       <nav className="ap-card border-x-0 border-t-0" aria-label="Rooms" data-testid="view-switcher">
-        <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-1.5">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-1.5">
           <ViewDoor label="Me" href="/me" active={view === "me"} principal={principal} />
           <ViewDoor label="Project" href="/project" active={view === "project"} principal={principal} />
           <ViewDoor label="Ask" href="/ask" active={view === "ask"} principal={principal} />
           <ViewDoor label="Admin Graph" href="/admin/graph" active={view === "adminGraph"} principal={principal} />
+          {(view === "adminBursar" || view === "adminGraph") && (
+            <ViewDoor label="Bursar" href="/admin/bursar" active={view === "adminBursar"} principal={principal} />
+          )}
           <span
             className="ap-register-evidence ap-soft rounded px-1.5 py-0.5"
             style={{ fontSize: TYPE.scale.xs }}
@@ -295,6 +299,8 @@ export function Console({
           <main className="min-w-0 flex-1">
             <GraphRoom actor={principal} reducedMotion={reduced} adminPreview />
           </main>
+        ) : view === "adminBursar" ? (
+          <BursarSurface />
         ) : view === "me" ? (
           <EmployeeDashboard actor={principal} />
         ) : view === "lens" ? (
