@@ -26,7 +26,7 @@ export function IdentityRail({
         </h2>
         {principal === null ? (
           <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.sm }} data-testid="rail-empty-state">
-            Select a demo lens to begin.
+            Choose a Work Identity to see granted scope.
           </p>
         ) : scope === null ? (
           <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.sm }}>

@@ -21,7 +21,7 @@ const GROUPS: WorkflowGroup[] = [
 const KIND_LABEL: Record<WorkflowItem["kind"], string> = {
   access_request: "Access request",
   accepted_agent_box: "Accepted agent box",
-  lane_box: "Lane box",
+  lane_box: "Work item",
 };
 
 const GROUP_LABELS: Record<string, string> = {
@@ -75,7 +75,7 @@ export function WorkflowView({
   if (!available || workflow === null) {
     return (
       <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="workflow-unavailable">
-        Workflow projection is not available for this project.
+        Workflow is not available for this project.
       </p>
     );
   }
@@ -106,7 +106,7 @@ export function WorkflowView({
           className="ap-card ap-register-evidence ap-soft rounded-full px-2 py-1"
           style={{ fontSize: TYPE.scale.xs }}
         >
-          {workflow.items.length} real items
+          {workflow.items.length} visible items
         </span>
       </div>
 
@@ -195,11 +195,11 @@ function WorkflowRolePosture({
       <WorkflowPostureFact
         detail="Personal workflow remains primary."
         label="Employee focus"
-        value={`${workflow.items.length} rows`}
+        value={`${workflow.items.length} items`}
       />
       {teamScope > 0 && (
         <WorkflowPostureFact
-          detail="Team workflow rows are not added unless exposed by the workflow projection."
+          detail="Team work items are not added unless exposed by the workflow projection."
           label="Team context"
           value={`${teamScope} direct ${teamScope === 1 ? "report" : "reports"}`}
         />
@@ -213,9 +213,9 @@ function WorkflowRolePosture({
       )}
       {approvalRows.length > 0 && (
         <WorkflowPostureFact
-          detail="Approval waiting states are real access-request workflow rows."
+          detail="Approval waiting states are real access-request workflow items."
           label="Approval waiting"
-          value={`${approvalRows.length} rows`}
+          value={`${approvalRows.length} items`}
         />
       )}
       {executiveSignal && (

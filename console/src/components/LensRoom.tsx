@@ -247,7 +247,7 @@ export function LensRoom({
   if (actor === null) {
     return (
       <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="lens-room-empty">
-        Select a lens to begin.
+        Choose a Work Identity to begin.
       </p>
     );
   }
@@ -282,7 +282,7 @@ export function LensRoom({
           className="ap-register-chrome"
           style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
         >
-          Lens
+          Knowledge View
         </h1>
         {/* AP-5: masthead-adjacent home — the header row exists while the
             masthead loads, so the disabled state can too (not hidden). */}
@@ -334,7 +334,7 @@ export function LensRoom({
 
       {!loading && !available && (
         <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="lens-unavailable">
-          This lens isn&apos;t available.
+          This Knowledge View is not available.
         </p>
       )}
 

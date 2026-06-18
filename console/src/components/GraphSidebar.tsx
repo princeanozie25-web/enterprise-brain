@@ -90,13 +90,13 @@ export function GraphSidebar({
 
       <div className="ap-hairline border-t pt-2">
         <p className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-          Viewing as
+          Work Identity
         </p>
         <p className="ap-register-evidence" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }} data-testid="sidebar-actor">
           {actor}
         </p>
         <p className="ap-soft mt-0.5" style={{ fontSize: TYPE.scale.xs }}>
-          The graph is the company through this lens.
+          The graph shows company relationships visible to this Work Identity.
         </p>
       </div>
 

@@ -243,7 +243,7 @@ export function GraphRoom({
           </span>
           {adminPreview && (
             <span className="block truncate" data-testid="admin-graph-preview-banner">
-              Admin view is not server-enforced yet / {roleScope?.enforcement ?? "derived preview"} /{" "}
+              Preview only: admin view is not server-enforced yet / {roleScope?.enforcement ?? "derived preview"} /{" "}
               {roleScope?.admin_surface_allowed ? "admin allowed" : "admin not granted"}
             </span>
           )}
@@ -308,8 +308,8 @@ export function GraphRoom({
         <div className="grid h-full place-items-center px-6 pt-16">
           <GraphEmpty
             testid="graph-room-empty"
-            headline="Select a lens to begin."
-            sub="Choose a principal to see the company through their lens."
+            headline="Choose a Work Identity to open the Operating Map."
+            sub="The map draws only company relationships visible to that identity. No selection means no permission scope."
           />
         </div>
       ) : loading ? (
@@ -323,7 +323,7 @@ export function GraphRoom({
           <GraphEmpty
             testid="graph-unavailable"
             headline="No organizational view in your scope."
-            sub="This lens does not include a company graph. Nothing is withheld here; there is simply nothing to draw."
+            sub="This Work Identity does not include a company graph. Nothing is withheld here; there is simply nothing to draw."
           />
         </div>
       ) : graph !== null && graph.people.length === 0 ? (
@@ -331,7 +331,7 @@ export function GraphRoom({
           <GraphEmpty
             testid="graph-empty"
             headline="No organizational view in your scope."
-            sub="This lens does not include a company graph. Nothing is withheld here; there is simply nothing to draw."
+            sub="This Work Identity does not include a company graph. Nothing is withheld here; there is simply nothing to draw."
           />
         </div>
       ) : graph !== null ? (

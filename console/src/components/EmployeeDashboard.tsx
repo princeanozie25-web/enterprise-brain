@@ -153,7 +153,7 @@ function buildNotificationItems({
       category: "Approvals",
       detail:
         inbox.length > 0
-          ? "Requests assigned to this actor are ready for review."
+          ? "Requests assigned to this Work Identity are ready for review."
           : "Approval scope exists, but no request inbox rows are visible here.",
       href: "#dashboard-requests",
       metric: inbox.length > 0 ? `${inbox.length}` : undefined,
@@ -187,7 +187,7 @@ function buildNotificationItems({
   if (visibleGrants.length > 0) {
     notifications.push({
       category: "Grant Events",
-      detail: "Read grant records visible to this actor are available for status review.",
+      detail: "Read grant records visible to this Work Identity are available for status review.",
       href: "#dashboard-granted-knowledge",
       metric: `${visibleGrants.length}`,
       source: "grant ledger",
@@ -332,7 +332,7 @@ function deriveScopeBadges({
     {
       detail: "daily work surface",
       label: "Employee view",
-      source: "current actor",
+      source: "selected Work Identity",
     },
   ];
 
@@ -466,11 +466,11 @@ function buildCommandPods({
   const activeGrants = activeKnowledgeGrants(grants, actor);
   const pods: CommandPodModel[] = [
     {
-      detail: "Projected from your assigned project workflow items.",
+      detail: "Projected from assigned project workflow items.",
       href: "#dashboard-workflow",
       kind: "work",
       metric: `${workflowItems.length} ${workflowItems.length === 1 ? "item" : "items"}`,
-      title: "My Work Pod",
+      title: "My Work",
     },
   ];
 
@@ -480,7 +480,7 @@ function buildCommandPods({
       href: `/project?cap=${encodeURIComponent(firstCapabilityId)}&as=${encodeURIComponent(actor)}`,
       kind: "project",
       metric: `${projectCount} ${projectCount === 1 ? "project" : "projects"}`,
-      title: "Project Context Pod",
+      title: "Project Context",
     });
   }
 
@@ -490,16 +490,16 @@ function buildCommandPods({
       href: "#dashboard-granted-knowledge",
       kind: "grant",
       metric: `${activeGrants.length} active ${activeGrants.length === 1 ? "grant" : "grants"}`,
-      title: "Granted Knowledge Pod",
+      title: "Granted Knowledge",
     });
   }
 
   pods.push({
     callToAction: "Start Conversation",
-    detail: "Use your current actor context in the existing ask surface.",
+    detail: "Use this Work Identity and its permission scope in Ask.",
     href: `/ask?as=${encodeURIComponent(actor)}`,
     kind: "ask",
-    metric: "actor scoped",
+    metric: "permission scoped",
     title: "Ask a Question",
   });
 
@@ -511,7 +511,7 @@ function buildCommandPods({
       metric: `${roleScope.team_scope.direct_report_count} direct ${
         roleScope.team_scope.direct_report_count === 1 ? "report" : "reports"
       }`,
-      title: "Team Lead Pod",
+      title: "Team Context",
     });
   }
 
@@ -521,17 +521,17 @@ function buildCommandPods({
       href: "#dashboard-scope",
       kind: "department",
       metric: department,
-      title: "Department Context Pod",
+      title: "Department Context",
     });
   }
 
   if (pendingApprovals > 0) {
     pods.push({
-      detail: "Requests assigned to this actor for review.",
+      detail: "Requests assigned to this Work Identity for review.",
       href: "#dashboard-requests",
       kind: "approval",
       metric: `${pendingApprovals} pending`,
-      title: "Approval Queue Pod",
+      title: "Approval Queue",
     });
   }
 
@@ -541,7 +541,7 @@ function buildCommandPods({
       href: "#dashboard-role-experience",
       kind: "executive",
       metric: "candidate only",
-      title: "Executive Candidate Pod",
+      title: "Executive Candidate",
     });
   }
 
@@ -550,7 +550,7 @@ function buildCommandPods({
     href: "#dashboard-requests",
     kind: "request",
     metric: `${requests.length} mine / ${inbox.length} inbox / ${grants.length} grants`,
-    title: "Access Request Pod",
+    title: "Access Requests",
   });
 
   if (agentCount > 0) {
@@ -559,7 +559,7 @@ function buildCommandPods({
       href: `/ask?as=${encodeURIComponent(actor)}`,
       kind: "agent",
       metric: `${agentCount} ${agentCount === 1 ? "agent" : "agents"}`,
-      title: "Agent Assist Pod",
+      title: "Agent Assist",
     });
   }
 
@@ -658,7 +658,7 @@ function buildRoleExperienceCards({
 }): RoleExperienceCard[] {
   const cards: RoleExperienceCard[] = [
     {
-      detail: "Daily execution stays scoped to this actor.",
+      detail: "Daily execution stays scoped to this Work Identity.",
       label: "Employee baseline",
       metric: `${workflowItems.length} workflow ${workflowItems.length === 1 ? "item" : "items"}`,
       source: "workflow projection",
@@ -697,7 +697,7 @@ function buildRoleExperienceCards({
   }
   if (inbox.length > 0) {
     cards.push({
-      detail: "Only requests assigned to this actor appear here.",
+      detail: "Only requests assigned to this Work Identity appear here.",
       label: "Approval queue",
       metric: `${inbox.length} pending`,
       source: "request inbox",
@@ -984,7 +984,7 @@ function WorkspaceLayer({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-            Workspace Layer
+            Work surface
           </p>
           <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
             Work Identity
@@ -996,8 +996,8 @@ function WorkspaceLayer({
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <WorkspaceBlock title="Identity">
-            <WorkspaceFact label="Actor" source="current actor" value={actor} />
-            <WorkspaceFact label="Name" source="lens" value={human?.display_name ?? lens.subject.name} />
+            <WorkspaceFact label="Identity ID" source="selected Work Identity" value={actor} />
+            <WorkspaceFact label="Name" source="Work Identity" value={human?.display_name ?? lens.subject.name} />
             <WorkspaceFact label="Title" source="people record" value={human?.title ?? "Role unavailable"} />
           </WorkspaceBlock>
 
@@ -1022,7 +1022,7 @@ function WorkspaceLayer({
           <WorkspaceBlock title="Department">
             <WorkspaceFact
               label="Department"
-              source="lens"
+              source="Work Identity"
               value={human?.department_label ?? lens.subject.department ?? "Department unavailable"}
             />
             <WorkspaceFact label="Manager" source="people record" value={human?.reports_to ?? "Manager unavailable"} />
@@ -1179,10 +1179,10 @@ function RoleAwareWorkflowLayer({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-            Additive Workflow Experience
+            Workflow context
           </p>
           <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
-            Employee Layer + Leadership Layer
+            My work plus visible leadership context
           </h2>
         </div>
         <Chip>{roleScope?.enforcement ?? "derived only"}</Chip>
@@ -1190,7 +1190,7 @@ function RoleAwareWorkflowLayer({
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-4">
         <WorkflowLayerCard
-          detail="Personal execution remains visible for every actor."
+          detail="Personal execution remains visible for every Work Identity."
           metric={`${workflowItems.length} workflow ${workflowItems.length === 1 ? "item" : "items"}`}
           testId="dashboard-employee-workflow-layer"
           title="Employee Layer"
@@ -1198,7 +1198,7 @@ function RoleAwareWorkflowLayer({
           <div className="mt-3 flex flex-wrap gap-1.5">
             <Chip>{projects.length} projects</Chip>
             <Chip>{requests.length} requests</Chip>
-            <Chip mono>actor {actor}</Chip>
+            <Chip mono>identity {actor}</Chip>
           </div>
         </WorkflowLayerCard>
 
@@ -1223,7 +1223,7 @@ function RoleAwareWorkflowLayer({
 
         {hasDepartmentLayer && (
           <WorkflowLayerCard
-            detail="Department context is limited to projects already visible to this actor."
+            detail="Department context is limited to projects already visible to this Work Identity."
             metric={departmentId}
             testId="dashboard-department-workflow-layer"
             title="Department Layer"
@@ -1238,7 +1238,7 @@ function RoleAwareWorkflowLayer({
                 data-testid="dashboard-leadership-empty"
                 style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
               >
-                No department project rows are visible through this actor lens.
+                No department project rows are visible for this Work Identity.
               </p>
             )}
           </WorkflowLayerCard>
@@ -1428,9 +1428,39 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
 
   if (actor === null) {
     return (
-      <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="employee-dashboard-empty">
-        Select a lens to open Work Identity.
-      </p>
+      <main className="min-w-0 flex-1" data-testid="employee-dashboard-empty">
+        <MotionSection className="ap-card rounded p-4">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Work Identity
+          </p>
+          <h1 className="ap-register-chrome mt-2" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+            Choose a Work Identity to begin.
+          </h1>
+          <p className="ap-soft mt-2 max-w-2xl" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
+            No employee is selected yet, so Enterprise Brain has no permission scope for work,
+            access requests, Granted Knowledge, or Ask. Selecting a Work Identity shows only the
+            data available to that identity.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <MotionAnchor
+              href="/me?as=p060"
+              className="ap-affordance-button ap-register-chrome rounded px-3 py-2"
+              style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+              data-testid="employee-empty-start-link"
+            >
+              Open demo Work Identity
+            </MotionAnchor>
+            <MotionAnchor
+              href="/ask?as=p060"
+              className="ap-washable ap-register-chrome rounded border px-3 py-2"
+              style={{ borderColor: "var(--hairline)", fontSize: TYPE.scale.xs, fontWeight: 600 }}
+              data-testid="employee-empty-ask-link"
+            >
+              Open Ask with that identity
+            </MotionAnchor>
+          </div>
+        </MotionSection>
+      </main>
     );
   }
 
@@ -1447,7 +1477,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   if (!available || lens === null) {
     return (
       <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="employee-dashboard-unavailable">
-        Work Identity is not available through this lens.
+        This Work Identity is not available in the current permission scope.
       </p>
     );
   }
@@ -1522,7 +1552,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
           />
           <div className="min-w-0 flex-1">
             <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-              Current actor {actor}
+              Work Identity {actor}
             </p>
             <h1
               className="ap-register-chrome mt-1"
@@ -1670,7 +1700,7 @@ function GrantedKnowledgeList({
 }) {
   const activeGrants = activeKnowledgeGrants(grants, actor);
   if (activeGrants.length === 0) {
-    return <EmptyLine>No active granted knowledge is available for this actor.</EmptyLine>;
+    return <EmptyLine>No active granted knowledge is available for this Work Identity.</EmptyLine>;
   }
   return (
     <div className="space-y-2" data-testid="dashboard-granted-knowledge" id="dashboard-granted-knowledge">
@@ -1750,8 +1780,8 @@ function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
           Enforcement status
         </p>
         <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-          This dashboard labels the current actor posture only. It does not create admin access,
-          expose restricted admin-domain data, or replace server-side graph/lens/workflow filtering.
+          This dashboard labels the selected Work Identity posture only. It does not create admin access,
+          expose restricted admin-domain data, or replace server-side graph, Work Identity, and workflow filtering.
         </p>
       </div>
     </div>
@@ -1768,7 +1798,7 @@ function ProjectsList({
   projects: ProjectRecord[];
 }) {
   if (projects.length === 0) {
-    return <EmptyLine>No assigned projects through this lens.</EmptyLine>;
+    return <EmptyLine>No assigned projects for this Work Identity.</EmptyLine>;
   }
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2" data-testid="dashboard-projects">
@@ -1866,7 +1896,7 @@ function WorkflowSummary({ actor, items }: { actor: string; items: WorkflowItem[
 
 function AgentsList({ agents }: { agents: NonNullable<NodeSummary["agents_owned"]> }) {
   if (agents.length === 0) {
-    return <EmptyLine>No owned agents are visible through this lens.</EmptyLine>;
+    return <EmptyLine>No owned agents are visible for this Work Identity.</EmptyLine>;
   }
   return (
     <div className="space-y-2" data-testid="dashboard-agents">
@@ -1908,7 +1938,7 @@ function RequestsList({
     ...inbox.map((request) => ({ label: "Approval", request })),
   ];
   if (rows.length === 0 && grants.length === 0) {
-    return <EmptyLine>No access requests are active for this actor.</EmptyLine>;
+    return <EmptyLine>No access requests are active for this Work Identity.</EmptyLine>;
   }
   return (
     <div className="space-y-2" data-testid="dashboard-requests" id="dashboard-requests">
@@ -2026,7 +2056,7 @@ function KnowledgeSummary({
             </span>
           </div>
         ))}
-        {holdings.length === 0 && <EmptyLine compact>No knowledge rows in this lens.</EmptyLine>}
+        {holdings.length === 0 && <EmptyLine compact>No knowledge rows for this Work Identity.</EmptyLine>}
       </div>
     </div>
   );

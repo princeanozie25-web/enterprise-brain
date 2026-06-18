@@ -130,13 +130,13 @@ describe("route separation", () => {
     expect(screen.getByTestId("root-demo-flow").textContent).toContain("Work Identity");
     expect(screen.getByTestId("root-demo-flow").textContent).toContain("Granted Knowledge");
     expect(screen.getByTestId("root-demo-flow").textContent).toContain("Bursar Ledger Room");
-    expect(screen.getByTestId("root-link-me").getAttribute("href")).toBe("/me");
+    expect(screen.getByTestId("root-link-me").getAttribute("href")).toBe("/me?as=p060");
     expect(screen.getByTestId("root-link-me").textContent).toContain("Work Identity");
     expect(screen.getByTestId("root-link-project").getAttribute("href")).toBe("/project");
     expect(screen.getByTestId("root-link-project").textContent).toContain("Workflow Command");
-    expect(screen.getByTestId("root-link-ask").getAttribute("href")).toBe("/ask");
+    expect(screen.getByTestId("root-link-ask").getAttribute("href")).toBe("/ask?as=p060");
     expect(screen.getByTestId("root-link-ask").textContent).toContain("Permission-aware Ask");
-    expect(screen.getByTestId("root-link-admin-graph").getAttribute("href")).toBe("/admin/graph");
+    expect(screen.getByTestId("root-link-admin-graph").getAttribute("href")).toBe("/admin/graph?as=p060");
     expect(screen.getByTestId("root-link-admin-graph").textContent).toContain("Operating Map");
     expect(screen.getByTestId("root-link-admin-bursar").getAttribute("href")).toBe("/admin/bursar");
     expect(screen.getByTestId("root-link-admin-bursar").textContent).toContain("Bursar Ledger Room");
@@ -162,16 +162,16 @@ describe("route separation", () => {
   it("renders direct Ask and Workflow Command route shells without fabricating access", () => {
     const ask = render(<Console view="ask" />);
     expect(screen.getByRole("heading", { name: "Ask" })).toBeTruthy();
-    expect(screen.getByText("Permission-aware Ask with scope, provenance, and fail-closed grant checks.")).toBeTruthy();
+    expect(screen.getByText("Permission-aware Ask with Work Identity scope, provenance, and fail-closed grant checks.")).toBeTruthy();
     expect(screen.queryByTestId("view-door-bursar")).toBeNull();
     ask.unmount();
 
     render(<Console view="project" />);
     const empty = screen.getByTestId("project-empty");
-    expect(empty.textContent).toContain("No Work Identity is selected.");
+    expect(empty.textContent).toContain("Choose a Work Identity to review work.");
     expect(empty.textContent).toContain("real capability-backed workflow");
-    expect(screen.getByTestId("project-empty-work-identity-link").getAttribute("href")).toBe("/me");
-    expect(screen.getByTestId("project-empty-operating-map-link").getAttribute("href")).toBe("/admin/graph");
+    expect(screen.getByTestId("project-empty-work-identity-link").getAttribute("href")).toBe("/me?as=p060");
+    expect(screen.getByTestId("project-empty-operating-map-link").getAttribute("href")).toBe("/admin/graph?as=p060");
     expect(screen.queryByTestId("view-door-bursar")).toBeNull();
     expect(document.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
@@ -188,7 +188,7 @@ describe("route separation", () => {
     expect(text).toContain("Audit before effect");
     expect(text).toContain("Reconcile every call");
     expect(text).toContain("ledger.v1.1 expected");
-    expect(text).toContain("producer not connected in this UI lane");
+    expect(text).toContain("producer not connected in this UI surface");
     expect(text).toContain("No ledger fixture is connected in this workspace yet.");
     expect(text).toContain("Same console: the answer, and the governed spend it cost");
     expect(text).not.toMatch(/supplier|invoice|procurement|duplicate payment|savings opportunity/i);

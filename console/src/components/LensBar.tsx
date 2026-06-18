@@ -51,7 +51,7 @@ export function LensBar({
     <header className="ap-card border-x-0 border-t-0" data-testid="lens-bar">
       <div className="mx-auto flex max-w-6xl items-center justify-center gap-3 px-4 py-2">
         <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-          Lens
+          Work Identity
         </span>
         <button
           type="button"
@@ -63,7 +63,7 @@ export function LensBar({
             className="ap-register-evidence"
             style={{ fontSize: TYPE.scale.sm, fontWeight: 500 }}
           >
-            {principal ?? "no lens selected"}
+            {principal ?? "No Work Identity selected"}
           </span>
           {principal && (
             <span
@@ -84,7 +84,7 @@ export function LensBar({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onFocus={() => setOpen(true)}
-          placeholder="Search 124 demo principals"
+          placeholder="Search demo Work Identities"
           className="w-64 rounded px-2 py-1"
           style={{ fontSize: TYPE.scale.xs }}
           data-testid="principal-search"
@@ -129,7 +129,7 @@ export function LensBar({
         style={{ fontSize: TYPE.scale.xs, color: COLOR.inkSoft }}
         data-testid="demo-banner"
       >
-        Demo identity mode — not an authentication system
+        Demo identity mode: selecting a Work Identity sets the permission scope for this console. It is not authentication.
       </div>
     </header>
   );

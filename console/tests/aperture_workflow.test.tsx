@@ -171,7 +171,7 @@ describe("workflow projection UI", () => {
     const { container } = render(<WorkflowView workflow={WORKFLOW} roleScope={ROLE_SCOPE} />);
     const groups = screen.getAllByTestId("workflow-group");
     expect(screen.getByRole("heading", { name: "Workflow Command" })).toBeTruthy();
-    expect(container.textContent).toContain(`${WORKFLOW.items.length} real items`);
+    expect(container.textContent).toContain(`${WORKFLOW.items.length} visible items`);
     expect(groups.length).toBe(5);
     expect(within(groups[0]).getAllByTestId("workflow-item").length).toBe(1);
     expect(within(groups[2]).getAllByTestId("workflow-item").length).toBe(1);
@@ -214,7 +214,7 @@ describe("workflow projection UI", () => {
     const { container } = render(<ProjectSurface actor="p060" capabilityId={null} />);
 
     const empty = screen.getByTestId("project-missing-capability");
-    expect(empty.textContent).toContain("No capability-backed workflow is selected.");
+    expect(empty.textContent).toContain("Choose real work before opening Workflow Command.");
     expect(empty.textContent).toContain("does not fabricate project state");
     expect(screen.getByTestId("project-empty-work-identity-link").getAttribute("href")).toBe("/me?as=p060");
     expect(screen.getByTestId("project-empty-operating-map-link").getAttribute("href")).toBe(

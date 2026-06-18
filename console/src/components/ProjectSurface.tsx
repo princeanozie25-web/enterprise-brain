@@ -45,7 +45,7 @@ function ProjectEntryState({
   testId: string;
   title: string;
 }) {
-  const carry = actor === null ? "" : `?as=${encodeURIComponent(actor)}`;
+  const carry = actor === null ? "?as=p060" : `?as=${encodeURIComponent(actor)}`;
   return (
     <main className="min-w-0 flex-1" data-testid={testId}>
       <MotionSection className="ap-card rounded p-4">
@@ -143,9 +143,9 @@ export function ProjectSurface({
     return (
       <ProjectEntryState
         actor={actor}
-        detail="Select Work Identity first, then open a real capability-backed workflow from the actor's project list or the Operating Map."
+        detail="Choose a Work Identity first. Then open a real capability-backed workflow from that identity's work list or the Operating Map."
         testId="project-empty"
-        title="No Work Identity is selected."
+        title="Choose a Work Identity to review work."
       />
     );
   }
@@ -154,9 +154,9 @@ export function ProjectSurface({
     return (
       <ProjectEntryState
         actor={actor}
-        detail="Workflow Command opens when a real capability id is carried from Work Identity or the Operating Map. This page does not fabricate project state."
+        detail="Workflow Command opens when a real capability is selected from Work Identity or the Operating Map. This page does not fabricate project state."
         testId="project-missing-capability"
-        title="No capability-backed workflow is selected."
+        title="Choose real work before opening Workflow Command."
       />
     );
   }
@@ -210,7 +210,7 @@ export function ProjectSurface({
 
       {!loading && !available && (
         <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="project-unavailable">
-          This project workflow is not available through the current lens.
+          This project workflow is not available for the selected Work Identity.
         </p>
       )}
 

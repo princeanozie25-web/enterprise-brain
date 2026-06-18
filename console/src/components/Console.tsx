@@ -17,6 +17,7 @@ import { DocInspector } from "./DocInspector";
 import { EmployeeDashboard } from "./EmployeeDashboard";
 import { ExportButton } from "./ExportButton";
 import { GraphRoom } from "./GraphRoom";
+import { GuidedJourney } from "./GuidedJourney";
 import { IdentityRail } from "./IdentityRail";
 import { LaneRoom } from "./LaneRoom";
 import { LensBar } from "./LensBar";
@@ -257,12 +258,22 @@ export function Console({
   );
 
   const irisClass = reduced ? iris.fadeIn : iris.irisIn;
+  const journeySurface =
+    view === "me"
+      ? "me"
+      : view === "project"
+        ? "project"
+        : view === "ask"
+          ? "ask"
+          : view === "adminBursar"
+            ? "bursar"
+            : null;
 
   return (
     <div className="min-h-screen">
       <LensBar principal={principal} onSwitch={switchPrincipal} />
 
-      <nav className="ap-card border-x-0 border-t-0" aria-label="Rooms" data-testid="view-switcher">
+      <nav className="ap-card border-x-0 border-t-0" aria-label="Product surfaces" data-testid="view-switcher">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-1.5">
           <ViewDoor label="Work Identity" href="/me" active={view === "me"} principal={principal} testId="view-door-me" />
           <ViewDoor
@@ -282,7 +293,7 @@ export function Console({
           />
           {(view === "adminBursar" || view === "adminGraph") && (
             <ViewDoor
-              label="Bursar Ledger"
+              label="Bursar Ledger Room"
               href="/admin/bursar"
               active={view === "adminBursar"}
               principal={principal}
@@ -294,27 +305,22 @@ export function Console({
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="admin-preview-badge"
           >
-            derived posture only / admin and spend authority not server-enforced here
+            preview mode: admin and spend authority are derived here, not server-enforced
           </span>
-          <ViewDoor label="Lens" href="/lens" active={view === "lens"} principal={principal} />
-          <ViewDoor label="Atlas" href="/atlas" active={view === "atlas"} principal={principal} />
-          <ViewDoor label="Lane" href="/lane" active={view === "lane"} principal={principal} />
-          {/* THE RESERVED DOOR — flagged in the AP-3 closeout: "Ledger —
-              reserved" is placeholder copy for a room that does not exist
-              yet. Disabled, not hidden: the shell states its own shape. */}
-          <span
-            className="ap-soft ml-2 cursor-default"
-            style={{ fontSize: TYPE.scale.xs }}
-            aria-disabled="true"
-            data-testid="ledger-door"
-          >
-            Ledger — reserved
-          </span>
+          <ViewDoor label="Knowledge View" href="/lens" active={view === "lens"} principal={principal} testId="view-door-lens" />
+          <ViewDoor label="Capability Map" href="/atlas" active={view === "atlas"} principal={principal} testId="view-door-atlas" />
+          <ViewDoor label="Review Queue" href="/lane" active={view === "lane"} principal={principal} testId="view-door-lane" />
         </div>
       </nav>
 
+      {journeySurface !== null && (
+        <div className="mx-auto max-w-6xl px-4 pt-4">
+          <GuidedJourney adminLinks={view === "adminBursar"} current={journeySurface} principal={principal} />
+        </div>
+      )}
+
       <div
-        key={principal ?? "no-lens"}
+        key={principal ?? "no-work-identity"}
         className={`mx-auto flex max-w-6xl flex-col gap-6 p-4 md:flex-row ${irisClass}`}
         data-testid="iris-stage"
       >
@@ -359,7 +365,7 @@ export function Console({
               Ask
             </h1>
             <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
-              Permission-aware Ask with scope, provenance, and fail-closed grant checks.
+              Permission-aware Ask with Work Identity scope, provenance, and fail-closed grant checks.
             </p>
           </MotionPanel>
 
@@ -378,7 +384,7 @@ export function Console({
               onChange={(e) => setQuery(e.target.value)}
               placeholder={
                 principal === null
-                  ? "Select a lens first"
+                  ? "Choose a Work Identity first"
                   : grantContext
                     ? "Ask within this granted capability context..."
                     : "Ask within your scope..."
@@ -552,8 +558,7 @@ function GrantChip({ children }: { children: React.ReactNode }) {
 
 /**
  * One door in the shell's view switcher. The active door is a quiet fact,
- * not a link; the others carry the current lens through `?as=` so a room
- * change keeps the same eyes.
+ * not a link; the others carry the current Work Identity through `?as=`.
  */
 function ViewDoor({
   label,

@@ -1,33 +1,34 @@
 import { TYPE } from "@/lib/tokens";
+import { GuidedJourney } from "./GuidedJourney";
 import { MotionAnchor, MotionArticle, MotionPanel, MotionSection } from "./MotionPrimitives";
 
 const DESTINATIONS = [
   {
-    detail: "Start with the selected actor's governed work surface, visible scope, requests, and Granted Knowledge.",
-    href: "/me",
+    detail: "Begin with a selected Work Identity so the console has a permission scope for work, access, and knowledge.",
+    href: "/me?as=p060",
     label: "Work Identity",
     testid: "root-link-me",
   },
   {
-    detail: "Open project workflow only when a real capability id is carried from Work Identity or the Operating Map.",
+    detail: "Review real workflow only after a capability is selected from Work Identity or the Operating Map.",
     href: "/project",
     label: "Workflow Command",
     testid: "root-link-project",
   },
   {
-    detail: "Ask within the selected lens, with granted context sent for server validation when present.",
-    href: "/ask",
+    detail: "Ask within the selected Work Identity, with granted context sent for server validation when present.",
+    href: "/ask?as=p060",
     label: "Permission-aware Ask",
     testid: "root-link-ask",
   },
   {
-    detail: "View the operating map as a derived admin preview. It is not a server-enforced admin gate yet.",
-    href: "/admin/graph",
+    detail: "View the company operating map as a derived admin preview. It is not a server-enforced admin gate yet.",
+    href: "/admin/graph?as=p060",
     label: "Operating Map",
     testid: "root-link-admin-graph",
   },
   {
-    detail: "Open the governed spend axis. No connected ledger fixture or enforced Bursar role exists in this UI lane yet.",
+    detail: "Open the governed spend axis. No connected ledger fixture or enforced Bursar role exists in this UI surface yet.",
     href: "/admin/bursar",
     label: "Bursar Ledger Room",
     testid: "root-link-admin-bursar",
@@ -37,26 +38,16 @@ const DESTINATIONS = [
 const PRINCIPLES = [
   {
     label: "Governed knowledge",
-    text: "Enterprise Brain controls what the model may know and which context can be used.",
+    text: "Enterprise Brain controls which knowledge can be used by a selected Work Identity.",
   },
   {
     label: "Governed workflows",
-    text: "Workflow Command follows real capability and access-request state already exposed by the APIs.",
+    text: "Workflow Command shows real work, requests, approvals, and grants without inventing rows.",
   },
   {
     label: "Governed spend",
     text: "Bursar frames what the model may spend: authorization before action, audit before effect.",
   },
-];
-
-const DEMO_FLOW = [
-  "Work Identity",
-  "Workflow Command",
-  "Request Access",
-  "Granted Knowledge",
-  "Ask",
-  "Operating Map",
-  "Bursar Ledger Room",
 ];
 
 export function ProductHome() {
@@ -65,7 +56,7 @@ export function ProductHome() {
       className="mx-auto flex min-h-[100dvh] max-w-6xl flex-col justify-center gap-5 px-4 py-8"
       data-testid="root-home"
     >
-      <header className="grid gap-5 lg:grid-cols-[1.16fr_0.84fr] lg:items-end">
+      <header className="grid gap-5">
         <MotionPanel className="max-w-3xl">
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Enterprise Brain
@@ -78,31 +69,17 @@ export function ProductHome() {
           </h1>
           <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.md, lineHeight: TYPE.line.body }}>
             Governed knowledge, governed workflows, permission-aware Ask, the Operating Map, and
-            the Bursar Ledger Room live as one command surface.
+            the Bursar Ledger Room in one calm operating surface.
           </p>
           <p className="ap-soft mt-3 max-w-2xl" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
             Enterprise Brain governs what the model may know and do. Bursar governs what the model
-            may spend. This route never infers access; it gives the pilot a safe map through the
-            product.
+            may spend. Start with a Work Identity, then move through work, access, answers, the map,
+            and spend governance.
           </p>
-        </MotionPanel>
-        <MotionPanel className="ap-card rounded p-3" data-testid="root-demo-flow" delayIndex={1}>
-          <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
-            Pilot path
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {DEMO_FLOW.map((step) => (
-              <span
-                key={step}
-                className="ap-hairline ap-register-evidence ap-soft rounded border px-2 py-1"
-                style={{ fontSize: TYPE.scale.xs }}
-              >
-                {step}
-              </span>
-            ))}
-          </div>
         </MotionPanel>
       </header>
+
+      <GuidedJourney adminLinks current="home" principal={null} testId="root-demo-flow" />
 
       <MotionSection className="grid grid-cols-1 gap-3 md:grid-cols-[1.15fr_0.95fr_1.05fr]" aria-label="Product doctrine" delayIndex={2}>
         {PRINCIPLES.map((principle, index) => (
@@ -153,7 +130,7 @@ export function ProductHome() {
         </p>
         <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
           Operating Map and Bursar Ledger Room are route-separated. Admin authority and governed
-          spend authority remain derived-only in this UI lane until server-enforced authorization
+          spend authority remain derived-only in this UI surface until server-enforced authorization
           and ledger producers are connected.
         </p>
       </MotionSection>

@@ -236,7 +236,7 @@ describe("U-17: an actor switch clears the Atlas room", () => {
     stubAtlasFetch(atlasP060);
     render(<Console view="atlas" />);
 
-    // The shell offers the doors; the reserved one is disabled, not a link.
+    // The shell offers product-facing doors; the old reserved ledger placeholder is gone.
     expect(screen.getByTestId("view-door-me").getAttribute("href")).toBe("/me");
     expect(screen.getByTestId("view-door-project").getAttribute("href")).toBe("/project");
     expect(screen.getByTestId("view-door-ask").getAttribute("href")).toBe("/ask");
@@ -244,9 +244,7 @@ describe("U-17: an actor switch clears the Atlas room", () => {
     expect(screen.getByTestId("admin-preview-badge").textContent).toContain("not server-enforced");
     expect(screen.getByTestId("view-door-lens").getAttribute("href")).toBe("/lens");
     expect(screen.getByTestId("view-door-atlas").getAttribute("aria-current")).toBe("page");
-    const ledger = screen.getByTestId("ledger-door");
-    expect(ledger.getAttribute("aria-disabled")).toBe("true");
-    expect(ledger.getAttribute("href")).toBeNull();
+    expect(screen.queryByTestId("ledger-door")).toBeNull();
 
     fireEvent.change(screen.getByTestId("principal-search"), { target: { value: "p060" } });
     fireEvent.click(

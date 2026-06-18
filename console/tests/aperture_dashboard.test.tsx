@@ -460,13 +460,13 @@ describe("EmployeeDashboard", () => {
     expect(systems.textContent).not.toContain("Gmail");
     expect(systems.textContent).not.toContain("Not Connected");
 
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("My Work Pod");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Project Context Pod");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Team Lead Pod");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Department Context Pod");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).not.toContain("Approval Queue Pod");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Granted Knowledge Pod");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).not.toContain("Executive Candidate Pod");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("My Work");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Project Context");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Team Context");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Department Context");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).not.toContain("Approval Queue");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Granted Knowledge");
+    expect(screen.getByTestId("dashboard-command-pods").textContent).not.toContain("Executive Candidate");
     const askPod = screen.getByTestId("dashboard-ask-pod");
     expect(askPod.textContent).toContain("Ask a Question");
     expect(askPod.textContent).toContain("Start Conversation");
@@ -496,7 +496,7 @@ describe("EmployeeDashboard", () => {
     expect(roleExperience.textContent).not.toMatch(/bursar|governance/i);
 
     const roleWorkflow = screen.getByTestId("dashboard-role-aware-workflow");
-    expect(roleWorkflow.textContent).toContain("Employee Layer + Leadership Layer");
+    expect(roleWorkflow.textContent).toContain("My work plus visible leadership context");
     expect(screen.getByTestId("dashboard-employee-workflow-layer").textContent).toContain("2 workflow items");
     expect(screen.getByTestId("dashboard-team-workflow-layer").textContent).toContain("2 direct reports");
     expect(screen.getByTestId("dashboard-department-workflow-layer").textContent).toContain("Finance");
@@ -559,15 +559,15 @@ describe("EmployeeDashboard", () => {
     await waitFor(() => expect(screen.getByTestId("employee-dashboard")).toBeTruthy());
 
     const pods = screen.getByTestId("dashboard-command-pods");
-    expect(pods.textContent).toContain("My Work Pod");
-    expect(pods.textContent).toContain("Project Context Pod");
-    expect(pods.textContent).toContain("Access Request Pod");
+    expect(pods.textContent).toContain("My Work");
+    expect(pods.textContent).toContain("Project Context");
+    expect(pods.textContent).toContain("Access Requests");
     expect(pods.textContent).toContain("Ask a Question");
-    expect(pods.textContent).not.toContain("Team Lead Pod");
-    expect(pods.textContent).not.toContain("Department Context Pod");
-    expect(pods.textContent).not.toContain("Approval Queue Pod");
-    expect(pods.textContent).not.toContain("Executive Candidate Pod");
-    expect(pods.textContent).not.toContain("Granted Knowledge Pod");
+    expect(pods.textContent).not.toContain("Team Context");
+    expect(pods.textContent).not.toContain("Department Context");
+    expect(pods.textContent).not.toContain("Approval Queue");
+    expect(pods.textContent).not.toContain("Executive Candidate");
+    expect(pods.textContent).not.toContain("Granted Knowledge");
     const notifications = screen.getByTestId("dashboard-notification-center");
     expect(notifications.textContent).not.toContain("Team scope available");
     expect(notifications.textContent).not.toContain("Department context available");
@@ -608,11 +608,11 @@ describe("EmployeeDashboard", () => {
     await waitFor(() => expect(screen.getByTestId("employee-dashboard")).toBeTruthy());
 
     const pods = screen.getByTestId("dashboard-command-pods");
-    expect(pods.textContent).toContain("Executive Candidate Pod");
+    expect(pods.textContent).toContain("Executive Candidate");
     expect(pods.textContent).toContain("candidate only");
-    expect(pods.textContent).not.toContain("Team Lead Pod");
-    expect(pods.textContent).not.toContain("Department Context Pod");
-    expect(pods.textContent).not.toContain("Approval Queue Pod");
+    expect(pods.textContent).not.toContain("Team Context");
+    expect(pods.textContent).not.toContain("Department Context");
+    expect(pods.textContent).not.toContain("Approval Queue");
 
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Executive candidate");

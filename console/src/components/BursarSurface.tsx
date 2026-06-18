@@ -25,7 +25,7 @@ const DOCTRINE = [
 const CONTRACT = [
   "ledger.v1.1 expected",
   "read-only report surface",
-  "producer not connected in this UI lane",
+  "producer not connected in this UI surface",
   "no live rows available yet",
 ];
 
@@ -92,14 +92,14 @@ export function BursarSurface() {
               Governed spend for Enterprise Brain model actions.
             </p>
             <p className="ap-soft mt-3 max-w-2xl" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
-              This route is a UI-only placeholder for the future Ledger room. It will sit beside
+              This route is a UI-only placeholder for the future Ledger Room. It will sit beside
               answers when real ledger data is connected, showing the governed spend that was capped,
               authorized, audited, and reconciled.
             </p>
           </div>
           <div className="flex content-start items-start gap-2 lg:flex-col">
             <StatusChip>route /admin/bursar</StatusChip>
-            <StatusChip>UI-only lane</StatusChip>
+            <StatusChip>UI-only surface</StatusChip>
             <StatusChip>no ledger fixture</StatusChip>
           </div>
         </div>

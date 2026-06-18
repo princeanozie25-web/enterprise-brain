@@ -42,7 +42,7 @@ function Reach({ visible, corpus }: { visible: number; corpus: number }) {
         <div style={{ width: `${pct}%`, height: "100%", backgroundColor: "var(--affordance)" }} />
       </div>
       <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
-        Hidden from this lens: {(corpus - visible).toLocaleString("en-US")}. The documents open in the audited lens.
+        Hidden from this Work Identity: {(corpus - visible).toLocaleString("en-US")}. Documents open in the audited Knowledge View.
       </p>
     </div>
   );
@@ -170,7 +170,7 @@ export function GraphInspector({
           <p style={{ fontSize: TYPE.scale.sm }}>{node.label}</p>
           <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
             A real org system. Which documents live here is never drawn in the graph — that is the audited
-            lens&apos;s job (no holdings leak).
+            Knowledge View.
           </p>
         </div>
       )}
@@ -287,10 +287,10 @@ export function GraphInspector({
             style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
             data-testid="inspector-enter-lens"
           >
-            Enter {node.label}&apos;s lens →
+            Open {node.label}&apos;s Knowledge View
           </button>
           <p className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-            Opening the lens is a cross-lens act, audited server-side.
+            Opening another Work Identity&apos;s Knowledge View is audited server-side.
           </p>
         </div>
       )}
