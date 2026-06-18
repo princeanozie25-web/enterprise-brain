@@ -317,7 +317,7 @@ pub fn generate_compounded(
         allowed_of.insert(p.clone(), authz.allowed_documents(p).into_iter().collect());
     }
 
-    let mut store = CompoundStore::new();
+    let mut store = CompoundStore::new(snap.clone());
     // principal -> (round1 page id, claims, refused-unfounded, withheld, mention-flags)
     let mut r1: BTreeMap<String, (String, usize, usize, usize, usize)> = BTreeMap::new();
 
@@ -431,11 +431,11 @@ fn render_compound_report(
     s.push_str(&format!(
         "> snapshot `{snapshot}` · model `{model}` · judge `{judge_model}` · synthetic corpus, local \
          model. On write each page's transitive raw-doc closure is asserted ⊆ its stamped scope \
-         (no laundering) and the citation DAG kept acyclic; the store is NOT snapshot-pinned. \
-         Snapshot-equality is a READ-side eligibility gate — a stored page may SOURCE a later \
-         question only if same snapshot AND allowed(S) ⊆ allowed(T); no widening toggle. \
-         Admitted claims are verbatim-anchored + support-checked (judge, fail-closed) — NOT proven \
-         faithful; on current local judges the live admit path over-refuses and admits ~zero.\n\n"
+         (no laundering), the citation DAG kept acyclic, and the store is pinned to one snapshot \
+         (a page stamped for another snapshot is refused). Eligibility then requires same snapshot \
+         AND allowed(S) ⊆ allowed(T) before a stored page may SOURCE a later question; no widening \
+         toggle. Admitted claims are verbatim-anchored + support-checked (judge, fail-closed) — NOT \
+         proven faithful; on current local judges the live admit path over-refuses and admits ~zero.\n\n"
     ));
     for r in results {
         s.push_str(&format!(

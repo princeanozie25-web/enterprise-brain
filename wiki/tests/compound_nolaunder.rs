@@ -83,7 +83,7 @@ fn transitive_closure_stays_in_scope_centerpiece() {
     let a_sales = allowed(&authz, SALES);
     let docs: Vec<String> = a_sales.iter().take(3).cloned().collect();
 
-    let mut store = CompoundStore::new();
+    let mut store = CompoundStore::new(snap.clone());
     // Round 1: cites two in-scope Sales docs.
     store
         .add(
@@ -150,7 +150,7 @@ fn laundering_page_is_refused_on_write() {
         .cloned()
         .expect("an HR-exclusive doc");
 
-    let mut store = CompoundStore::new();
+    let mut store = CompoundStore::new(snap.clone());
     // A Sales-stamped page citing an HR-only doc would launder -> refused.
     let err = store
         .add(
@@ -185,7 +185,7 @@ fn non_nested_sales_hr_refuse_each_other_but_reuse_within_scope() {
     let sales_doc = a_sales.iter().next().unwrap().clone();
     let hr_doc = a_hr.iter().next().unwrap().clone();
     let allowed_of = amap(&[(SALES, &a_sales), (HR, &a_hr)]);
-    let mut store = CompoundStore::new();
+    let mut store = CompoundStore::new(snap.clone());
     store
         .add(
             page(
@@ -234,4 +234,68 @@ fn non_nested_sales_hr_refuse_each_other_but_reuse_within_scope() {
         elig_sales.contains(&"cp0000-p091".to_string()),
         "Sales page reusable within Sales"
     );
+}
+
+/// P1-b (CENTERPIECE): the store is pinned to ONE snapshot, so the `snap_S ==
+/// snap_T` conjunct is enforced at the durable WRITE, not only on the read-side
+/// eligibility filter. A page stamped for a different snapshot is refused, and a
+/// later page therefore cannot cite a page from another snapshot. Before this fix
+/// a `CompoundStore` could mix snapshots and admit a cross-snapshot citation.
+#[test]
+fn cross_snapshot_page_is_refused_on_write() {
+    let a = BTreeSet::from(["d1".to_string()]);
+    let allowed_of = amap(&[("S", &a)]);
+    let mut store = CompoundStore::new("snapX");
+
+    // Same-snapshot page admits — no regression for the normal single-snapshot run.
+    store
+        .add(
+            page("cp0-S", 0, "S", "snapX", vec![raw_claim("a", "d1")]),
+            &allowed_of,
+        )
+        .unwrap();
+    assert_eq!(store.len(), 1);
+
+    // A page stamped for a DIFFERENT snapshot is refused fail-closed, not stored.
+    let err = store
+        .add(
+            page("cp1-S", 1, "S", "snapY", vec![raw_claim("b", "d1")]),
+            &allowed_of,
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("snapshot") && err.contains("pinned"),
+        "cross-snapshot page refused at the write: {err}"
+    );
+    assert_eq!(store.len(), 1, "the cross-snapshot page was not stored");
+
+    // And so the review's repro is impossible: a later in-snapshot page cannot
+    // cite the cross-snapshot page, because that page was never admitted to the
+    // store (the existing unknown-cite/acyclicity gate refuses it).
+    let err2 = store
+        .add(
+            page(
+                "cp2-S",
+                2,
+                "S",
+                "snapX",
+                vec![CompoundClaim::new(
+                    "c",
+                    SourceRef::CompoundedPage {
+                        page_id: "cp1-S".to_string(),
+                    },
+                    anc("cp1-S"),
+                    ok(),
+                )],
+            ),
+            &allowed_of,
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err2.contains("unknown page"),
+        "citing a never-stored cross-snapshot page is refused: {err2}"
+    );
+    assert_eq!(store.len(), 1, "no cross-snapshot citation was admitted");
 }

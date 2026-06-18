@@ -313,7 +313,7 @@ fn mention_flag_composes_across_compounding() {
     );
 
     // The page still stores cleanly (closure/no-laundering gate intact).
-    let mut store = CompoundStore::new();
+    let mut store = CompoundStore::new(authz.snapshot_version());
     store
         .add(page, &allowed_of)
         .expect("page stores; closure gate intact");

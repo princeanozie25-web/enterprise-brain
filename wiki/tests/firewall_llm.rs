@@ -208,7 +208,7 @@ fn compounding_run_leaves_authz_artifacts_byte_identical() {
     let synth = RecordingSynthesizer::echo("fake-model");
     let verifier = FakeVerifier::always();
 
-    let mut store = CompoundStore::new();
+    let mut store = CompoundStore::new(authz.snapshot_version());
     let mut allowed_of: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
         std::collections::BTreeMap::new();
     allowed_of.insert("p060".to_string(), allowed);

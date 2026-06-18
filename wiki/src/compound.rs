@@ -14,15 +14,14 @@
 //! legitimate cross-domain need is served later by an audited human grant that
 //! ADDS a real authorization, never by relaxing the model's reach.
 //!
-//! WHERE EACH HALF IS ENFORCED (honest): the durable WRITE — `CompoundStore::add`
-//! — enforces the closure ⊆ stamped-scope (no-laundering) and acyclicity; it does
-//! NOT pin or check a snapshot. The snapshot-equality conjunct above is enforced
-//! on the READ side, in eligibility (`is_eligible`/`eligible_for`): it gates
-//! whether a stored page may SOURCE a later question, not whether it may be
-//! stored. A single run uses one snapshot, so the two coincide there; across a
-//! snapshot rotation the snapshot guarantee is the read-side eligibility filter,
-//! not a write-side property of the store. (Pinning the store to one snapshot is
-//! a tracked follow-up.)
+//! WHERE EACH HALF IS ENFORCED: the durable WRITE — `CompoundStore::add` into a
+//! snapshot-PINNED store — enforces all of: the closure ⊆ stamped-scope
+//! (no-laundering), acyclicity, AND snapshot-equality (the store is pinned to one
+//! compiled snapshot, so a page stamped for any other snapshot is refused). A
+//! store therefore physically cannot hold pages from two snapshots, so the
+//! `snap_S == snap_T` conjunct holds for every eligibility decision over it — the
+//! write-side pin and the read-side `is_eligible`/`eligible_for` filter agree by
+//! construction.
 //!
 //! This module consults the authorization model only read-only (allowed sets
 //! are computed from the compiled allowlists upstream and passed in); it has no
@@ -130,16 +129,32 @@ impl CompoundedPage {
     }
 }
 
-/// An append-only, acyclic store of compounded pages.
-#[derive(Debug, Clone, Default)]
+/// An append-only, acyclic store of compounded pages, PINNED to one compiled
+/// snapshot. Every page it holds shares that snapshot, so no stored page can cite
+/// a page from a different snapshot — the `snap_S == snap_T` eligibility conjunct
+/// is guaranteed at the durable write, not only on the read-side filter.
+#[derive(Debug, Clone)]
 pub struct CompoundStore {
+    snapshot: String,
     pages: BTreeMap<String, CompoundedPage>,
     order: Vec<String>,
 }
 
 impl CompoundStore {
-    pub fn new() -> CompoundStore {
-        CompoundStore::default()
+    /// A store pinned to one compiled `snapshot`. A page stamped for a different
+    /// snapshot is refused by [`add`](CompoundStore::add), so the store physically
+    /// cannot mix snapshots.
+    pub fn new(snapshot: impl Into<String>) -> CompoundStore {
+        CompoundStore {
+            snapshot: snapshot.into(),
+            pages: BTreeMap::new(),
+            order: Vec::new(),
+        }
+    }
+
+    /// The compiled snapshot this store is pinned to.
+    pub fn snapshot(&self) -> &str {
+        &self.snapshot
     }
 
     pub fn len(&self) -> usize {
@@ -178,6 +193,21 @@ impl CompoundStore {
     ) -> Result<String> {
         if self.pages.contains_key(&page.page_id) {
             bail!("duplicate compounded page id {}", page.page_id);
+        }
+        // Fail closed: this store is pinned to ONE snapshot. A page stamped for a
+        // different snapshot is refused HERE, at the durable write — so no stored
+        // page (hence no page any stored page can cite, since a cited page must
+        // already be in this store, checked below) is from another snapshot. This
+        // enforces the `snap_S == snap_T` half of eligibility at the write
+        // boundary, matching the read-side `is_eligible` filter by construction.
+        if page.stamp.snapshot_hash != self.snapshot {
+            bail!(
+                "compounded page {} is stamped for snapshot {} but this store is pinned to {}; \
+                 refusing a cross-snapshot page",
+                page.page_id,
+                page.stamp.snapshot_hash,
+                self.snapshot
+            );
         }
         // Bind the check to the page's OWN stamped scope (fail-closed if absent).
         let allowed_scope = allowed_of.get(&page.stamp.principal_id).with_context(|| {
@@ -619,7 +649,7 @@ mod tests {
 
     #[test]
     fn closure_follows_pages_to_raw_docs_and_terminates() {
-        let mut store = CompoundStore::new();
+        let mut store = CompoundStore::new("snap");
         let allowed = set(&["d1", "d2", "d3"]);
         let m = amap(&[("S", &allowed)]);
         store
@@ -656,7 +686,7 @@ mod tests {
 
     #[test]
     fn add_refuses_a_laundering_page() {
-        let mut store = CompoundStore::new();
+        let mut store = CompoundStore::new("snap");
         // Scope S allows only d1; a page citing d9 (outside) must be refused.
         let allowed = set(&["d1"]);
         let m = amap(&[("S", &allowed)]);
@@ -668,7 +698,7 @@ mod tests {
 
     #[test]
     fn add_refuses_a_forward_cite_keeping_the_dag_acyclic() {
-        let mut store = CompoundStore::new();
+        let mut store = CompoundStore::new("snap");
         let allowed = set(&["d1"]);
         let m = amap(&[("S", &allowed)]);
         store
@@ -693,7 +723,7 @@ mod tests {
 
     #[test]
     fn eligibility_is_fail_closed_on_subset_and_snapshot() {
-        let mut store = CompoundStore::new();
+        let mut store = CompoundStore::new("snap");
         let a_sales = set(&["d1", "d2"]); // Sales
         let a_hr = set(&["d3"]); // HR (disjoint -> non-nested)
         let allowed_of = amap(&[("sales", &a_sales), ("hr", &a_hr)]);
