@@ -9,6 +9,7 @@ import { GraphSidebar } from "./GraphSidebar";
 import { GraphInspector } from "./GraphInspector";
 import { MotionAside, MotionPanel } from "./MotionPrimitives";
 import { Skeleton } from "./Skeleton";
+import { graphRelationshipRows } from "./graphDisplay";
 
 /**
  * Click-to-lens is a CROSS-LENS act: the current actor flies into the clicked
@@ -365,6 +366,8 @@ export function GraphRoom({
             />
           </div>
 
+          <GraphAuditPanel actor={actor} graph={graph} selected={selected} />
+
           {accessAvailable && (
             <AccessRequestRail
               graph={graph}
@@ -395,7 +398,7 @@ export function GraphRoom({
             </MotionPanel>
           )}
 
-          <Legend software={graph.sources.length} agents={graph.tools.length} projects={graph.projects.length} people={graph.people.length} />
+          <Legend systems={graph.sources.length} agents={graph.tools.length} projects={graph.projects.length} people={graph.people.length} />
         </>
       ) : null}
     </div>
@@ -410,7 +413,104 @@ const C = {
   hairline: "var(--hairline)",
 };
 
-function Legend({ software, agents, projects, people }: { software: number; agents: number; projects: number; people: number }) {
+function GraphAuditPanel({
+  actor,
+  graph,
+  selected,
+}: {
+  actor: string;
+  graph: GraphResponse;
+  selected: SelectedNode | null;
+}) {
+  const relationships = graphRelationshipRows(graph, selected?.id).slice(0, 5);
+  const total = selected === null ? graph.edges.length : graphRelationshipRows(graph, selected.id).length;
+  const selectedLabel = selected?.label.replace(/^Capability:\s*/i, "") ?? "the current Work Identity";
+
+  return (
+    <MotionAside
+      className="ap-card fixed left-4 top-[74px] z-20 flex w-[336px] max-w-[calc(100vw-32px)] flex-col gap-3 rounded p-3"
+      style={{ background: "color-mix(in srgb, var(--paper) 87%, transparent)", backdropFilter: "blur(16px)" }}
+      data-testid="graph-audit-panel"
+      aria-label="Audited Operating Map context"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-soft uppercase tracking-wide" style={{ fontSize: TYPE.scale.xs, fontWeight: 700 }}>
+            Audited view
+          </p>
+          <h2 className="ap-register-chrome mt-0.5 truncate" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
+            Operating Map
+          </h2>
+        </div>
+        <span
+          className="ap-hairline ap-register-chrome ap-soft shrink-0 rounded-full border px-2 py-1"
+          style={{ fontSize: TYPE.scale.xs }}
+          data-testid="graph-acting-context"
+        >
+          Acting as {actor}
+        </span>
+      </div>
+
+      <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }} data-testid="graph-audited-line">
+        This view is audited. It draws only relationship records returned for this Work Identity; hidden or restricted
+        relationships are not shown.
+      </p>
+
+      <div className="grid grid-cols-3 gap-1.5" aria-label="Data-backed map counts">
+        {[
+          ["relationships", graph.edges.length],
+          ["people", graph.people.length],
+          ["projects", graph.projects.length],
+        ].map(([label, value]) => (
+          <div key={label} className="ap-hairline rounded border px-2 py-1.5">
+            <p className="ap-register-evidence" style={{ fontSize: TYPE.scale.sm, fontWeight: 700 }}>
+              {Number(value).toLocaleString("en-US")}
+            </p>
+            <p className="ap-soft truncate" style={{ fontSize: TYPE.scale.xs }}>
+              {label}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <section className="space-y-1.5" data-testid="graph-relationship-summary" aria-label="Relationship summary">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="ap-soft uppercase tracking-wide" style={{ fontSize: TYPE.scale.xs, fontWeight: 700 }}>
+            {selected === null ? "Relationship summary" : "Selected trace"}
+          </p>
+          <span className="ap-soft shrink-0" style={{ fontSize: TYPE.scale.xs }}>
+            {total.toLocaleString("en-US")} records
+          </span>
+        </div>
+        <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+          {selected === null
+            ? "Keyboard-readable rows from the same graph payload."
+            : `Relationships connected to ${selectedLabel}.`}
+        </p>
+        {relationships.length === 0 ? (
+          <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            No relationship records are available for this selection.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {relationships.map((row) => (
+              <li key={row.key} className="ap-hairline rounded border px-2 py-1.5" data-testid="graph-relationship-row">
+                <p className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+                  {row.from.label}
+                </p>
+                <p className="ap-soft truncate" style={{ fontSize: TYPE.scale.xs }}>
+                  {row.relation} {row.to.label}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </MotionAside>
+  );
+}
+
+function Legend({ systems, agents, projects, people }: { systems: number; agents: number; projects: number; people: number }) {
   const itemStyle = { fontSize: TYPE.scale.xs - 2 };
   const dot = (background: string, square = false) => (
     <span
@@ -431,13 +531,7 @@ function Legend({ software, agents, projects, people }: { software: number; agen
       aria-label="Graph legend"
     >
       <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
-        {dot(C.warm)} signals unavailable
-      </span>
-      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
-        {dot(C.inkSoft)} permissions unavailable
-      </span>
-      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
-        {dot(C.affordance)} software {software}
+        {dot(C.affordance)} systems {systems}
       </span>
       <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
         {dot(C.hairline, true)} agents {agents}
@@ -485,7 +579,7 @@ function AccessRequestRail({
 
   return (
     <MotionAside
-      className="ap-card fixed left-4 top-[74px] z-20 flex w-[292px] max-w-[calc(100vw-32px)] flex-col gap-3 rounded p-3"
+      className="ap-card fixed left-4 top-[386px] z-20 flex max-h-[280px] w-[292px] max-w-[calc(100vw-32px)] flex-col gap-3 overflow-y-auto rounded p-3"
       style={{ background: "color-mix(in srgb, var(--paper) 86%, transparent)", backdropFilter: "blur(14px)" }}
       data-testid="access-request-rail"
       aria-label="Access requests"

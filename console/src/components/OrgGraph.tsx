@@ -26,9 +26,7 @@ const STAGE = {
   cy: 520,
   ringDept: 205,
   ringAgents: 258,
-  ringSignal: 304,
   ringProjects: 334,
-  ringPermission: 373,
   ringSources: 444,
   ringPeople: 575,
   ringAccess: 521,
@@ -455,64 +453,20 @@ export function OrgGraph({
           </g>
 
           <g data-testid="graph-rings" opacity={focusDept !== null ? 0.42 : 1}>
-            {[STAGE.ringPeople, STAGE.ringSources, STAGE.ringPermission, STAGE.ringSignal, STAGE.ringAgents].map(
-              (radius) => (
-                <circle
-                  key={radius}
-                  cx={STAGE.cx}
-                  cy={STAGE.cy}
-                  r={radius}
-                  fill="none"
-                  stroke={C.hairline}
-                  strokeWidth={1}
-                  strokeDasharray="1 10"
-                  strokeLinecap="round"
-                  strokeOpacity={0.72}
-                />
-              ),
-            )}
-            <circle
-              cx={STAGE.cx}
-              cy={STAGE.cy}
-              r={STAGE.ringSignal}
-              fill="none"
-              stroke={C.warm}
-              strokeWidth={2}
-              strokeDasharray="1 14"
-              strokeLinecap="round"
-              strokeOpacity={0.22}
-              data-testid="graph-signal-ring"
-              aria-label="Signals unavailable in graph payload"
-            />
-            <circle
-              cx={STAGE.cx}
-              cy={STAGE.cy}
-              r={STAGE.ringPermission}
-              fill="none"
-              stroke={C.inkSoft}
-              strokeWidth={1.5}
-              strokeDasharray="1 12"
-              strokeLinecap="round"
-              strokeOpacity={0.18}
-              data-testid="graph-permission-ring"
-              aria-label="Permissions unavailable in graph payload"
-            />
-            <text
-              x={STAGE.cx - STAGE.ringSignal - 16}
-              y={STAGE.cy + STAGE.ringSignal + 16}
-              fill={C.inkSoft}
-              style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), opacity: 0.72 }}
-            >
-              signals unavailable
-            </text>
-            <text
-              x={STAGE.cx + STAGE.ringPermission - 136}
-              y={STAGE.cy - STAGE.ringPermission - 12}
-              fill={C.inkSoft}
-              style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), opacity: 0.62 }}
-            >
-              permissions unavailable
-            </text>
+            {[STAGE.ringPeople, STAGE.ringSources, STAGE.ringProjects, STAGE.ringAgents].map((radius) => (
+              <circle
+                key={radius}
+                cx={STAGE.cx}
+                cy={STAGE.cy}
+                r={radius}
+                fill="none"
+                stroke={C.hairline}
+                strokeWidth={1}
+                strokeDasharray="1 10"
+                strokeLinecap="round"
+                strokeOpacity={0.72}
+              />
+            ))}
           </g>
 
           <g data-testid="graph-dept-arcs">

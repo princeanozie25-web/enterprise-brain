@@ -68,7 +68,7 @@ export function GraphSidebar({
     >
       <div>
         <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
-          Organisation Brain
+          Operating Map
         </h2>
         <p className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
           {orgName}

@@ -224,7 +224,11 @@ describe("route separation", () => {
     });
     expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("production admin authority not connected");
     expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("admin not granted");
+    await waitFor(() => expect(screen.getByTestId("graph-audited-line").textContent).toContain("This view is audited"));
+    expect(screen.getByTestId("graph-acting-context").textContent).toContain("Acting as p060");
+    expect(screen.getByTestId("graph-relationship-summary").textContent).toContain("Keyboard-readable rows");
     expect(screen.getByTestId("view-door-admin-graph").getAttribute("aria-current")).toBe("page");
     expect(screen.getByTestId("graph-room").textContent ?? "").not.toMatch(/derived-only|derived only|SOC2|SOC 2|ISO27001|ISO 27001|certified|certification|live SSO|live IAM/i);
+    expect(screen.getByTestId("graph-room").textContent ?? "").not.toMatch(/Bursar|supplier|invoice|spend total|token total|ledger row|signals unavailable|permissions unavailable/i);
   });
 });

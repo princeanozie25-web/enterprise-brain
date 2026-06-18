@@ -107,7 +107,7 @@ function defaultRenderedEdges(graph: GraphResponse): number {
 
 describe("U-33: the graph renders core, hubs, agents, sources, and all people", () => {
   it("renders every baseline ring and keeps project nodes hidden by default", () => {
-    renderGraph();
+    const { container } = renderGraph();
     expect(screen.getByTestId("org-graph")).toBeTruthy();
     expect(screen.getByTestId("graph-center")).toBeTruthy();
     expect(screen.getAllByTestId("graph-dept").length).toBe(GRAPH.departments.length);
@@ -119,6 +119,9 @@ describe("U-33: the graph renders core, hubs, agents, sources, and all people", 
     expect(people.filter((p) => p.getAttribute("data-ring") === "anchor").length).toBe(2);
     expect(screen.getAllByTestId("graph-edge").length).toBe(defaultRenderedEdges(GRAPH));
     expect(screen.getAllByTestId("person-avatar-img").length).toBe(GRAPH.people.length);
+    expect(screen.queryByTestId("graph-signal-ring")).toBeNull();
+    expect(screen.queryByTestId("graph-permission-ring")).toBeNull();
+    expect(container.textContent ?? "").not.toMatch(/signals unavailable|permissions unavailable/i);
   });
 });
 
@@ -402,6 +405,8 @@ describe("U-47: the inspector shows the compiled governance", () => {
       />,
     );
     expect(screen.getByTestId("inspector-name").textContent).toBe("Felix Osei");
+    expect(screen.getByTestId("inspector-relationship-trace").textContent).toContain("Relationship trace");
+    expect(screen.getByTestId("inspector-relationship-trace").textContent).toContain("member of Finance");
     expect(screen.getByTestId("inspector-reach")).toBeTruthy();
     expect(screen.getAllByTestId("inspector-reason").length).toBe(2);
     fireEvent.click(screen.getByTestId("inspector-enter-lens"));
@@ -465,6 +470,8 @@ describe("U-47: the inspector shows the compiled governance", () => {
     expect(screen.getByText("cap31")).toBeTruthy();
     expect(screen.getByText("2 people")).toBeTruthy();
     expect(screen.getByText("Finance")).toBeTruthy();
+    expect(screen.getByText("Project trace")).toBeTruthy();
+    expect(screen.getByTestId("inspector-relationship-trace").textContent).toContain("works on Access Review 31");
     expect(screen.getByText("Active: 1")).toBeTruthy();
   });
 
@@ -587,6 +594,17 @@ describe("U-48: the Org Brain room wires counts, selection, and theme", () => {
     render(<GraphRoom actor="p060" />);
 
     await waitFor(() => expect(screen.getByTestId("graph-sidebar")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId("graph-audit-panel")).toBeTruthy());
+    expect(screen.getByTestId("graph-audit-panel").textContent).toContain("Operating Map");
+    expect(screen.getByTestId("graph-acting-context").textContent).toContain("Acting as p060");
+    expect(screen.getByTestId("graph-audited-line").textContent).toContain("This view is audited");
+    expect(screen.getByTestId("graph-audited-line").textContent).toContain("hidden or restricted");
+    expect(screen.getByTestId("graph-relationship-summary").textContent).toContain("Keyboard-readable rows");
+    expect(within(screen.getByTestId("graph-relationship-summary")).getAllByTestId("graph-relationship-row").length).toBe(5);
+    expect(screen.getByTestId("graph-relationship-summary").textContent).toContain("Felix Osei");
+    expect(screen.getByTestId("graph-room").textContent ?? "").not.toMatch(/signals unavailable|permissions unavailable/i);
+    expect(screen.queryByTestId("graph-signal-ring")).toBeNull();
+    expect(screen.queryByTestId("graph-permission-ring")).toBeNull();
     const stat = (label: string) =>
       screen.getAllByTestId("sidebar-stat").find((s) => s.getAttribute("data-key") === label)!;
     await waitFor(() =>
@@ -597,6 +615,12 @@ describe("U-48: the Org Brain room wires counts, selection, and theme", () => {
     fireEvent.click(screen.getAllByTestId("graph-person").find((p) => p.getAttribute("data-id") === "p074")!);
     await waitFor(() => expect(screen.getByTestId("inspector-card")).toBeTruthy());
     expect(screen.getByTestId("inspector-name").textContent).toBe("Yuki Moreau");
+    expect(screen.getByTestId("inspector-relationship-trace").textContent).toContain("Yuki Moreau");
+    expect(screen.getByTestId("inspector-enter-lens").textContent).toContain("Knowledge View");
+    expect(document.querySelector("a[href*='/person']")).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByTestId("graph-relationship-summary").textContent).toContain("Relationships connected to Yuki Moreau"),
+    );
 
     // Theme toggle flips the document attribute (dark default -> light).
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");

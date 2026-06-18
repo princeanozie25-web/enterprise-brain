@@ -6,6 +6,7 @@ import type { AccessRequestRecord, AccessTarget } from "@/lib/api";
 import type { SelectedNode } from "./OrgGraph";
 import { TYPE } from "@/lib/tokens";
 import { Skeleton } from "./Skeleton";
+import { graphRelationshipRows, type GraphRelationshipRow } from "./graphDisplay";
 
 function Chip({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
   return (
@@ -23,6 +24,32 @@ function Heading({ children }: { children: React.ReactNode }) {
     <p className="ap-soft uppercase tracking-wide" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
       {children}
     </p>
+  );
+}
+
+function RelationshipTrace({ rows }: { rows: GraphRelationshipRow[] }) {
+  return (
+    <div className="space-y-1.5" data-testid="inspector-relationship-trace">
+      <Heading>Relationship trace</Heading>
+      {rows.length === 0 ? (
+        <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+          No relationship records are returned for this node.
+        </p>
+      ) : (
+        <ul className="space-y-1">
+          {rows.map((row) => (
+            <li key={row.key} className="ap-hairline rounded border px-2 py-1.5" data-testid="inspector-relationship-row">
+              <p className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+                {row.from.label}
+              </p>
+              <p className="ap-soft truncate" style={{ fontSize: TYPE.scale.xs }}>
+                {row.relation} {row.to.label}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -81,6 +108,7 @@ export function GraphInspector({
   onClose: () => void;
 }) {
   const selectedProject = graph.projects.find((project) => project.id === node.id);
+  const selectedRelationships = graphRelationshipRows(graph, node.id).slice(0, 5);
 
   return (
     <aside
@@ -114,6 +142,8 @@ export function GraphInspector({
       </div>
 
       {loading && <Skeleton lines={4} />}
+
+      {!loading && <RelationshipTrace rows={selectedRelationships} />}
 
       {!loading && node.kind === "org" && summary?.stats && (
         <div className="space-y-2" data-testid="inspector-org">
@@ -159,7 +189,7 @@ export function GraphInspector({
               ))}
           </div>
           <p className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-            Click a person to inspect their compiled access.
+            Select a person to inspect visible Work Identity details.
           </p>
         </div>
       )}
@@ -169,8 +199,7 @@ export function GraphInspector({
           <Heading>System of record</Heading>
           <p style={{ fontSize: TYPE.scale.sm }}>{node.label}</p>
           <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-            A real org system. Which documents live here is never drawn in the graph — that is the audited
-            Knowledge View.
+            A real org system. Documents stay out of the graph and open through the audited Knowledge View.
           </p>
         </div>
       )}
@@ -183,7 +212,7 @@ export function GraphInspector({
             <Chip>{selectedProject.departments.length} departments</Chip>
           </div>
           <div>
-            <Heading>Trace</Heading>
+            <Heading>Project trace</Heading>
             <p style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
               {selectedProject.workflow_name}
             </p>
