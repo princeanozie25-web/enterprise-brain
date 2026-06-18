@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
 import type { GraphProject, GraphResponse, ProjectWorkflowResponse, RoleScopeSummary } from "@/lib/api";
 import { TYPE } from "@/lib/tokens";
+import { MotionAnchor, MotionArticle, MotionSection } from "./MotionPrimitives";
 import { Skeleton } from "./Skeleton";
 import { WorkflowView } from "./WorkflowView";
 
@@ -47,7 +48,7 @@ function ProjectEntryState({
   const carry = actor === null ? "" : `?as=${encodeURIComponent(actor)}`;
   return (
     <main className="min-w-0 flex-1" data-testid={testId}>
-      <section className="ap-card rounded p-4">
+      <MotionSection className="ap-card rounded p-4">
         <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
           Workflow Command
         </p>
@@ -58,24 +59,24 @@ function ProjectEntryState({
           {detail}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <a
+          <MotionAnchor
             className="ap-affordance-button ap-register-chrome rounded px-3 py-2"
             data-testid="project-empty-work-identity-link"
             href={`/me${carry}`}
             style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
           >
             Open Work Identity
-          </a>
-          <a
+          </MotionAnchor>
+          <MotionAnchor
             className="ap-washable ap-register-chrome rounded border px-3 py-2"
             data-testid="project-empty-operating-map-link"
             href={`/admin/graph${carry}`}
             style={{ borderColor: "var(--hairline)", fontSize: TYPE.scale.xs, fontWeight: 600 }}
           >
             Open Operating Map
-          </a>
+          </MotionAnchor>
         </div>
-      </section>
+      </MotionSection>
     </main>
   );
 }
@@ -269,7 +270,7 @@ function ProjectTraceView({
 
   return (
     <section className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr]" data-testid="project-graph-view">
-      <div className="ap-card rounded p-3">
+      <MotionArticle className="ap-card rounded p-3">
         <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           Project Trace
         </h2>
@@ -286,9 +287,9 @@ function ProjectTraceView({
         <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
           {project.initiative_name} / {project.strategy_name}
         </p>
-      </div>
+      </MotionArticle>
 
-      <div className="ap-card rounded p-3">
+      <MotionArticle className="ap-card rounded p-3" delayIndex={1}>
         <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           Departments
         </h2>
@@ -310,7 +311,7 @@ function ProjectTraceView({
             </Chip>
           ))}
         </div>
-      </div>
+      </MotionArticle>
     </section>
   );
 }

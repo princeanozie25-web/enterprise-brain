@@ -1,4 +1,5 @@
 import { TYPE } from "@/lib/tokens";
+import { MotionAnchor, MotionArticle, MotionPanel, MotionSection } from "./MotionPrimitives";
 
 const DESTINATIONS = [
   {
@@ -26,7 +27,7 @@ const DESTINATIONS = [
     testid: "root-link-admin-graph",
   },
   {
-    detail: "Open the governed spend axis. This UI lane has no connected ledger fixture or enforced Bursar role yet.",
+    detail: "Open the governed spend axis. No connected ledger fixture or enforced Bursar role exists in this UI lane yet.",
     href: "/admin/bursar",
     label: "Bursar Ledger Room",
     testid: "root-link-admin-bursar",
@@ -60,25 +61,32 @@ const DEMO_FLOW = [
 
 export function ProductHome() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col justify-center gap-5 px-4 py-8" data-testid="root-home">
-      <header className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
-        <div className="max-w-3xl">
-        <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-          Enterprise Brain
-        </p>
-        <h1
-          className="ap-register-chrome mt-2"
-          style={{ fontSize: TYPE.scale.xl, fontWeight: 600, lineHeight: TYPE.line.display }}
-        >
-          Company Operating System
-        </h1>
-        <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
-          Governed knowledge, governed workflows, permission-aware Ask, the Operating Map, and
-          the Bursar Ledger Room live as separate surfaces. Enterprise Brain governs what the
-          model may know and do; Bursar governs what the model may spend.
-        </p>
-        </div>
-        <div className="ap-card rounded p-3" data-testid="root-demo-flow">
+    <main
+      className="mx-auto flex min-h-[100dvh] max-w-6xl flex-col justify-center gap-5 px-4 py-8"
+      data-testid="root-home"
+    >
+      <header className="grid gap-5 lg:grid-cols-[1.16fr_0.84fr] lg:items-end">
+        <MotionPanel className="max-w-3xl">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Enterprise Brain
+          </p>
+          <h1
+            className="ap-register-chrome mt-2"
+            style={{ fontSize: TYPE.scale.xl, fontWeight: 600, lineHeight: TYPE.line.display }}
+          >
+            Company Operating System
+          </h1>
+          <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.md, lineHeight: TYPE.line.body }}>
+            Governed knowledge, governed workflows, permission-aware Ask, the Operating Map, and
+            the Bursar Ledger Room live as one command surface.
+          </p>
+          <p className="ap-soft mt-3 max-w-2xl" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
+            Enterprise Brain governs what the model may know and do. Bursar governs what the model
+            may spend. This route never infers access; it gives the pilot a safe map through the
+            product.
+          </p>
+        </MotionPanel>
+        <MotionPanel className="ap-card rounded p-3" data-testid="root-demo-flow" delayIndex={1}>
           <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
             Pilot path
           </p>
@@ -93,29 +101,30 @@ export function ProductHome() {
               </span>
             ))}
           </div>
-        </div>
+        </MotionPanel>
       </header>
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-3" aria-label="Product doctrine">
-        {PRINCIPLES.map((principle) => (
-          <article key={principle.label} className="ap-card rounded p-3">
+      <MotionSection className="grid grid-cols-1 gap-3 md:grid-cols-[1.15fr_0.95fr_1.05fr]" aria-label="Product doctrine" delayIndex={2}>
+        {PRINCIPLES.map((principle, index) => (
+          <MotionArticle key={principle.label} className="ap-card rounded p-3" delayIndex={2 + index}>
             <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
               {principle.label}
             </h2>
             <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
               {principle.text}
             </p>
-          </article>
+          </MotionArticle>
         ))}
-      </section>
+      </MotionSection>
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-label="Product routes">
-        {DESTINATIONS.map((destination) => (
-          <a
+        {DESTINATIONS.map((destination, index) => (
+          <MotionAnchor
             key={destination.href}
             href={destination.href}
-            className="ap-card ap-washable block rounded p-4"
+            className="ap-card ap-washable block min-h-36 rounded p-4"
             data-testid={destination.testid}
+            delayIndex={index + 5}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -134,11 +143,11 @@ export function ProductHome() {
                 Open
               </span>
             </div>
-          </a>
+          </MotionAnchor>
         ))}
       </section>
 
-      <section className="ap-card rounded p-3" data-testid="root-admin-note">
+      <MotionSection className="ap-card rounded p-3" data-testid="root-admin-note" delayIndex={10}>
         <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           Authorization boundary
         </p>
@@ -147,7 +156,7 @@ export function ProductHome() {
           spend authority remain derived-only in this UI lane until server-enforced authorization
           and ledger producers are connected.
         </p>
-      </section>
+      </MotionSection>
     </main>
   );
 }

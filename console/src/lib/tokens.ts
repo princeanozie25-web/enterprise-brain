@@ -203,6 +203,14 @@ export const MOTION = {
   iris: "220ms",
   easeOut: "ease-out",
   irisEase: "cubic-bezier(0.4, 0, 0.2, 1)",
+  /** Framer Motion: calm enterprise micro-motion, in seconds. */
+  framerQuick: 0.16,
+  framerView: 0.28,
+  framerStagger: 0.045,
+  framerEnterY: 10,
+  framerHoverY: -3,
+  framerTapScale: 0.985,
+  framerEase: [0.16, 1, 0.3, 1] as const,
   /**
    * Skeleton opacity pulse. REPORTED COLLISION: a literal fade-quick loop
    * (140ms/leg ≈ 3.6 flashes/sec) sits at the photosensitive-flash

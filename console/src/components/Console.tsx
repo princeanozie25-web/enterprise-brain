@@ -21,6 +21,7 @@ import { IdentityRail } from "./IdentityRail";
 import { LaneRoom } from "./LaneRoom";
 import { LensBar } from "./LensBar";
 import { LensRoom } from "./LensRoom";
+import { MotionPanel, MotionSection } from "./MotionPrimitives";
 import { ProjectSurface } from "./ProjectSurface";
 import { ResultsList } from "./ResultsList";
 import { Skeleton } from "./Skeleton";
@@ -346,7 +347,7 @@ export function Console({
             </aside>
 
             <main className="min-w-0 flex-1">
-          <header className="mb-3">
+          <MotionPanel className="mb-3">
             <h1
               className="ap-register-chrome"
               style={{
@@ -360,9 +361,9 @@ export function Console({
             <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
               Permission-aware Ask with scope, provenance, and fail-closed grant checks.
             </p>
-          </header>
+          </MotionPanel>
 
-          <div className="ap-card rounded p-3">
+          <MotionPanel className="ap-card rounded p-3" delayIndex={1}>
             {(entryGrantId !== null || grantContext !== null || grantContextUnavailable) && (
               <GrantedAskContextPanel
                 capabilityId={entryCapability}
@@ -428,13 +429,13 @@ export function Console({
                 Ask
               </button>
             </div>
-          </div>
+          </MotionPanel>
 
           <div className="mt-4 space-y-4">
             {asking && (
-              <div className="ap-card rounded p-4">
+              <MotionPanel className="ap-card rounded p-4">
                 <Skeleton lines={3} />
-              </div>
+              </MotionPanel>
             )}
             {envelope && (
               <>
@@ -453,7 +454,7 @@ export function Console({
                   />
                 </div>
                 <AnswerCard envelope={envelope} onOpenDoc={openDoc} />
-                <section className="ap-card rounded p-2">
+                <MotionSection className="ap-card rounded p-2" delayIndex={1}>
                   <h2
                     className="ap-soft px-2 pb-1 pt-1 uppercase tracking-wide"
                     style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -461,7 +462,7 @@ export function Console({
                     Results
                   </h2>
                   <ResultsList results={envelope.results} onOpenDoc={openDoc} />
-                </section>
+                </MotionSection>
               </>
             )}
           </div>
@@ -497,7 +498,7 @@ function GrantedAskContextPanel({
   const status = unavailable ? "unavailable" : grant?.status ?? "validating";
   const title = serverContext?.capability.name ?? capabilityId ?? "Granted capability";
   return (
-    <section
+    <MotionSection
       className="ap-card mb-3 rounded border p-3"
       data-testid="ask-granted-context"
       style={{
@@ -534,7 +535,7 @@ function GrantedAskContextPanel({
             ? "Ask will send this grant and capability to the server for validation. Results are constrained to the granted capability context."
             : "Checking the grant ledger before Ask can use this context."}
       </p>
-    </section>
+    </MotionSection>
   );
 }
 

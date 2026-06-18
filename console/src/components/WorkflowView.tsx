@@ -2,6 +2,7 @@
 
 import type { ProjectWorkflowResponse, RoleScopeSummary, WorkflowItem } from "@/lib/api";
 import { TYPE } from "@/lib/tokens";
+import { MotionArticle, MotionPanel, MotionSection } from "./MotionPrimitives";
 import { Skeleton } from "./Skeleton";
 
 type WorkflowGroup = {
@@ -88,7 +89,7 @@ export function WorkflowView({
   }
 
   return (
-    <section data-testid="workflow-view">
+    <MotionSection data-testid="workflow-view">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2
@@ -112,14 +113,15 @@ export function WorkflowView({
       <WorkflowRolePosture workflow={workflow} roleScope={roleScope} />
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-5">
-        {GROUPS.map((group) => {
+        {GROUPS.map((group, groupIndex) => {
           const items = grouped.get(group.label) ?? [];
           return (
-            <div
+            <MotionPanel
               key={group.label}
               className="ap-card min-w-0 rounded p-3"
               style={{ minHeight: 280 }}
               data-testid="workflow-group"
+              delayIndex={groupIndex}
             >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
@@ -159,11 +161,11 @@ export function WorkflowView({
                   items.map((item) => <WorkflowCard key={item.item_id} item={item} />)
                 )}
               </div>
-            </div>
+            </MotionPanel>
           );
         })}
       </div>
-    </section>
+    </MotionSection>
   );
 }
 
@@ -260,7 +262,7 @@ function WorkflowCard({ item }: { item: WorkflowItem }) {
   ].filter((entry): entry is [string, string] => entry !== null);
 
   return (
-    <article
+    <MotionArticle
       className="ap-card ap-washable rounded p-3"
       data-testid="workflow-item"
       data-status={item.status}
@@ -316,6 +318,6 @@ function WorkflowCard({ item }: { item: WorkflowItem }) {
           </div>
         </div>
       )}
-    </article>
+    </MotionArticle>
   );
 }

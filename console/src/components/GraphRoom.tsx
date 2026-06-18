@@ -7,6 +7,7 @@ import { COLOR, DERIVED, FONT, TYPE } from "@/lib/tokens";
 import { OrgGraph, type SelectedNode } from "./OrgGraph";
 import { GraphSidebar } from "./GraphSidebar";
 import { GraphInspector } from "./GraphInspector";
+import { MotionAside, MotionPanel } from "./MotionPrimitives";
 import { Skeleton } from "./Skeleton";
 
 /**
@@ -377,7 +378,7 @@ export function GraphRoom({
           )}
 
           {selected !== null && (
-            <div className="fixed right-4 top-[74px] z-20">
+            <MotionPanel className="fixed right-4 top-[74px] z-20">
               <GraphInspector
                 actor={actor}
                 node={selected}
@@ -391,7 +392,7 @@ export function GraphRoom({
                 onEnterLens={enterLens}
                 onClose={() => setSelected(null)}
               />
-            </div>
+            </MotionPanel>
           )}
 
           <Legend software={graph.sources.length} agents={graph.tools.length} projects={graph.projects.length} people={graph.people.length} />
@@ -424,7 +425,7 @@ function Legend({ software, agents, projects, people }: { software: number; agen
     />
   );
   return (
-    <aside
+    <MotionAside
       className="ap-card fixed bottom-4 left-5 z-20 flex max-w-[calc(100vw-40px)] flex-wrap items-center gap-3 rounded-full px-3 py-2"
       style={{ background: "color-mix(in srgb, var(--paper) 84%, transparent)", backdropFilter: "blur(14px)" }}
       aria-label="Graph legend"
@@ -447,7 +448,7 @@ function Legend({ software, agents, projects, people }: { software: number; agen
       <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
         {dot(C.ink)} people {people}
       </span>
-    </aside>
+    </MotionAside>
   );
 }
 
@@ -483,7 +484,7 @@ function AccessRequestRail({
   const recent = requests.slice(-3).reverse();
 
   return (
-    <aside
+    <MotionAside
       className="ap-card fixed left-4 top-[74px] z-20 flex w-[292px] max-w-[calc(100vw-32px)] flex-col gap-3 rounded p-3"
       style={{ background: "color-mix(in srgb, var(--paper) 86%, transparent)", backdropFilter: "blur(14px)" }}
       data-testid="access-request-rail"
@@ -582,7 +583,7 @@ function AccessRequestRail({
           ))
         )}
       </section>
-    </aside>
+    </MotionAside>
   );
 }
 
@@ -638,7 +639,7 @@ function GraphEmpty({
 }) {
   const satellites = [-Math.PI / 2, Math.PI / 6, (5 * Math.PI) / 6];
   return (
-    <div
+    <MotionPanel
       className="ap-card flex flex-col items-center gap-3 rounded px-6 py-12 text-center"
       data-testid={testid}
     >
@@ -678,6 +679,6 @@ function GraphEmpty({
       <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, maxWidth: 300, lineHeight: TYPE.line.body }}>
         {sub}
       </p>
-    </div>
+    </MotionPanel>
   );
 }

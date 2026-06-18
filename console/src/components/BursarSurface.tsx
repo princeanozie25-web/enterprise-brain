@@ -1,6 +1,7 @@
 "use client";
 
 import { TYPE } from "@/lib/tokens";
+import { MotionArticle, MotionSection } from "./MotionPrimitives";
 
 const DOCTRINE = [
   {
@@ -54,23 +55,28 @@ function StatusChip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function DoctrineCard({ detail, label }: { detail: string; label: string }) {
+function DoctrineCard({ delayIndex, detail, label }: { delayIndex: number; detail: string; label: string }) {
   return (
-    <article className="ap-card rounded border p-3" data-testid="bursar-doctrine-card" style={bursarPanelStyle()}>
+    <MotionArticle
+      className="ap-card rounded border p-3"
+      data-testid="bursar-doctrine-card"
+      delayIndex={delayIndex}
+      style={bursarPanelStyle()}
+    >
       <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
         {label}
       </p>
       <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
         {detail}
       </p>
-    </article>
+    </MotionArticle>
   );
 }
 
 export function BursarSurface() {
   return (
     <main className="min-w-0 flex-1" data-testid="bursar-surface">
-      <header className="ap-card mb-4 overflow-hidden rounded border p-5" style={bursarPanelStyle()}>
+      <MotionSection className="ap-card mb-4 overflow-hidden rounded border p-5" style={bursarPanelStyle()}>
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_0.65fr]">
           <div className="max-w-3xl">
             <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
@@ -97,16 +103,21 @@ export function BursarSurface() {
             <StatusChip>no ledger fixture</StatusChip>
           </div>
         </div>
-      </header>
+      </MotionSection>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]" aria-label="Bursar doctrine">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {DOCTRINE.map((item) => (
-            <DoctrineCard key={item.label} detail={item.detail} label={item.label} />
+          {DOCTRINE.map((item, index) => (
+            <DoctrineCard key={item.label} delayIndex={index + 1} detail={item.detail} label={item.label} />
           ))}
         </div>
 
-        <section className="ap-card rounded border p-4" data-testid="bursar-contract-panel" style={bursarPanelStyle()}>
+        <MotionSection
+          className="ap-card rounded border p-4"
+          data-testid="bursar-contract-panel"
+          delayIndex={3}
+          style={bursarPanelStyle()}
+        >
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Ledger contract panel
           </p>
@@ -123,11 +134,16 @@ export function BursarSurface() {
               </div>
             ))}
           </div>
-        </section>
+        </MotionSection>
       </section>
 
       <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[0.88fr_1.12fr]">
-        <section className="ap-card rounded border p-4" data-testid="bursar-empty-state" style={bursarPanelStyle()}>
+        <MotionSection
+          className="ap-card rounded border p-4"
+          data-testid="bursar-empty-state"
+          delayIndex={4}
+          style={bursarPanelStyle()}
+        >
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Honest unavailable state
           </p>
@@ -144,9 +160,14 @@ export function BursarSurface() {
             <StatusChip>no charts</StatusChip>
             <StatusChip>no totals</StatusChip>
           </div>
-        </section>
+        </MotionSection>
 
-        <section className="ap-card rounded border p-4" data-testid="bursar-future-beat" style={bursarPanelStyle()}>
+        <MotionSection
+          className="ap-card rounded border p-4"
+          data-testid="bursar-future-beat"
+          delayIndex={5}
+          style={bursarPanelStyle()}
+        >
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Future demo beat
           </p>
@@ -167,7 +188,7 @@ export function BursarSurface() {
               </p>
             ))}
           </div>
-        </section>
+        </MotionSection>
       </section>
     </main>
   );

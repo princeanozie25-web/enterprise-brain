@@ -15,6 +15,7 @@ import type {
   WorkflowItem,
 } from "@/lib/api";
 import { TYPE } from "@/lib/tokens";
+import { MotionAnchor, MotionArticle, MotionSection } from "./MotionPrimitives";
 import { PersonAvatar } from "./PersonAvatar";
 import { Skeleton } from "./Skeleton";
 
@@ -398,14 +399,16 @@ function deriveScopeBadges({
 function Panel({
   action,
   children,
+  delayIndex = 0,
   title,
 }: {
   action?: React.ReactNode;
   children: React.ReactNode;
+  delayIndex?: number;
   title: string;
 }) {
   return (
-    <section className="ap-card rounded p-3" style={dashboardPanelStyle()}>
+    <MotionSection className="ap-card rounded p-3" delayIndex={delayIndex} style={dashboardPanelStyle()}>
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           {title}
@@ -413,7 +416,7 @@ function Panel({
         {action}
       </div>
       {children}
-    </section>
+    </MotionSection>
   );
 }
 
@@ -566,14 +569,14 @@ function buildCommandPods({
 function CommandPods({ pods }: { pods: CommandPodModel[] }) {
   return (
     <section className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4" data-testid="dashboard-command-pods">
-      {pods.map((pod) => (
-        <CommandPod key={`${pod.kind}:${pod.title}`} pod={pod} />
+      {pods.map((pod, index) => (
+        <CommandPod key={`${pod.kind}:${pod.title}`} delayIndex={index} pod={pod} />
       ))}
     </section>
   );
 }
 
-function CommandPod({ pod }: { pod: CommandPodModel }) {
+function CommandPod({ delayIndex, pod }: { delayIndex: number; pod: CommandPodModel }) {
   const isAsk = pod.kind === "ask";
   const content = (
     <>
@@ -614,9 +617,10 @@ function CommandPod({ pod }: { pod: CommandPodModel }) {
   );
 
   return (
-    <a
+    <MotionAnchor
       href={pod.href}
       className="ap-card ap-washable block rounded p-3"
+      delayIndex={delayIndex}
       data-pod-kind={pod.kind}
       data-testid={isAsk ? "dashboard-ask-pod" : `dashboard-pod-${pod.kind}`}
       style={{
@@ -625,7 +629,7 @@ function CommandPod({ pod }: { pod: CommandPodModel }) {
       }}
     >
       {content}
-    </a>
+    </MotionAnchor>
   );
 }
 
@@ -743,10 +747,11 @@ function RoleExperienceSummary({ cards }: { cards: RoleExperienceCard[] }) {
       data-testid="dashboard-role-experience"
       id="dashboard-role-experience"
     >
-      {cards.map((card) => (
-        <div
+      {cards.map((card, index) => (
+        <MotionArticle
           key={`${card.label}:${card.metric}`}
           className="ap-card rounded border p-3"
+          delayIndex={index}
           data-role-tone={card.tone}
           data-testid={`dashboard-role-card-${card.tone}`}
         >
@@ -764,7 +769,7 @@ function RoleExperienceSummary({ cards }: { cards: RoleExperienceCard[] }) {
           <p className="ap-register-evidence ap-soft mt-2" style={{ fontSize: TYPE.scale.xs }}>
             {card.source}
           </p>
-        </div>
+        </MotionArticle>
       ))}
     </div>
   );
@@ -844,7 +849,7 @@ function NotificationCenter({ items }: { items: NotificationItem[] }) {
 
 function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
   return (
-    <section
+    <MotionSection
       className="ap-card mb-4 rounded border p-2"
       data-testid="dashboard-workflow-command"
       style={dashboardPanelStyle()}
@@ -885,15 +890,16 @@ function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
           data-testid="dashboard-workflow-command-menu"
         >
           {items.length === 0 ? (
-            <div className="ap-card rounded border p-3">
+            <MotionArticle className="ap-card rounded border p-3">
               <EmptyLine compact>No command categories are backed by current request, workflow, or grant rows.</EmptyLine>
-            </div>
+            </MotionArticle>
           ) : (
-            items.map((item) => (
-              <a
+            items.map((item, index) => (
+              <MotionAnchor
                 key={`${item.category}:${item.title}:command`}
                 href={item.href}
                 className="ap-washable block rounded border p-3"
+                delayIndex={index}
                 data-testid="dashboard-workflow-command-item"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -913,12 +919,12 @@ function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
                 <p className="ap-register-evidence ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
                   {item.source}
                 </p>
-              </a>
+              </MotionAnchor>
             ))
           )}
         </div>
       </details>
-    </section>
+    </MotionSection>
   );
 }
 
@@ -1296,7 +1302,7 @@ function WorkflowLayerCard({
   title: string;
 }) {
   return (
-    <article className="ap-card rounded border p-3" data-testid={testId}>
+    <MotionArticle className="ap-card rounded border p-3" data-testid={testId}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
@@ -1309,7 +1315,7 @@ function WorkflowLayerCard({
         <Chip>{metric}</Chip>
       </div>
       {children}
-    </article>
+    </MotionArticle>
   );
 }
 
@@ -1668,7 +1674,7 @@ function GrantedKnowledgeList({
   }
   return (
     <div className="space-y-2" data-testid="dashboard-granted-knowledge" id="dashboard-granted-knowledge">
-      {activeGrants.map((grant) => {
+      {activeGrants.map((grant, index) => {
         const capabilityId = grant.target.capability_id;
         const project = projectById.get(capabilityId);
         const title = project?.label.replace(/^Capability:\s*/i, "") ?? capabilityId;
@@ -1676,9 +1682,10 @@ function GrantedKnowledgeList({
           grant.grant_id,
         )}&cap=${encodeURIComponent(capabilityId)}`;
         return (
-          <article
+          <MotionArticle
             key={grant.grant_id}
-            className="ap-card rounded border p-3 transition-transform duration-200 hover:-translate-y-px"
+            className="ap-card rounded border p-3"
+            delayIndex={index}
             data-testid="dashboard-granted-knowledge-card"
             style={dashboardPanelStyle()}
           >
@@ -1706,7 +1713,7 @@ function GrantedKnowledgeList({
             >
               Open in Ask
             </a>
-          </article>
+          </MotionArticle>
         );
       })}
     </div>
@@ -1722,8 +1729,8 @@ function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
         enforced.
       </p>
       <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-        {badges.map((badge) => (
-          <div key={`${badge.label}:${badge.detail}`} className="ap-card rounded p-2">
+        {badges.map((badge, index) => (
+          <MotionArticle key={`${badge.label}:${badge.detail}`} className="ap-card rounded p-2" delayIndex={index}>
             <div className="flex items-start justify-between gap-2">
               <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
                 {badge.label}
@@ -1735,7 +1742,7 @@ function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
             <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
               {badge.detail}
             </p>
-          </div>
+          </MotionArticle>
         ))}
       </div>
       <div className="ap-card mt-3 rounded p-2">
@@ -1765,13 +1772,14 @@ function ProjectsList({
   }
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2" data-testid="dashboard-projects">
-      {projects.map((project) => {
+      {projects.map((project, index) => {
         const graphProject = projectById.get(project.capability_id);
         return (
-          <a
+          <MotionAnchor
             key={project.capability_id}
             href={`/project?cap=${encodeURIComponent(project.capability_id)}&as=${encodeURIComponent(actor)}`}
             className="ap-card ap-washable rounded p-3"
+            delayIndex={index}
             data-testid="dashboard-project"
           >
             <div className="flex items-start justify-between gap-2">
@@ -1797,7 +1805,7 @@ function ProjectsList({
                   .join(" / ")}
               </p>
             )}
-          </a>
+          </MotionAnchor>
         );
       })}
     </div>
@@ -1813,10 +1821,15 @@ function WorkflowSummary({ actor, items }: { actor: string; items: WorkflowItem[
   for (const item of items) grouped.get(workflowGroup(item.status))?.push(item);
   return (
     <div className="grid grid-cols-1 gap-2 lg:grid-cols-5" data-testid="dashboard-workflow" id="dashboard-workflow">
-      {WORKFLOW_GROUPS.map((group) => {
+      {WORKFLOW_GROUPS.map((group, groupIndex) => {
         const groupItems = grouped.get(group.label) ?? [];
         return (
-          <div key={group.label} className="ap-card rounded p-2" data-testid="dashboard-workflow-group">
+          <MotionArticle
+            key={group.label}
+            className="ap-card rounded p-2"
+            delayIndex={groupIndex}
+            data-testid="dashboard-workflow-group"
+          >
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
                 {group.label}
@@ -1826,11 +1839,12 @@ function WorkflowSummary({ actor, items }: { actor: string; items: WorkflowItem[
               </span>
             </div>
             <div className="space-y-1.5">
-              {groupItems.slice(0, 3).map((item) => (
-                <a
+              {groupItems.slice(0, 3).map((item, itemIndex) => (
+                <MotionAnchor
                   key={item.item_id}
                   href={`/project?cap=${encodeURIComponent(item.capability_id)}&as=${encodeURIComponent(actor)}`}
                   className="ap-washable block rounded px-2 py-1"
+                  delayIndex={itemIndex}
                   data-testid="dashboard-workflow-item"
                 >
                   <span className="ap-register-chrome block truncate" style={{ fontSize: TYPE.scale.xs }}>
@@ -1839,11 +1853,11 @@ function WorkflowSummary({ actor, items }: { actor: string; items: WorkflowItem[
                   <span className="ap-register-evidence ap-soft block truncate" style={{ fontSize: TYPE.scale.xs }}>
                     {item.status}
                   </span>
-                </a>
+                </MotionAnchor>
               ))}
               {groupItems.length === 0 && <EmptyLine compact>Empty</EmptyLine>}
             </div>
-          </div>
+          </MotionArticle>
         );
       })}
     </div>
@@ -1856,15 +1870,15 @@ function AgentsList({ agents }: { agents: NonNullable<NodeSummary["agents_owned"
   }
   return (
     <div className="space-y-2" data-testid="dashboard-agents">
-      {agents.map((agent) => (
-        <div key={agent.id} className="ap-card rounded p-2" data-testid="dashboard-agent">
+      {agents.map((agent, index) => (
+        <MotionArticle key={agent.id} className="ap-card rounded p-2" delayIndex={index} data-testid="dashboard-agent">
           <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
             {agent.name}
           </p>
           <p className="ap-register-evidence ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
             {agent.id}
           </p>
-        </div>
+        </MotionArticle>
       ))}
     </div>
   );
@@ -1905,14 +1919,15 @@ function RequestsList({
       )}
       {grants.length > 0 && (
         <div className="grid grid-cols-1 gap-2">
-          {grants.map((grant) => {
+          {grants.map((grant, index) => {
             const project = projectById.get(grant.target.capability_id);
             const canRevoke = grant.approver_id === actor && grant.status === "active";
             const isRevoking = revokingGrantId === grant.grant_id;
             return (
-              <div
+              <MotionArticle
                 key={grant.grant_id}
                 className="ap-card rounded p-2"
+                delayIndex={index}
                 data-testid="dashboard-grant"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -1948,15 +1963,20 @@ function RequestsList({
                     {isRevoking ? "Revoking" : "Revoke"}
                   </button>
                 )}
-              </div>
+              </MotionArticle>
             );
           })}
         </div>
       )}
-      {rows.map(({ label, request }) => {
+      {rows.map(({ label, request }, index) => {
         const project = projectById.get(request.target.capability_id);
         return (
-          <div key={`${label}:${request.request_id}`} className="ap-card rounded p-2" data-testid="dashboard-request">
+          <MotionArticle
+            key={`${label}:${request.request_id}`}
+            className="ap-card rounded p-2"
+            delayIndex={index}
+            data-testid="dashboard-request"
+          >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
@@ -1973,7 +1993,7 @@ function RequestsList({
               <Chip mono>requester {request.requester_id}</Chip>
               <Chip mono>approver {request.approver_id}</Chip>
             </div>
-          </div>
+          </MotionArticle>
         );
       })}
     </div>
