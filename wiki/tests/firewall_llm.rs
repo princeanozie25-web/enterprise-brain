@@ -42,12 +42,13 @@ fn strip_comments(src: &str) -> String {
     out
 }
 
-const LLM_MODULES: [(&str, &str); 5] = [
+const LLM_MODULES: [(&str, &str); 6] = [
     ("synth.rs", include_str!("../src/synth.rs")),
     ("scope.rs", include_str!("../src/scope.rs")),
     ("scoped.rs", include_str!("../src/scoped.rs")),
     ("compound.rs", include_str!("../src/compound.rs")),
     ("ground.rs", include_str!("../src/ground.rs")),
+    ("mentions.rs", include_str!("../src/mentions.rs")),
 ];
 
 #[test]

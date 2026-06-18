@@ -63,6 +63,7 @@ fn page(id: &str, ord: u64, scope: &str, snap: &str, claims: Vec<CompoundClaim>)
         rejected: vec![],
         refused_unfounded: vec![],
         withheld: vec![],
+        mention_flags: vec![],
     }
 }
 

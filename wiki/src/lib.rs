@@ -25,6 +25,7 @@ pub mod authz;
 pub mod compound;
 pub mod derive;
 pub mod ground;
+pub mod mentions;
 pub mod provenance;
 pub mod render;
 pub mod scope;
@@ -43,6 +44,7 @@ pub use authz::{AuthzView, GrantOracle};
 pub use compound::{compound_answer, CompoundStore, CompoundedPage, ScopeStamp, SourceRef};
 pub use derive::{derive_all, DerivedLayer};
 pub use ground::{Anchor, OllamaVerifier, SupportVerdict, Verifier};
+pub use mentions::{MentionFlag, Roster};
 pub use provenance::{Claim, Provenance};
 pub use scope::{RetrievalSelector, ScopeContext, ScopeGate};
 pub use scoped::{derive_scope, ScopedLayer, Topic};
@@ -98,6 +100,9 @@ pub struct ScopeResult {
     pub sourced_docs: usize,
     pub claims: usize,
     pub fail_closed_flags: usize,
+    /// Slice 5: free-text principal-mention flags (distinct from the structured
+    /// `fail_closed_flags`; additive coverage, never widening).
+    pub mention_flags: usize,
     pub refused: usize,
     /// Grounding (slice 4): no verbatim in-scope span — unfounded.
     pub refused_unfounded: usize,
@@ -191,6 +196,7 @@ pub fn generate_scoped(
                 sourced_docs: l.sourced_docs.len(),
                 claims: l.claims.len(),
                 fail_closed_flags: l.discrepancies.len(),
+                mention_flags: l.mention_flags.len(),
                 refused: l.rejected.len(),
                 refused_unfounded: l.refused_unfounded.len(),
                 withheld: l.withheld.len(),
@@ -247,6 +253,8 @@ pub struct CompoundScopeResult {
     /// Grounding (slice 4), summed across both rounds.
     pub refused_unfounded: usize,
     pub withheld: usize,
+    /// Slice 5: free-text principal-mention flags, summed across both rounds.
+    pub mention_flags: usize,
 }
 
 /// Summary of a compounding run.
@@ -310,8 +318,8 @@ pub fn generate_compounded(
     }
 
     let mut store = CompoundStore::new();
-    // principal -> (round1 page id, claims, refused-unfounded, withheld)
-    let mut r1: BTreeMap<String, (String, usize, usize, usize)> = BTreeMap::new();
+    // principal -> (round1 page id, claims, refused-unfounded, withheld, mention-flags)
+    let mut r1: BTreeMap<String, (String, usize, usize, usize, usize)> = BTreeMap::new();
 
     // Round 1 — no prior pages are eligible.
     for p in principals {
@@ -335,6 +343,7 @@ pub fn generate_compounded(
             page.claims.len(),
             page.refused_unfounded.len(),
             page.withheld.len(),
+            page.mention_flags.len(),
         );
         store.add(page, &allowed_of)?;
         r1.insert(p.clone(), row);
@@ -365,14 +374,15 @@ pub fn generate_compounded(
             )?;
             (page, eligible_ids)
         };
-        let (r2_id, r2_claims, r2_ref, r2_wh) = (
+        let (r2_id, r2_claims, r2_ref, r2_wh, r2_mf) = (
             page.page_id.clone(),
             page.claims.len(),
             page.refused_unfounded.len(),
             page.withheld.len(),
+            page.mention_flags.len(),
         );
         store.add(page, &allowed_of)?;
-        let (r1_id, r1_claims, r1_ref, r1_wh) = r1.get(p).cloned().unwrap_or_default();
+        let (r1_id, r1_claims, r1_ref, r1_wh, r1_mf) = r1.get(p).cloned().unwrap_or_default();
         results.push(CompoundScopeResult {
             principal_id: p.clone(),
             allowed_count: allowed.len(),
@@ -383,6 +393,7 @@ pub fn generate_compounded(
             round2_eligible: eligible_ids,
             refused_unfounded: r1_ref + r2_ref,
             withheld: r1_wh + r2_wh,
+            mention_flags: r1_mf + r2_mf,
         });
     }
 
@@ -446,8 +457,12 @@ fn render_compound_report(
             }
         ));
         s.push_str(&format!(
-            "- grounding: {} refused-unfounded, {} withheld-unsupported (both rounds)\n\n",
+            "- grounding: {} refused-unfounded, {} withheld-unsupported (both rounds)\n",
             r.refused_unfounded, r.withheld
+        ));
+        s.push_str(&format!(
+            "- free-text principal-mention flags (slice 5, fail-closed, access NOT widened): {}\n\n",
+            r.mention_flags
         ));
     }
     s

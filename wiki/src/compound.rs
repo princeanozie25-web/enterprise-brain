@@ -23,6 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{bail, Context, Result};
 
 use crate::ground::{ground_claim, Anchor, Grounded, SupportVerdict, Verifier};
+use crate::mentions::{MentionFlag, Roster};
 use crate::scope::{DocSelector, ScopeContext};
 use crate::scoped::TOPIC_K;
 use crate::sources::Sources;
@@ -104,6 +105,9 @@ pub struct CompoundedPage {
     pub refused_unfounded: Vec<String>,
     /// Claims anchored but judge-unconfirmed — withheld (slice-4, fail-closed).
     pub withheld: Vec<String>,
+    /// Free-text principal mentions in admitted prose the scope is not granted
+    /// about (slice 5). Additive, fail-closed, access never widened.
+    pub mention_flags: Vec<MentionFlag>,
 }
 
 impl CompoundedPage {
@@ -382,6 +386,9 @@ pub fn compound_answer(
     let mut rejected = Vec::new();
     let mut refused_unfounded = Vec::new();
     let mut withheld = Vec::new();
+    // Slice 5: deterministic roster for free-text mention flagging on admitted prose.
+    let roster = Roster::from_sources(sources);
+    let mut mention_flags: Vec<MentionFlag> = Vec::new();
     for raw in raws {
         let source = if raw_ids.contains(&raw.cited_doc_id) {
             let span = match doc_index.get(raw.cited_doc_id.as_str()) {
@@ -408,6 +415,19 @@ pub fn compound_answer(
             .unwrap_or("");
         match ground_claim(fact, &raw.cited_doc_id, &raw.quote, body, verifier) {
             Grounded::Admitted { anchor, support } => {
+                // Slice 5: flag (fail-closed) any principal the admitted prose
+                // names that this scope is not granted about, before the source
+                // is moved into the claim.
+                let cited = match &source {
+                    SourceRef::RawDoc { doc_id, span } => format!("RawDoc {doc_id} {span}"),
+                    SourceRef::CompoundedPage { page_id } => format!("CompoundedPage {page_id}"),
+                };
+                mention_flags.extend(roster.flag_prose(
+                    &gate.principal_id,
+                    allowed_t,
+                    fact,
+                    &cited,
+                ));
                 let text = format!(
                     "{} [scope {} via {}]",
                     fact,
@@ -434,6 +454,7 @@ pub fn compound_answer(
         rejected,
         refused_unfounded,
         withheld,
+        mention_flags,
     })
 }
 
@@ -498,6 +519,25 @@ pub fn render_compounded_page(store: &CompoundStore, p: &CompoundedPage) -> Stri
         }
         Err(e) => s.push_str(&format!("## Closure ERROR: {e}\n\n")),
     }
+    if !p.mention_flags.is_empty() {
+        s.push_str(&format!(
+            "## ⚠ Free-text mention flags ({}) — slice 5\n\n",
+            p.mention_flags.len()
+        ));
+        s.push_str("> Admitted prose NAMED a principal this scope is **not** granted about (or an ambiguous name token). Deterministic roster match — flagged, **not** reconciled; the granted set is **unchanged**.\n\n");
+        for m in &p.mention_flags {
+            let who = match &m.mentioned_id {
+                Some(id) => format!("`{id}`"),
+                None => format!(
+                    "ambiguous `{}` → {{{}}}",
+                    m.surface,
+                    m.candidates.join(", ")
+                ),
+            };
+            s.push_str(&format!("- mention {who} — `src: {}`\n", m.cited_source));
+        }
+        s.push('\n');
+    }
     if !p.rejected.is_empty() {
         s.push_str(&format!(
             "## Refused cites ({}) — outside the scope-gated source set\n\n",
@@ -553,6 +593,7 @@ mod tests {
             rejected: vec![],
             refused_unfounded: vec![],
             withheld: vec![],
+            mention_flags: vec![],
         }
     }
     fn set(items: &[&str]) -> BTreeSet<String> {

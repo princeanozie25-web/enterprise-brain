@@ -31,6 +31,7 @@ use anyhow::Result;
 use crate::authz::GrantOracle;
 use crate::derive::Discrepancy;
 use crate::ground::{ground_claim, Anchor, Grounded, SupportVerdict, Verifier};
+use crate::mentions::{MentionFlag, Roster};
 use crate::provenance::{Claim, Provenance};
 use crate::scope::{DocSelector, ScopeContext};
 use crate::sources::{LineIndex, Sources, SRC_DOCUMENTS};
@@ -80,6 +81,10 @@ pub struct ScopedLayer {
     pub sourced_docs: BTreeSet<String>,
     pub claims: Vec<ScopedClaim>,
     pub discrepancies: Vec<Discrepancy>,
+    /// Free-text principal mentions in admitted prose the scope is not granted
+    /// about (slice 5). Additive coverage on the structured `discrepancies`
+    /// flag: flagged and surfaced, fail-closed, access never widened.
+    pub mention_flags: Vec<MentionFlag>,
     /// Cited an out-of-scope / unknown source (slice-2 scope gate).
     pub rejected: Vec<RejectedClaim>,
     /// No verbatim in-scope span backs the claim — unfounded (slice-4 anchoring).
@@ -151,10 +156,15 @@ pub fn derive_scope(
         sourced_docs: BTreeSet::new(),
         claims: Vec::new(),
         discrepancies: Vec::new(),
+        mention_flags: Vec::new(),
         rejected: Vec::new(),
         refused_unfounded: Vec::new(),
         withheld: Vec::new(),
     };
+
+    // Slice 5: the deterministic roster, for free-text mention flagging on
+    // admitted prose. Built once from the read-only sources.
+    let roster = Roster::from_sources(sources);
 
     for topic in topics {
         // 1. GATE: governed-retrieval selection, then re-filter to the allowlist
@@ -243,6 +253,18 @@ pub fn derive_scope(
                     });
                 }
             }
+
+            // 3d. FREE-TEXT MENTION gate (slice 5, admitted claims only): the
+            //     prose may NAME a principal even when no structured ABOUT was
+            //     emitted. Flag, fail-closed, every named principal the scope is
+            //     not granted about, and every ambiguous token. Additive to 3c —
+            //     it never suppresses the claim and never widens access.
+            layer.mention_flags.extend(roster.flag_prose(
+                &gate.principal_id,
+                gate.allowed(),
+                &raw.text,
+                &prov.cite(),
+            ));
 
             let text = format!(
                 "{} [LLM-derived in scope {} via {}]",
@@ -335,6 +357,26 @@ pub fn render_scoped_layer(layer: &ScopedLayer) -> String {
         s.push('\n');
     }
 
+    if !layer.mention_flags.is_empty() {
+        s.push_str(&format!(
+            "## ⚠ Free-text mention flags ({}) — slice 5\n\n",
+            layer.mention_flags.len()
+        ));
+        s.push_str("> Admitted prose NAMED a principal the scope is **not** granted about (or an ambiguous name token). Detected deterministically against the roster — flagged, **not** reconciled; access **NOT** widened.\n\n");
+        for m in &layer.mention_flags {
+            let who = match &m.mentioned_id {
+                Some(id) => format!("`{id}`"),
+                None => format!(
+                    "ambiguous `{}` → {{{}}}",
+                    m.surface,
+                    m.candidates.join(", ")
+                ),
+            };
+            s.push_str(&format!("- mention {who} — `src: {}`\n", m.cited_source));
+        }
+        s.push('\n');
+    }
+
     if !layer.rejected.is_empty() {
         s.push_str(&format!(
             "## Refused claims ({}) — out-of-scope citation, not written\n\n",
@@ -383,9 +425,13 @@ pub fn render_drift_report(structural_flags: usize, layers: &[ScopedLayer]) -> S
         "- Structural (deterministic, slice 1) fail-closed flags: **{structural_flags}**\n"
     ));
     let llm_flags: usize = layers.iter().map(|l| l.discrepancies.len()).sum();
+    let mention_flags: usize = layers.iter().map(|l| l.mention_flags.len()).sum();
     let refused: usize = layers.iter().map(|l| l.rejected.len()).sum();
     s.push_str(&format!(
-        "- LLM (scoped, slice 2) fail-closed flags: **{llm_flags}**\n"
+        "- LLM structured-association fail-closed flags (slice 2, `ABOUT:`): **{llm_flags}**\n"
+    ));
+    s.push_str(&format!(
+        "- LLM free-text principal-mention flags (slice 5, prose, fail-closed): **{mention_flags}**\n"
     ));
     s.push_str(&format!(
         "- Out-of-scope citations refused (never written): **{refused}**\n\n"
@@ -393,17 +439,21 @@ pub fn render_drift_report(structural_flags: usize, layers: &[ScopedLayer]) -> S
 
     for layer in layers {
         s.push_str(&format!(
-            "## scope `{}` — {} fact(s), {} flag(s), {} refusal(s)\n\n",
+            "## scope `{}` — {} fact(s), {} structured flag(s), {} free-text mention flag(s), {} refusal(s)\n\n",
             layer.principal_id,
             layer.claims.len(),
             layer.discrepancies.len(),
+            layer.mention_flags.len(),
             layer.rejected.len()
         ));
         for d in &layer.discrepancies {
-            s.push_str(&format!("- ⚠ {}\n", d.detail));
+            s.push_str(&format!("- ⚠ structured: {}\n", d.detail));
         }
-        if layer.discrepancies.is_empty() {
-            s.push_str("- (no LLM access-implication flags in this scope)\n");
+        for m in &layer.mention_flags {
+            s.push_str(&format!("- ⚠ free-text: {}\n", m.detail));
+        }
+        if layer.discrepancies.is_empty() && layer.mention_flags.is_empty() {
+            s.push_str("- (no access-implication or free-text-mention flags in this scope)\n");
         }
         s.push('\n');
     }

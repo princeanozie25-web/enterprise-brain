@@ -160,12 +160,13 @@ fn run() -> Result<()> {
             );
             for s in &report.scopes {
                 println!(
-                    "  {} — allowed {}, {} sourced, {} admitted, {} flags, {} oos-refused, {} unfounded, {} withheld",
+                    "  {} — allowed {}, {} sourced, {} admitted, {} struct-flags, {} mention-flags, {} oos-refused, {} unfounded, {} withheld",
                     s.principal_id,
                     s.allowed_count,
                     s.sourced_docs,
                     s.claims,
                     s.fail_closed_flags,
+                    s.mention_flags,
                     s.refused,
                     s.refused_unfounded,
                     s.withheld
@@ -209,7 +210,7 @@ fn run() -> Result<()> {
             );
             for s in &report.scopes {
                 println!(
-                    "  {} ({} allowed) — r1 {} ({} claims), r2 {} ({} claims); r2 eligible: [{}]; grounding: {} unfounded, {} withheld",
+                    "  {} ({} allowed) — r1 {} ({} claims), r2 {} ({} claims); r2 eligible: [{}]; grounding: {} unfounded, {} withheld; mention-flags: {}",
                     s.principal_id,
                     s.allowed_count,
                     s.round1_page,
@@ -218,7 +219,8 @@ fn run() -> Result<()> {
                     s.round2_claims,
                     s.round2_eligible.join(", "),
                     s.refused_unfounded,
-                    s.withheld
+                    s.withheld,
+                    s.mention_flags
                 );
             }
             println!(

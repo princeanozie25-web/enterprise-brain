@@ -70,6 +70,7 @@ fn answer_types_cites_refuses_out_of_scope_and_only_sees_in_scope_material() {
         rejected: vec![],
         refused_unfounded: vec![],
         withheld: vec![],
+        mention_flags: vec![],
     };
     let eligible: Vec<&CompoundedPage> = vec![&prior];
 
@@ -193,6 +194,7 @@ fn ineligible_page_is_never_fed_to_the_model() {
         rejected: vec![],
         refused_unfounded: vec![],
         withheld: vec![],
+        mention_flags: vec![],
     };
     let eligible: Vec<&CompoundedPage> = vec![&prior];
     let mut allowed_of = std::collections::BTreeMap::new();
