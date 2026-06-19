@@ -11,7 +11,7 @@ import { graphRelationshipRows, type GraphRelationshipRow } from "./graphDisplay
 function Chip({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
   return (
     <span
-      className={`ap-hairline ${mono ? "ap-register-evidence" : "ap-register-chrome"} ap-soft rounded border px-1.5 py-0.5`}
+      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded px-1.5 py-0.5`}
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}
@@ -112,7 +112,7 @@ export function GraphInspector({
 
   return (
     <aside
-      className="ap-card flex shrink-0 flex-col gap-3 overflow-y-auto rounded p-3"
+      className="ap-card ap-elevated flex shrink-0 flex-col gap-3 overflow-y-auto rounded p-3"
       style={{ width: 304, maxHeight: "82vh" }}
       data-testid="inspector-card"
     >
@@ -122,7 +122,7 @@ export function GraphInspector({
             {node.label}
           </p>
           <span
-            className="ap-hairline ap-register-chrome ap-soft mt-1 inline-block rounded border px-1.5 py-0.5"
+            className="ap-chip ap-register-chrome mt-1 inline-block rounded px-1.5 py-0.5"
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="inspector-kind"
           >

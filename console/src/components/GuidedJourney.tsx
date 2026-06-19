@@ -94,13 +94,9 @@ export function GuidedJourney({
 
   return (
     <MotionSection
-      className="ap-card rounded border p-3"
+      className="ap-card ap-glass rounded border p-3"
       aria-label="Guided product path"
       data-testid={testId}
-      style={{
-        backdropFilter: "blur(16px)",
-        background: "color-mix(in srgb, var(--paper) 84%, transparent)",
-      }}
     >
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
         <div className="min-w-0">
@@ -119,7 +115,7 @@ export function GuidedJourney({
         {steps.map((step, index) => {
           const active = current === (step.activeSurface ?? step.surface);
           const canOpen = !step.adminOnly || adminLinks || current === "home";
-          const className = `${active ? "ap-affordance-button" : "ap-washable"} ap-register-chrome flex min-h-24 flex-col justify-between rounded border px-3 py-2`;
+          const className = `${active ? "ap-affordance-button" : "ap-washable ap-flat"} ap-register-chrome flex min-h-24 flex-col justify-between rounded border px-3 py-2`;
           const content = (
             <>
               <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>

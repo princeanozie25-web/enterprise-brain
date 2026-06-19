@@ -41,9 +41,9 @@ const TRUST_ITEMS = [
 
 function posturePanelStyle(): React.CSSProperties {
   return {
-    backdropFilter: "blur(16px)",
-    background: "color-mix(in srgb, var(--paper) 84%, transparent)",
-    boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent)",
+    backdropFilter: "blur(var(--material-blur))",
+    background: "var(--surface-glass)",
+    boxShadow: "var(--shadow-1), inset 0 1px 0 var(--edge-highlight)",
   };
 }
 
@@ -60,9 +60,8 @@ export function DemoIdentityNotice({
 }) {
   return (
     <MotionSection
-      className={`ap-card rounded border ${compact ? "p-2" : "p-3"} ${className}`}
+      className={`ap-card ap-glass rounded border ${compact ? "p-2" : "p-3"} ${className}`}
       data-testid={testId}
-      style={posturePanelStyle()}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -77,7 +76,7 @@ export function DemoIdentityNotice({
           </p>
         </div>
         <span
-          className="ap-register-evidence ap-soft ap-hairline rounded border px-2 py-1"
+          className="ap-chip ap-register-evidence rounded px-2 py-1"
           style={{ fontSize: TYPE.scale.xs }}
         >
           permission preview
@@ -107,7 +106,7 @@ export function BuyerTrustPosture({
       {TRUST_ITEMS.map((item, index) => (
         <MotionArticle
           key={item.label}
-          className="ap-card rounded border p-3"
+          className="ap-card rounded border p-4"
           delayIndex={index}
           style={posturePanelStyle()}
         >

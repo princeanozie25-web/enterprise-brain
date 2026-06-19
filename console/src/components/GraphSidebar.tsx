@@ -62,7 +62,7 @@ export function GraphSidebar({
 
   return (
     <aside
-      className="ap-card flex shrink-0 flex-col gap-3 overflow-y-auto rounded p-3"
+      className="ap-card ap-elevated flex shrink-0 flex-col gap-3 overflow-y-auto rounded p-3"
       style={{ width: 232, maxHeight: "82vh" }}
       data-testid="graph-sidebar"
     >
@@ -112,7 +112,7 @@ export function GraphSidebar({
                 key={f.key}
                 type="button"
                 onClick={() => onToggleKind(f.key)}
-                className={`ap-hairline ap-register-chrome rounded border px-2 py-0.5${on ? " ap-affordance-button" : " ap-soft"}`}
+                className={`ap-register-chrome rounded px-2 py-0.5${on ? " ap-affordance-button" : " ap-chip"}`}
                 style={{ fontSize: TYPE.scale.xs }}
                 data-testid="filter-toggle"
                 data-kind={f.key}

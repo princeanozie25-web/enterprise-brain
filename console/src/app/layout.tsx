@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ACCENT, COLOR, DARK, DERIVED, FONT, MOTION, TYPE } from "@/lib/tokens";
+import { ACCENT, COLOR, DARK, DERIVED, FONT, MATERIAL, MOTION, TYPE } from "@/lib/tokens";
 import "@/fonts/fonts.css";
 import "./globals.css";
 
@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 
 // Every CSS variable and base rule is GENERATED from tokens.ts: no color,
 // duration, or font literal exists in this file or anywhere under src/app
-// and src/components (U-6 enforces it). Whitespace is the elevation system;
-// the hairline is the only shadow-like device.
+// and src/components (U-6 enforces it). Material depth is tokenized here:
+// subtle tone shifts, hairlines, and narrow shadows.
 //
 // THEME: the console defaults to DARK (the Org Brain command surface). Colour
 // vars live in two theme blocks keyed on [data-theme]; everything else (fonts,
@@ -26,6 +26,18 @@ const apertureBase = `
   --hairline: ${DARK.hairline};
   --wash: ${DARK.wash};
   --accent-warm: ${ACCENT.warm};
+  --surface-0: ${MATERIAL.dark.surface0};
+  --surface-1: ${MATERIAL.dark.surface1};
+  --surface-2: ${MATERIAL.dark.surface2};
+  --surface-3: ${MATERIAL.dark.surface3};
+  --surface-focus: ${MATERIAL.dark.focus};
+  --surface-glass: ${MATERIAL.dark.glass};
+  --surface-chip: ${MATERIAL.dark.chip};
+  --hairline-strong: ${MATERIAL.dark.hairlineStrong};
+  --edge-highlight: ${MATERIAL.dark.edge};
+  --shadow-1: ${MATERIAL.dark.shadow1};
+  --shadow-2: ${MATERIAL.dark.shadow2};
+  --shadow-focus: ${MATERIAL.dark.shadowFocus};
 }
 :root[data-theme="light"] {
   --paper: ${COLOR.paper};
@@ -34,6 +46,18 @@ const apertureBase = `
   --affordance: ${COLOR.affordance};
   --hairline: ${DERIVED.hairline};
   --wash: ${DERIVED.wash};
+  --surface-0: ${MATERIAL.light.surface0};
+  --surface-1: ${MATERIAL.light.surface1};
+  --surface-2: ${MATERIAL.light.surface2};
+  --surface-3: ${MATERIAL.light.surface3};
+  --surface-focus: ${MATERIAL.light.focus};
+  --surface-glass: ${MATERIAL.light.glass};
+  --surface-chip: ${MATERIAL.light.chip};
+  --hairline-strong: ${MATERIAL.light.hairlineStrong};
+  --edge-highlight: ${MATERIAL.light.edge};
+  --shadow-1: ${MATERIAL.light.shadow1};
+  --shadow-2: ${MATERIAL.light.shadow2};
+  --shadow-focus: ${MATERIAL.light.shadowFocus};
 }
 :root {
   --font-chrome: ${FONT.chrome};
@@ -52,9 +76,10 @@ const apertureBase = `
   --ease-out: ${MOTION.easeOut};
   --ease-iris: ${MOTION.irisEase};
   --dur-skeleton: ${MOTION.skeletonPulse};
+  --material-blur: ${MATERIAL.blur};
 }
 body {
-  background: var(--paper);
+  background: var(--surface-0);
   color: var(--ink);
   font-family: var(--font-chrome);
   font-size: var(--text-sm);
@@ -64,30 +89,83 @@ body {
 .ap-register-answer { font-family: var(--font-answer); }
 .ap-register-evidence { font-family: var(--font-evidence); }
 .ap-hairline { border-color: var(--hairline); }
-.ap-card { background: var(--paper); border: 1px solid var(--hairline); }
+.ap-card {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-1);
+}
+.ap-elevated {
+  background: var(--surface-2);
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-2);
+}
+.ap-focus-surface {
+  background: var(--surface-focus);
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-focus);
+}
+.ap-glass {
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--material-blur));
+  box-shadow: var(--shadow-1), inset 0 1px 0 var(--edge-highlight);
+}
+.ap-flat {
+  background: transparent;
+  box-shadow: none;
+}
+.ap-chip {
+  background: var(--surface-chip);
+  border: 1px solid var(--hairline);
+  color: var(--ink-soft);
+}
 .ap-soft { color: var(--ink-soft); }
-.ap-washable { transition: background-color var(--dur-quick) var(--ease-out); }
-.ap-washable:hover { background-color: var(--wash); }
+.ap-washable {
+  transition:
+    background-color var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out),
+    box-shadow var(--dur-quick) var(--ease-out),
+    transform var(--dur-quick) var(--ease-out);
+}
+.ap-washable:hover {
+  background-color: var(--surface-2);
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-1);
+}
 .ap-affordance-button {
   background: var(--affordance);
   color: var(--paper);
-  transition: opacity var(--dur-quick) var(--ease-out);
+  box-shadow: var(--shadow-1);
+  transition:
+    opacity var(--dur-quick) var(--ease-out),
+    transform var(--dur-quick) var(--ease-out);
 }
 .ap-affordance-button:hover { opacity: 0.9; }
+.ap-affordance-button:active { transform: translateY(1px); }
 .ap-affordance-button:disabled { opacity: 0.4; }
 a, .ap-affordance-text { color: var(--affordance); }
 :focus-visible { outline: 2px solid var(--affordance); outline-offset: 1px; }
 input[type="checkbox"] { accent-color: var(--affordance); }
 input, textarea {
-  background: var(--paper);
+  background: var(--surface-1);
   color: var(--ink);
   border: 1px solid var(--hairline);
+  box-shadow: inset 0 1px 0 var(--edge-highlight);
 }
 ::placeholder { color: var(--ink-soft); opacity: 0.7; }
 .ap-fade-view { animation: ap-fade var(--dur-view) var(--ease-out); }
 .ap-skeleton-pulse { animation: ap-pulse var(--dur-skeleton) var(--ease-out) infinite alternate; }
 @keyframes ap-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ap-pulse { from { opacity: 0.45; } to { opacity: 0.9; } }
+@media (prefers-reduced-motion: reduce) {
+  .ap-fade-view,
+  .ap-skeleton-pulse {
+    animation: none;
+  }
+  .ap-washable,
+  .ap-affordance-button {
+    transition: none;
+  }
+}
 `;
 
 // Set the theme attribute before first paint (no flash): remembered choice,

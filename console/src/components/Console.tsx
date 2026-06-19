@@ -274,7 +274,7 @@ export function Console({
     <div className="min-h-screen">
       <LensBar principal={principal} onSwitch={switchPrincipal} />
 
-      <nav className="ap-card border-x-0 border-t-0" aria-label="Product surfaces" data-testid="view-switcher">
+      <nav className="ap-card ap-glass border-x-0 border-t-0" aria-label="Product surfaces" data-testid="view-switcher">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-1.5">
           <ViewDoor label="Work Identity" href="/me" active={view === "me"} principal={principal} testId="view-door-me" />
           <ViewDoor
@@ -380,7 +380,7 @@ export function Console({
             </p>
           </MotionPanel>
 
-          <MotionPanel className="ap-card rounded p-3" delayIndex={1}>
+          <MotionPanel className="ap-card ap-focus-surface rounded p-3" delayIndex={1}>
             {(entryGrantId !== null || grantContext !== null || grantContextUnavailable) && (
               <GrantedAskContextPanel
                 capabilityId={entryCapability}
@@ -402,7 +402,7 @@ export function Console({
               }
               disabled={principal === null}
               rows={2}
-              className="w-full resize-none rounded px-2 py-1.5"
+              className="w-full resize-none rounded px-3 py-2"
               style={{ fontSize: TYPE.scale.sm }}
               data-testid="query-input"
             />
@@ -439,7 +439,7 @@ export function Console({
                   asking ||
                   (entryGrantId !== null && entryCapability !== null && grantContext === null)
                 }
-                className="ap-affordance-button ml-auto rounded px-3 py-1"
+                className="ap-affordance-button ml-auto min-h-10 rounded px-3 py-2"
                 style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
                 data-testid="ask-button"
               >
@@ -471,7 +471,7 @@ export function Console({
                   />
                 </div>
                 <AnswerCard envelope={envelope} onOpenDoc={openDoc} />
-                <MotionSection className="ap-card rounded p-2" delayIndex={1}>
+                <MotionSection className="ap-card rounded p-3" delayIndex={1}>
                   <h2
                     className="ap-soft px-2 pb-1 pt-1 uppercase tracking-wide"
                     style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -516,12 +516,8 @@ function GrantedAskContextPanel({
   const title = serverContext?.capability.name ?? capabilityId ?? "Granted capability";
   return (
     <MotionSection
-      className="ap-card mb-3 rounded border p-3"
+      className="ap-card ap-glass mb-3 rounded border p-3"
       data-testid="ask-granted-context"
-      style={{
-        background: "color-mix(in srgb, var(--wash) 34%, transparent)",
-        boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent)",
-      }}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -533,7 +529,7 @@ function GrantedAskContextPanel({
           </h2>
         </div>
         <span
-          className="ap-hairline ap-register-chrome rounded border px-2 py-1"
+          className="ap-chip ap-register-chrome rounded px-2 py-1"
           style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
         >
           {status}
@@ -559,7 +555,7 @@ function GrantedAskContextPanel({
 function GrantChip({ children }: { children: React.ReactNode }) {
   return (
     <span
-      className="ap-hairline ap-register-evidence ap-soft rounded border px-1.5 py-0.5"
+      className="ap-chip ap-register-evidence rounded px-1.5 py-0.5"
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}

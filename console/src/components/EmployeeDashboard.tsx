@@ -67,16 +67,16 @@ function workflowGroup(status: string): string {
 
 function dashboardPanelStyle(): React.CSSProperties {
   return {
-    backdropFilter: "blur(18px)",
-    background: "color-mix(in srgb, var(--paper) 86%, transparent)",
-    boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent)",
+    backdropFilter: "blur(var(--material-blur))",
+    background: "var(--surface-glass)",
+    boxShadow: "var(--shadow-1), inset 0 1px 0 var(--edge-highlight)",
   };
 }
 
 function Chip({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
   return (
     <span
-      className={`ap-hairline ${mono ? "ap-register-evidence" : "ap-register-chrome"} ap-soft rounded border px-1.5 py-0.5`}
+      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded px-1.5 py-0.5`}
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}
@@ -859,9 +859,8 @@ function TodayCockpit({ model }: { model: TodayCockpitModel }) {
   const attentionCount = model.needsAttention.length;
   return (
     <MotionSection
-      className="ap-card mb-4 rounded border p-4"
+      className="ap-card ap-elevated mb-4 rounded border p-4"
       data-testid="dashboard-today-cockpit"
-      style={dashboardPanelStyle()}
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -1213,9 +1212,8 @@ function NotificationCenter({ items }: { items: NotificationItem[] }) {
 function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
   return (
     <MotionSection
-      className="ap-card mb-4 rounded border p-2"
+      className="ap-card ap-glass mb-4 rounded border p-2"
       data-testid="dashboard-workflow-command"
-      style={dashboardPanelStyle()}
     >
       <details className="group">
         <summary
@@ -1237,7 +1235,7 @@ function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
               items.slice(0, 5).map((item) => (
                 <span
                   key={`${item.category}:${item.title}:chip`}
-                  className="ap-hairline ap-register-chrome ap-soft rounded border px-2 py-1"
+                  className="ap-chip ap-register-chrome rounded px-2 py-1"
                   style={{ fontSize: TYPE.scale.xs }}
                   data-testid="dashboard-workflow-command-category"
                 >
@@ -1261,7 +1259,7 @@ function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
               <MotionAnchor
                 key={`${item.category}:${item.title}:command`}
                 href={item.href}
-                className="ap-washable block rounded border p-3"
+                className="ap-card ap-washable block rounded border p-3"
                 delayIndex={index}
                 data-testid="dashboard-workflow-command-item"
               >
@@ -1339,10 +1337,9 @@ function WorkspaceLayer({
 
   return (
     <section
-      className="ap-card mb-4 rounded border p-4"
+      className="ap-card ap-elevated mb-4 rounded border p-4"
       data-testid="dashboard-workspace"
       id="dashboard-workspace"
-      style={dashboardPanelStyle()}
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -1536,10 +1533,9 @@ function RoleAwareWorkflowLayer({
 
   return (
     <section
-      className="ap-card mb-4 rounded border p-4"
+      className="ap-card ap-elevated mb-4 rounded border p-4"
       data-testid="dashboard-role-aware-workflow"
       id="dashboard-role-aware-workflow"
-      style={dashboardPanelStyle()}
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -1917,7 +1913,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
 
   return (
     <main className="min-w-0 flex-1" data-testid="employee-dashboard">
-      <header className="ap-card mb-4 overflow-hidden rounded p-4" style={dashboardPanelStyle()}>
+      <header className="ap-card ap-focus-surface mb-4 overflow-hidden rounded p-4 md:p-5">
         <div className="flex flex-wrap items-center gap-3">
           <PersonAvatar
             principalId={actor}

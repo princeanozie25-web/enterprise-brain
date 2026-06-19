@@ -48,7 +48,7 @@ export function LensBar({
   };
 
   return (
-    <header className="ap-card border-x-0 border-t-0" data-testid="lens-bar">
+    <header className="ap-card ap-glass border-x-0 border-t-0" data-testid="lens-bar">
       <div className="mx-auto flex max-w-6xl items-center justify-center gap-3 px-4 py-2">
         <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
           Work Identity
@@ -67,10 +67,9 @@ export function LensBar({
           </span>
           {principal && (
             <span
-              className="ap-register-chrome rounded border px-1.5 py-0.5"
+              className="ap-chip ap-register-chrome rounded px-1.5 py-0.5"
               style={{
                 fontSize: TYPE.scale.xs,
-                borderColor: DERIVED.hairline,
                 color: COLOR.inkSoft,
               }}
               data-testid="lens-kind"
@@ -94,7 +93,7 @@ export function LensBar({
       {listVisible && (
         <div className="ap-fade-view mx-auto max-w-6xl px-4 pb-2">
           <div
-            className="ap-card overflow-y-auto rounded"
+            className="ap-card ap-elevated overflow-y-auto rounded"
             style={{ height: PRINCIPAL_LIST_HEIGHT }}
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
             data-testid="principal-list"

@@ -229,12 +229,10 @@ export function GraphRoom({
       aria-label="Enterprise Brain graph"
     >
       <header
-        className="ap-card fixed inset-x-0 top-0 z-30 grid items-center gap-4 border-x-0 border-t-0 px-6"
+        className="ap-card ap-glass fixed inset-x-0 top-0 z-30 grid items-center gap-4 border-x-0 border-t-0 px-6"
         style={{
           height: 58,
           gridTemplateColumns: "minmax(168px, 1fr) minmax(220px, 380px) minmax(168px, 1fr)",
-          background: "color-mix(in srgb, var(--paper) 88%, transparent)",
-          backdropFilter: "blur(18px)",
         }}
       >
         <div className="ap-soft min-w-0 truncate" style={{ fontSize: TYPE.scale.xs }}>
@@ -267,7 +265,7 @@ export function GraphRoom({
             className="w-full rounded-full py-1.5 pl-9 pr-8 text-center"
             style={{
               fontSize: TYPE.scale.xs,
-              background: "color-mix(in srgb, var(--wash) 72%, transparent)",
+              background: "var(--surface-chip)",
             }}
             data-testid="graph-search"
           />
@@ -428,8 +426,7 @@ function GraphAuditPanel({
 
   return (
     <MotionAside
-      className="ap-card fixed left-4 top-[74px] z-20 flex w-[336px] max-w-[calc(100vw-32px)] flex-col gap-3 rounded p-3"
-      style={{ background: "color-mix(in srgb, var(--paper) 87%, transparent)", backdropFilter: "blur(16px)" }}
+      className="ap-card ap-glass fixed left-4 top-[74px] z-20 flex w-[336px] max-w-[calc(100vw-32px)] flex-col gap-3 rounded p-3"
       data-testid="graph-audit-panel"
       aria-label="Audited Operating Map context"
     >
@@ -443,7 +440,7 @@ function GraphAuditPanel({
           </h2>
         </div>
         <span
-          className="ap-hairline ap-register-chrome ap-soft shrink-0 rounded-full border px-2 py-1"
+          className="ap-chip ap-register-chrome shrink-0 rounded-full px-2 py-1"
           style={{ fontSize: TYPE.scale.xs }}
           data-testid="graph-acting-context"
         >
@@ -526,8 +523,7 @@ function Legend({ systems, agents, projects, people }: { systems: number; agents
   );
   return (
     <MotionAside
-      className="ap-card fixed bottom-4 left-5 z-20 flex max-w-[calc(100vw-40px)] flex-wrap items-center gap-3 rounded-full px-3 py-2"
-      style={{ background: "color-mix(in srgb, var(--paper) 84%, transparent)", backdropFilter: "blur(14px)" }}
+      className="ap-card ap-glass fixed bottom-4 left-5 z-20 flex max-w-[calc(100vw-40px)] flex-wrap items-center gap-3 rounded-full px-3 py-2"
       aria-label="Graph legend"
     >
       <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
@@ -579,8 +575,7 @@ function AccessRequestRail({
 
   return (
     <MotionAside
-      className="ap-card fixed left-4 top-[386px] z-20 flex max-h-[280px] w-[292px] max-w-[calc(100vw-32px)] flex-col gap-3 overflow-y-auto rounded p-3"
-      style={{ background: "color-mix(in srgb, var(--paper) 86%, transparent)", backdropFilter: "blur(14px)" }}
+      className="ap-card ap-glass fixed left-4 top-[386px] z-20 flex max-h-[280px] w-[292px] max-w-[calc(100vw-32px)] flex-col gap-3 overflow-y-auto rounded p-3"
       data-testid="access-request-rail"
       aria-label="Access requests"
     >

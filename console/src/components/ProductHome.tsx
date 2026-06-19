@@ -54,11 +54,11 @@ const PRINCIPLES = [
 export function ProductHome() {
   return (
     <main
-      className="mx-auto flex min-h-[100dvh] max-w-6xl flex-col justify-center gap-5 px-4 py-8"
+      className="mx-auto flex min-h-[100dvh] max-w-6xl flex-col justify-center gap-5 px-4 py-8 md:py-10"
       data-testid="root-home"
     >
       <header className="grid gap-5">
-        <MotionPanel className="max-w-3xl">
+        <MotionPanel className="ap-card ap-elevated max-w-3xl rounded p-5 md:p-7">
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Enterprise Brain
           </p>
@@ -88,7 +88,7 @@ export function ProductHome() {
 
       <MotionSection className="grid grid-cols-1 gap-3 md:grid-cols-[1.15fr_0.95fr_1.05fr]" aria-label="Product doctrine" delayIndex={2}>
         {PRINCIPLES.map((principle, index) => (
-          <MotionArticle key={principle.label} className="ap-card rounded p-3" delayIndex={2 + index}>
+          <MotionArticle key={principle.label} className="ap-card rounded p-4" delayIndex={2 + index}>
             <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
               {principle.label}
             </h2>
@@ -104,7 +104,7 @@ export function ProductHome() {
           <MotionAnchor
             key={destination.href}
             href={destination.href}
-            className="ap-card ap-washable block min-h-36 rounded p-4"
+            className="ap-card ap-washable block min-h-36 rounded p-4 md:p-5"
             data-testid={destination.testid}
             delayIndex={index + 5}
           >
@@ -118,7 +118,7 @@ export function ProductHome() {
                 </p>
               </div>
               <span
-                className="ap-register-evidence ap-soft ap-hairline rounded border px-2 py-1"
+                className="ap-chip ap-register-evidence rounded px-2 py-1"
                 style={{ fontSize: TYPE.scale.xs }}
                 aria-hidden="true"
               >
@@ -129,7 +129,7 @@ export function ProductHome() {
         ))}
       </section>
 
-      <MotionSection className="ap-card rounded p-3" data-testid="root-admin-note" delayIndex={10}>
+      <MotionSection className="ap-card ap-glass rounded p-3" data-testid="root-admin-note" delayIndex={10}>
         <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           Authorization boundary
         </p>

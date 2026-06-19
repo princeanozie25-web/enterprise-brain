@@ -6,8 +6,8 @@
 // import from here (or consume the CSS variables layout.tsx generates from
 // here). U-6 enforces this mechanically over src/components and src/app.
 //
-// No gradients. No shadows beyond the 1px hairline. Whitespace is the
-// elevation system.
+// Material depth is centralized here. Components may opt into layers, but do
+// not invent one-off color, shadow, blur, or elevation values.
 
 export const COLOR = {
   /** App background. */
@@ -54,6 +54,43 @@ export const DARK = {
  */
 export const ACCENT = {
   warm: "#C77F3A",
+} as const;
+
+/**
+ * Premium material hierarchy. This is intentionally conservative: depth is
+ * created through tone, hairline strength, and narrow shadows, not through
+ * neon glow or blanket glass.
+ */
+export const MATERIAL = {
+  light: {
+    surface0: COLOR.paper,
+    surface1: `color-mix(in srgb, ${COLOR.paper} 96%, ${COLOR.ink} 4%)`,
+    surface2: `color-mix(in srgb, ${COLOR.paper} 91%, ${COLOR.ink} 9%)`,
+    surface3: `color-mix(in srgb, ${COLOR.paper} 86%, ${COLOR.ink} 14%)`,
+    focus: `color-mix(in srgb, ${COLOR.paper} 82%, ${COLOR.affordance} 18%)`,
+    glass: `color-mix(in srgb, ${COLOR.paper} 88%, transparent)`,
+    chip: `color-mix(in srgb, ${COLOR.paper} 92%, ${COLOR.inkSoft} 8%)`,
+    hairlineStrong: "rgba(92, 92, 84, 0.38)",
+    edge: "rgba(92, 92, 84, 0.14)",
+    shadow1: "0 1px 0 rgba(92, 92, 84, 0.08), 0 18px 42px -34px rgba(92, 92, 84, 0.44)",
+    shadow2: "0 1px 0 rgba(92, 92, 84, 0.12), 0 28px 70px -42px rgba(92, 92, 84, 0.52)",
+    shadowFocus: "0 1px 0 rgba(92, 92, 84, 0.12), 0 34px 82px -46px rgba(92, 92, 84, 0.36)",
+  },
+  dark: {
+    surface0: DARK.paper,
+    surface1: `color-mix(in srgb, ${DARK.paper} 92%, ${DARK.ink} 8%)`,
+    surface2: `color-mix(in srgb, ${DARK.paper} 86%, ${DARK.ink} 14%)`,
+    surface3: `color-mix(in srgb, ${DARK.paper} 80%, ${DARK.ink} 20%)`,
+    focus: `color-mix(in srgb, ${DARK.paper} 78%, ${DARK.affordance} 22%)`,
+    glass: `color-mix(in srgb, ${DARK.paper} 82%, transparent)`,
+    chip: `color-mix(in srgb, ${DARK.paper} 80%, ${DARK.inkSoft} 20%)`,
+    hairlineStrong: "rgba(92, 92, 84, 0.52)",
+    edge: "rgba(92, 92, 84, 0.18)",
+    shadow1: "0 1px 0 rgba(92, 92, 84, 0.10), 0 22px 52px -34px rgba(92, 92, 84, 0.56)",
+    shadow2: "0 1px 0 rgba(92, 92, 84, 0.14), 0 36px 86px -48px rgba(92, 92, 84, 0.68)",
+    shadowFocus: "0 1px 0 rgba(92, 92, 84, 0.16), 0 36px 90px -50px rgba(92, 92, 84, 0.62)",
+  },
+  blur: "14px",
 } as const;
 
 /**

@@ -39,16 +39,16 @@ const BOUNDARIES = [
 
 function bursarPanelStyle(): React.CSSProperties {
   return {
-    backdropFilter: "blur(18px)",
-    background: "color-mix(in srgb, var(--paper) 88%, transparent)",
-    boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent)",
+    backdropFilter: "blur(var(--material-blur))",
+    background: "var(--surface-glass)",
+    boxShadow: "var(--shadow-1), inset 0 1px 0 var(--edge-highlight)",
   };
 }
 
 function StatusChip({ children }: { children: React.ReactNode }) {
   return (
     <span
-      className="ap-register-evidence ap-soft ap-hairline rounded border px-2 py-1"
+      className="ap-chip ap-register-evidence rounded px-2 py-1"
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}
@@ -59,7 +59,7 @@ function StatusChip({ children }: { children: React.ReactNode }) {
 function DoctrineCard({ delayIndex, detail, label }: { delayIndex: number; detail: string; label: string }) {
   return (
     <MotionArticle
-      className="ap-card rounded border p-3"
+      className="ap-card rounded border p-4"
       data-testid="bursar-doctrine-card"
       delayIndex={delayIndex}
       style={bursarPanelStyle()}
@@ -77,7 +77,7 @@ function DoctrineCard({ delayIndex, detail, label }: { delayIndex: number; detai
 export function BursarSurface() {
   return (
     <main className="min-w-0 flex-1" data-testid="bursar-surface">
-      <MotionSection className="ap-card mb-4 overflow-hidden rounded border p-5" style={bursarPanelStyle()}>
+      <MotionSection className="ap-card ap-focus-surface mb-4 overflow-hidden rounded border p-5 md:p-6">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_0.65fr]">
           <div className="max-w-3xl">
             <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
@@ -116,10 +116,9 @@ export function BursarSurface() {
         </div>
 
         <MotionSection
-          className="ap-card rounded border p-4"
+          className="ap-card ap-elevated rounded border p-4"
           data-testid="bursar-contract-panel"
           delayIndex={3}
-          style={bursarPanelStyle()}
         >
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Ledger contract panel
@@ -184,7 +183,7 @@ export function BursarSurface() {
             {BOUNDARIES.map((boundary) => (
               <p
                 key={boundary}
-                className="ap-hairline rounded border px-3 py-2"
+                className="ap-chip rounded px-3 py-2"
                 style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
               >
                 {boundary}

@@ -45,7 +45,7 @@ function groupFor(status: string): string {
 function Chip({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
   return (
     <span
-      className={`ap-hairline ${mono ? "ap-register-evidence" : "ap-register-chrome"} ap-soft rounded border px-1.5 py-0.5`}
+      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded px-1.5 py-0.5`}
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}
@@ -103,7 +103,7 @@ export function WorkflowView({
           </p>
         </div>
         <span
-          className="ap-card ap-register-evidence ap-soft rounded-full px-2 py-1"
+          className="ap-chip ap-register-evidence rounded-full px-2 py-1"
           style={{ fontSize: TYPE.scale.xs }}
         >
           {workflow.items.length} visible items
@@ -142,7 +142,7 @@ export function WorkflowView({
                   </h2>
                 </div>
                 <span
-                  className="ap-card ap-register-evidence rounded-full px-2 py-0.5"
+                  className="ap-chip ap-register-evidence rounded-full px-2 py-0.5"
                   style={{ fontSize: TYPE.scale.xs }}
                 >
                   {items.length}
@@ -189,7 +189,7 @@ function WorkflowRolePosture({
 
   return (
     <div
-      className="ap-card mb-4 grid grid-cols-1 gap-2 rounded border p-3 md:grid-cols-4"
+      className="ap-card ap-glass mb-4 grid grid-cols-1 gap-2 rounded border p-3 md:grid-cols-4"
       data-testid="workflow-role-posture"
     >
       <WorkflowPostureFact
@@ -239,7 +239,7 @@ function WorkflowPostureFact({
   value: string;
 }) {
   return (
-    <div className="ap-washable rounded border px-2 py-2" data-testid="workflow-role-posture-fact">
+    <div className="ap-flat ap-washable rounded border px-2 py-2" data-testid="workflow-role-posture-fact">
       <div className="flex items-start justify-between gap-2">
         <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
           {label}
