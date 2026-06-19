@@ -6,6 +6,7 @@ import {
   VIRTUAL_OVERSCAN,
 } from "@/lib/constants";
 import { PRINCIPALS } from "@/lib/principals";
+import { ThemeToggle } from "./ThemeToggle";
 
 /**
  * THE LENS BAR — the navigation primitive. Permanent, top-center, every
@@ -49,45 +50,48 @@ export function LensBar({
 
   return (
     <header className="ap-card ap-glass border-x-0 border-t-0" data-testid="lens-bar">
-      <div className="mx-auto flex max-w-6xl items-center justify-center gap-3 px-4 py-2">
-        <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-          Work Identity
-        </span>
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className="ap-washable flex items-center gap-2 rounded px-2 py-1"
-          data-testid="lens-current"
-        >
-          <span
-            className="ap-register-evidence"
-            style={{ fontSize: TYPE.scale.sm, fontWeight: 500 }}
-          >
-            {principal ?? "No Work Identity selected"}
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Work Identity
           </span>
-          {principal && (
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            className="ap-washable flex min-h-10 items-center gap-2 rounded px-2 py-1"
+            data-testid="lens-current"
+          >
             <span
-              className="ap-chip ap-register-chrome rounded px-1.5 py-0.5"
-              style={{
-                fontSize: TYPE.scale.xs,
-                color: COLOR.inkSoft,
-              }}
-              data-testid="lens-kind"
+              className="ap-register-evidence"
+              style={{ fontSize: TYPE.scale.sm, fontWeight: 500 }}
             >
-              {kind}
+              {principal ?? "No Work Identity selected"}
             </span>
-          )}
-        </button>
-        <input
-          id="principal-search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onFocus={() => setOpen(true)}
-          placeholder="Search demo Work Identities"
-          className="w-64 rounded px-2 py-1"
-          style={{ fontSize: TYPE.scale.xs }}
-          data-testid="principal-search"
-        />
+            {principal && (
+              <span
+                className="ap-chip ap-register-chrome rounded px-1.5 py-0.5"
+                style={{
+                  fontSize: TYPE.scale.xs,
+                  color: COLOR.inkSoft,
+                }}
+                data-testid="lens-kind"
+              >
+                {kind}
+              </span>
+            )}
+          </button>
+          <input
+            id="principal-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onFocus={() => setOpen(true)}
+            placeholder="Search demo Work Identities"
+            className="w-full rounded px-2 py-1 sm:w-64"
+            style={{ fontSize: TYPE.scale.xs }}
+            data-testid="principal-search"
+          />
+        </div>
+        <ThemeToggle compact />
       </div>
 
       {listVisible && (

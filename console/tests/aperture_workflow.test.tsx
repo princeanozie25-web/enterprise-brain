@@ -178,6 +178,12 @@ describe("workflow projection UI", () => {
     expect(within(groups[4]).getAllByTestId("workflow-item").length).toBe(1);
     expect(screen.getByText("Access request for Access Review 31")).toBeTruthy();
     expect(screen.getByText("agent agent_finance_analyst")).toBeTruthy();
+    expect(screen.getAllByTestId("workflow-item-status").map((node) => node.textContent)).toEqual(
+      expect.arrayContaining(["Status: In progress", "Status: Waiting", "Status: Done"]),
+    );
+    expect(screen.getAllByTestId("workflow-item-action").map((node) => node.textContent)).toEqual(
+      expect.arrayContaining(["Continue", "Review", "View"]),
+    );
     const posture = screen.getByTestId("workflow-role-posture");
     expect(posture.textContent).toContain("Employee focus");
     expect(posture.textContent).toContain("Team context");

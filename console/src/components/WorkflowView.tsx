@@ -42,6 +42,56 @@ function groupFor(status: string): string {
   return GROUP_LABELS[status] ?? "Next";
 }
 
+function statusLabel(status: string): string {
+  switch (status.toLowerCase()) {
+    case "active":
+      return "In progress";
+    case "pending":
+      return "Waiting";
+    case "blocked":
+      return "Blocked";
+    case "denied":
+      return "Denied";
+    case "cancelled":
+      return "Cancelled";
+    case "expired":
+      return "Expired";
+    case "dismissed":
+      return "Dismissed";
+    case "done":
+      return "Done";
+    case "approved":
+      return "Approved";
+    case "planned":
+      return "Planned";
+    case "candidate":
+    default:
+      return "Next";
+  }
+}
+
+function actionLabel(item: WorkflowItem): string {
+  switch (item.status.toLowerCase()) {
+    case "active":
+      return "Continue";
+    case "pending":
+      return item.kind === "access_request" ? "Review" : "Open";
+    case "blocked":
+    case "denied":
+    case "cancelled":
+    case "expired":
+    case "dismissed":
+      return "Check";
+    case "done":
+    case "approved":
+      return "View";
+    case "planned":
+    case "candidate":
+    default:
+      return "Open";
+  }
+}
+
 function Chip({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
   return (
     <span
@@ -263,14 +313,17 @@ function WorkflowCard({ item }: { item: WorkflowItem }) {
 
   return (
     <MotionArticle
-      className="ap-card ap-washable rounded p-3"
+      className="ap-card ap-washable rounded border p-3"
       data-testid="workflow-item"
       data-status={item.status}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            {KIND_LABEL[item.kind]}
+          </p>
           <p
-            className="ap-register-chrome"
+            className="ap-register-chrome mt-1"
             style={{ fontSize: TYPE.scale.sm, fontWeight: 600, lineHeight: TYPE.line.body }}
             data-testid="workflow-item-title"
           >
@@ -284,7 +337,13 @@ function WorkflowCard({ item }: { item: WorkflowItem }) {
             {item.item_id}
           </p>
         </div>
-        <Chip mono>{item.status}</Chip>
+        <span
+          className="ap-chip ap-register-chrome shrink-0 rounded px-2 py-1"
+          style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+          data-testid="workflow-item-status"
+        >
+          Status: {statusLabel(item.status)}
+        </span>
       </div>
 
       <p
@@ -295,13 +354,21 @@ function WorkflowCard({ item }: { item: WorkflowItem }) {
         {item.provenance.strategy.name} / {item.provenance.initiative.name} / {item.provenance.workflow.name}
       </p>
 
-      <div className="mt-3 flex flex-wrap gap-1.5 border-t pt-2" style={{ borderColor: "var(--hairline)" }}>
-        <Chip>{KIND_LABEL[item.kind]}</Chip>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-2" style={{ borderColor: "var(--hairline)" }}>
+        <span
+          className="ap-affordance-button ap-register-chrome rounded px-3 py-2"
+          style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+          data-testid="workflow-item-action"
+        >
+          {actionLabel(item)}
+        </span>
+        <div className="flex flex-wrap justify-end gap-1.5">
         {actors.map(([label, value]) => (
           <Chip key={`${label}:${value}`} mono>
             {label} {value}
           </Chip>
         ))}
+        </div>
       </div>
 
       {item.dependencies.length > 0 && (

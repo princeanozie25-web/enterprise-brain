@@ -465,8 +465,13 @@ describe("EmployeeDashboard", () => {
 
     expect(screen.getByTestId("dashboard-user-name").textContent).toBe("Felix Osei");
     expect(screen.getByTestId("dashboard-ask-link").getAttribute("href")).toBe("/ask?as=p060");
+    expect(screen.getByTestId("dashboard-compact-cockpit")).toBeTruthy();
+    expect(screen.getByTestId("dashboard-panel-tabs").textContent).toContain("Workspace");
+    expect(screen.getByTestId("dashboard-panel-tabs").textContent).toContain("Profile");
+    expect(screen.getByTestId("dashboard-panel-tabs").textContent).toContain("Settings");
+
     const notifications = screen.getByTestId("dashboard-notification-center");
-    expect(notifications.textContent).toContain("Notifications");
+    expect(notifications.textContent).toContain("Action summary");
     expect(notifications.textContent).toContain("Request status");
     expect(notifications.textContent).toContain("Approval queue");
     expect(notifications.textContent).toContain("Workflow attention");
@@ -500,65 +505,20 @@ describe("EmployeeDashboard", () => {
     expect(approvalCommand?.textContent).not.toContain("1");
 
     const workspace = screen.getByTestId("dashboard-workspace");
-    expect(workspace.textContent).toContain("Work Identity");
-    expect(workspace.textContent).toContain("Identity");
-    expect(workspace.textContent).toContain("Role");
-    expect(workspace.textContent).toContain("Department");
-    expect(workspace.textContent).toContain("Manager");
-    expect(workspace.textContent).toContain("Connected Systems");
-    expect(workspace.textContent).toContain("Preferences");
-    expect(workspace.textContent).toContain("Agent Preferences");
-    expect(workspace.textContent).toContain("Security");
-    expect(workspace.textContent).toContain("Audit Activity");
-    expect(workspace.textContent).toContain("Ingrid Cohen");
-    const systems = screen.getByTestId("dashboard-connected-systems");
-    expect(systems.textContent).toContain("Slack");
-    expect(systems.textContent).toContain("SharePoint");
-    expect(systems.textContent).toContain("GitHub");
-    expect(systems.textContent).toContain("Available");
-    expect(systems.textContent).not.toContain("Gmail");
-    expect(systems.textContent).not.toContain("Not Connected");
+    expect(workspace.textContent).toContain("Workspace");
+    expect(workspace.textContent).toContain("Work that may need a decision");
+    expect(workspace.textContent).toContain("Requests and approvals");
+    expect(workspace.textContent).toContain("Granted Knowledge");
+    expect(workspace.textContent).toContain("Workflow alerts");
+    expect(workspace.textContent).toContain("Team and department context");
 
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("My Work");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Project Context");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Team Context");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Department Context");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).not.toContain("Approval Queue");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).toContain("Granted Knowledge");
-    expect(screen.getByTestId("dashboard-command-pods").textContent).not.toContain("Executive Candidate");
-    const askPod = screen.getByTestId("dashboard-ask-pod");
-    expect(askPod.textContent).toContain("Ask a Question");
-    expect(askPod.textContent).toContain("Start Conversation");
-    expect(askPod.getAttribute("href")).toBe("/ask?as=p060");
+    const askPod = screen.getByTestId("dashboard-ask-agent-card");
+    expect(askPod.textContent).toContain("Ask AI agent");
+    expect(askPod.textContent).toContain("Ask with your current access");
+    expect(askPod.getAttribute("href")).toBe("/ask?as=p060&grant=ag_123&cap=cap31");
     const project = screen.getByTestId("dashboard-project");
     expect(project.textContent).toContain("Capability: Access Review 31");
     expect(project.getAttribute("href")).toBe("/project?cap=cap31&as=p060");
-
-    const scope = screen.getByTestId("dashboard-scope");
-    expect(scope.textContent).toContain("permission preview");
-    expect(scope.textContent).toContain("Role posture");
-    expect(scope.textContent).toContain("Department head signal");
-    expect(scope.textContent).toContain("Department context");
-    expect(scope.textContent).toContain("Leadership");
-    expect(scope.textContent).toContain("Team scope");
-    expect(scope.textContent).toContain("Project scope");
-    expect(scope.textContent).toContain("Read grants");
-    expect(scope.textContent).toContain("Surface limits");
-    expect(scope.textContent).toContain("Identity boundary");
-    expect(scope.textContent).toContain("Production identity binding");
-
-    const identityMode = screen.getByTestId("dashboard-demo-identity-mode");
-    expect(identityMode.textContent).toContain("Demo Identity Mode");
-    expect(identityMode.textContent).toContain("Production identity is not connected");
-
-    const roleExperience = screen.getByTestId("dashboard-role-experience");
-    expect(roleExperience.textContent).toContain("Department head");
-    expect(roleExperience.textContent).toContain("Team scope");
-    expect(roleExperience.textContent).toContain("Approval scope");
-    expect(roleExperience.textContent).toContain("Granted knowledge");
-    expect(roleExperience.textContent).toContain("Surface boundary");
-    expect(roleExperience.textContent).toContain("permission preview");
-    expect(roleExperience.textContent).not.toMatch(/bursar|governance/i);
 
     const roleWorkflow = screen.getByTestId("dashboard-role-aware-workflow");
     expect(roleWorkflow.textContent).toContain("My work plus visible leadership context");
@@ -571,7 +531,6 @@ describe("EmployeeDashboard", () => {
     expect(within(workflowGroups[0]).getAllByTestId("dashboard-workflow-item").length).toBe(1);
     expect(within(workflowGroups[2]).getAllByTestId("dashboard-workflow-item").length).toBe(1);
 
-    expect(screen.getByTestId("dashboard-agent").textContent).toContain("Finance analysis assistant");
     expect(screen.getByTestId("dashboard-request").textContent).toContain("pending");
     const grants = screen.getAllByTestId("dashboard-grant");
     const grant = grants.find((row) => row.textContent?.includes("ag_123"));
@@ -598,13 +557,64 @@ describe("EmployeeDashboard", () => {
         method: "POST",
       }),
     );
+
+    fireEvent.click(screen.getByTestId("dashboard-profile-panel-trigger"));
+    const profile = await screen.findByTestId("dashboard-profile-panel");
+    expect(profile.textContent).toContain("Profile");
+    expect(profile.textContent).toContain("Identity");
+    expect(profile.textContent).toContain("Role");
+    expect(profile.textContent).toContain("Department");
+    expect(profile.textContent).toContain("Manager");
+    expect(profile.textContent).toContain("Connected Systems");
+    expect(profile.textContent).toContain("Preferences");
+    expect(profile.textContent).toContain("Agent Preferences");
+    expect(profile.textContent).toContain("Security");
+    expect(profile.textContent).toContain("Audit Activity");
+    expect(profile.textContent).toContain("Ingrid Cohen");
+    const systems = screen.getByTestId("dashboard-connected-systems");
+    expect(systems.textContent).toContain("Slack");
+    expect(systems.textContent).toContain("SharePoint");
+    expect(systems.textContent).toContain("GitHub");
+    expect(systems.textContent).toContain("Available");
+    expect(systems.textContent).not.toContain("Gmail");
+    expect(systems.textContent).not.toContain("Not Connected");
+    expect(screen.getByTestId("dashboard-agent").textContent).toContain("Finance analysis assistant");
+
+    const scope = screen.getByTestId("dashboard-scope");
+    expect(scope.textContent).toContain("permission preview");
+    expect(scope.textContent).toContain("Role posture");
+    expect(scope.textContent).toContain("Department head signal");
+    expect(scope.textContent).toContain("Department context");
+    expect(scope.textContent).toContain("Leadership");
+    expect(scope.textContent).toContain("Team scope");
+    expect(scope.textContent).toContain("Project scope");
+    expect(scope.textContent).toContain("Read grants");
+    expect(scope.textContent).toContain("Surface limits");
+    expect(scope.textContent).toContain("Identity boundary");
+    expect(scope.textContent).toContain("Production identity binding");
+
+    const roleExperience = screen.getByTestId("dashboard-role-experience");
+    expect(roleExperience.textContent).toContain("Department head");
+    expect(roleExperience.textContent).toContain("Team scope");
+    expect(roleExperience.textContent).toContain("Approval scope");
+    expect(roleExperience.textContent).toContain("Granted knowledge");
+    expect(roleExperience.textContent).toContain("Surface boundary");
+    expect(roleExperience.textContent).toContain("permission preview");
+    expect(roleExperience.textContent).not.toMatch(/bursar|governance/i);
     expect(screen.getByTestId("dashboard-knowledge").textContent).toContain("Visible rows");
+
+    fireEvent.click(screen.getByTestId("dashboard-settings-panel-trigger"));
+    const settings = await screen.findByTestId("dashboard-settings-panel");
+    expect(settings.textContent).toContain("Settings");
+    expect(settings.textContent).toContain("Light or dark mode");
+    expect(settings.textContent).toContain("Agent preferences");
+    expect(settings.textContent).toContain("Demo Identity Mode");
+    expect(screen.getAllByTestId("theme-toggle").length).toBeGreaterThan(0);
 
     const text = container.textContent ?? "";
     expect(text).not.toContain("document_id");
     expect(text).not.toContain("d0196");
     expect(text).not.toMatch(/denied count|hidden/i);
-    expect(text).not.toMatch(/\bprofile\b/i);
     expect(text).not.toMatch(/bursar|governance/i);
     expect(text).not.toMatch(/supplier|invoice|procurement|spend total|token total/i);
     expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
@@ -623,16 +633,12 @@ describe("EmployeeDashboard", () => {
     const { container } = render(<EmployeeDashboard actor="p060" />);
     await waitFor(() => expect(screen.getByTestId("employee-dashboard")).toBeTruthy());
 
-    const pods = screen.getByTestId("dashboard-command-pods");
-    expect(pods.textContent).toContain("My Work");
-    expect(pods.textContent).toContain("Project Context");
-    expect(pods.textContent).toContain("Access Requests");
-    expect(pods.textContent).toContain("Ask a Question");
-    expect(pods.textContent).not.toContain("Team Context");
-    expect(pods.textContent).not.toContain("Department Context");
-    expect(pods.textContent).not.toContain("Approval Queue");
-    expect(pods.textContent).not.toContain("Executive Candidate");
-    expect(pods.textContent).not.toContain("Granted Knowledge");
+    expect(screen.getByTestId("dashboard-compact-cockpit")).toBeTruthy();
+    expect(screen.getByTestId("dashboard-main-cockpit").textContent).toContain("My Projects");
+    expect(screen.getByTestId("dashboard-main-cockpit").textContent).toContain("My Workflow");
+    expect(screen.getByTestId("dashboard-ask-agent-card").textContent).toContain("Ask AI agent");
+    expect(screen.getByTestId("dashboard-workspace")).toBeTruthy();
+
     const today = screen.getByTestId("dashboard-today-cockpit");
     expect(today.textContent).toContain("Today");
     expect(today.textContent).toContain("Needs Attention");
@@ -651,6 +657,7 @@ describe("EmployeeDashboard", () => {
     expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
     expect(screen.queryByTestId("dashboard-executive-workflow-label")).toBeNull();
 
+    fireEvent.click(screen.getByTestId("dashboard-profile-panel-trigger"));
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Employee baseline");
     expect(roleExperience.textContent).toContain("Surface boundary");
@@ -732,26 +739,25 @@ describe("EmployeeDashboard", () => {
     const { container } = render(<EmployeeDashboard actor="p060" />);
     await waitFor(() => expect(screen.getByTestId("employee-dashboard")).toBeTruthy());
 
-    const pods = screen.getByTestId("dashboard-command-pods");
-    expect(pods.textContent).toContain("Executive Candidate");
-    expect(pods.textContent).toContain("candidate only");
-    expect(pods.textContent).not.toContain("Team Context");
-    expect(pods.textContent).not.toContain("Department Context");
-    expect(pods.textContent).not.toContain("Approval Queue");
+    expect(screen.getByTestId("dashboard-compact-cockpit")).toBeTruthy();
+    expect(screen.getByTestId("dashboard-main-cockpit").textContent).toContain("My Projects");
+    expect(screen.getByTestId("dashboard-main-cockpit").textContent).toContain("My Workflow");
+    expect(screen.getByTestId("dashboard-main-cockpit").textContent).not.toContain("Executive Candidate");
     const today = screen.getByTestId("dashboard-today-cockpit");
     expect(today.textContent).toContain("Today");
     expect(today.textContent).not.toContain("Manager Context");
     expect(today.textContent).not.toMatch(/admin|bursar|governance|unread|notification count/i);
-
-    const roleExperience = screen.getByTestId("dashboard-role-experience");
-    expect(roleExperience.textContent).toContain("Executive candidate");
-    expect(roleExperience.textContent).toContain("label only");
-    expect(roleExperience.textContent).toContain("Surface boundary");
     expect(screen.getByTestId("dashboard-employee-workflow-layer").textContent).toContain("Employee Layer");
     expect(screen.getByTestId("dashboard-executive-workflow-label").textContent).toContain("label only");
     expect(screen.queryByTestId("dashboard-team-workflow-layer")).toBeNull();
     expect(screen.queryByTestId("dashboard-department-workflow-layer")).toBeNull();
     expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("dashboard-profile-panel-trigger"));
+    const roleExperience = screen.getByTestId("dashboard-role-experience");
+    expect(roleExperience.textContent).toContain("Executive candidate");
+    expect(roleExperience.textContent).toContain("label only");
+    expect(roleExperience.textContent).toContain("Surface boundary");
     expect(container.textContent ?? "").not.toMatch(/bursar|governance/i);
     expect(container.textContent ?? "").not.toMatch(/supplier|invoice|procurement|spend total|token total/i);
     expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();

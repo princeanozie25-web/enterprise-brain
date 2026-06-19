@@ -18,6 +18,7 @@ import { TYPE } from "@/lib/tokens";
 import { MotionAnchor, MotionArticle, MotionSection } from "./MotionPrimitives";
 import { PersonAvatar } from "./PersonAvatar";
 import { Skeleton } from "./Skeleton";
+import { ThemeToggle } from "./ThemeToggle";
 import { DemoIdentityNotice } from "./TrustPosture";
 
 const WORKFLOW_GROUPS = [
@@ -56,6 +57,8 @@ interface ConnectedSystem {
   status: "Available";
 }
 
+type DashboardPanelMode = "workspace" | "profile" | "settings";
+
 const CONNECTOR_NAMES = ["Gmail", "Outlook", "Teams", "Slack", "Jira", "GitHub", "SharePoint"];
 
 function workflowGroup(status: string): string {
@@ -63,6 +66,56 @@ function workflowGroup(status: string): string {
     if (group.statuses.includes(status)) return group.label;
   }
   return "Next";
+}
+
+function workflowStatusLabel(status: string): string {
+  switch (status.toLowerCase()) {
+    case "active":
+      return "In progress";
+    case "pending":
+      return "Waiting";
+    case "blocked":
+      return "Blocked";
+    case "denied":
+      return "Denied";
+    case "cancelled":
+      return "Cancelled";
+    case "expired":
+      return "Expired";
+    case "dismissed":
+      return "Dismissed";
+    case "done":
+      return "Done";
+    case "approved":
+      return "Approved";
+    case "planned":
+      return "Planned";
+    case "candidate":
+    default:
+      return "Next";
+  }
+}
+
+function workflowActionLabel(item: WorkflowItem): string {
+  switch (item.status.toLowerCase()) {
+    case "active":
+      return "Continue";
+    case "pending":
+      return item.kind === "access_request" ? "Review" : "Open";
+    case "blocked":
+    case "denied":
+    case "cancelled":
+    case "expired":
+    case "dismissed":
+      return "Check";
+    case "done":
+    case "approved":
+      return "View";
+    case "planned":
+    case "candidate":
+    default:
+      return "Open";
+  }
 }
 
 function dashboardPanelStyle(): React.CSSProperties {
@@ -855,14 +908,95 @@ function CommandPod({ delayIndex, pod }: { delayIndex: number; pod: CommandPodMo
   );
 }
 
+function DashboardPanelTabs({
+  active,
+  onSelect,
+}: {
+  active: DashboardPanelMode;
+  onSelect: (mode: DashboardPanelMode) => void;
+}) {
+  const tabs: { label: string; mode: DashboardPanelMode }[] = [
+    { label: "Workspace", mode: "workspace" },
+    { label: "Profile", mode: "profile" },
+    { label: "Settings", mode: "settings" },
+  ];
+
+  return (
+    <div
+      className="ap-card ap-glass flex flex-wrap gap-1 rounded p-1"
+      data-testid="dashboard-panel-tabs"
+      role="tablist"
+      aria-label="Employee cockpit panels"
+    >
+      {tabs.map((tab) => {
+        const selected = active === tab.mode;
+        return (
+          <button
+            key={tab.mode}
+            type="button"
+            className={`${selected ? "ap-affordance-button" : "ap-washable"} ap-register-chrome min-h-10 rounded px-3 py-2`}
+            style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+            onClick={() => onSelect(tab.mode)}
+            role="tab"
+            aria-selected={selected}
+            data-testid={`dashboard-${tab.mode}-panel-trigger`}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function AskAgentCard({ actor, grants }: { actor: string; grants: AccessGrantRecord[] }) {
+  const activeGrants = activeKnowledgeGrants(grants, actor);
+  const grant = activeGrants[0];
+  const href = grant
+    ? `/ask?as=${encodeURIComponent(actor)}&grant=${encodeURIComponent(grant.grant_id)}&cap=${encodeURIComponent(grant.target.capability_id)}`
+    : `/ask?as=${encodeURIComponent(actor)}`;
+
+  return (
+    <MotionAnchor
+      href={href}
+      className="ap-card ap-focus-surface ap-washable block rounded border p-3"
+      data-testid="dashboard-ask-agent-card"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Ask AI agent
+          </p>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+            Ask with your current access
+          </h2>
+          <p className="ap-soft mt-1 max-w-2xl" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            Permission-aware answers for this Work Identity.
+          </p>
+        </div>
+        <span
+          className="ap-affordance-button ap-register-chrome rounded px-3 py-2"
+          style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
+        >
+          Ask
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <Chip>{activeGrants.length > 0 ? `${activeGrants.length} active read grants` : "identity scope only"}</Chip>
+        <Chip mono>{actor}</Chip>
+      </div>
+    </MotionAnchor>
+  );
+}
+
 function TodayCockpit({ model }: { model: TodayCockpitModel }) {
   const attentionCount = model.needsAttention.length;
   return (
     <MotionSection
-      className="ap-card ap-elevated mb-4 rounded border p-4"
+      className="ap-card ap-elevated rounded border p-3"
       data-testid="dashboard-today-cockpit"
     >
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Today
@@ -870,14 +1004,14 @@ function TodayCockpit({ model }: { model: TodayCockpitModel }) {
           <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
             What needs attention?
           </h2>
-          <p className="ap-soft mt-2 max-w-2xl" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
-            Daily work is summarized from loaded requests, approval inbox rows, grants, workflows, and assigned projects.
+          <p className="ap-soft mt-1 max-w-2xl" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            Start here. Open Workspace for the underlying request, grant, and workflow detail.
           </p>
         </div>
         <Chip>{plural(attentionCount, "attention row")}</Chip>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-4">
         <CockpitSection
           emptyLabel="No approval, waiting workflow, or grant-status rows are present."
           items={model.needsAttention}
@@ -936,8 +1070,9 @@ function CockpitSection({
   testId: string;
   title: string;
 }) {
+  const visibleItems = items.slice(0, 2);
   return (
-    <section className="ap-card rounded border p-3" data-testid={testId}>
+    <section className="ap-card rounded border p-2" data-testid={testId}>
       <div className="mb-2 flex items-center justify-between gap-3">
         <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           {title}
@@ -950,20 +1085,33 @@ function CockpitSection({
         <EmptyLine>{emptyLabel}</EmptyLine>
       ) : (
         <div className="space-y-2">
-          {items.map((item, index) => (
-            <CockpitRow item={item} key={`${item.title}:${item.metric}`} delayIndex={index} />
+          {visibleItems.map((item, index) => (
+            <CockpitRow compact item={item} key={`${item.title}:${item.metric}`} delayIndex={index} />
           ))}
+          {items.length > visibleItems.length && (
+            <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+              {items.length - visibleItems.length} more in Workspace
+            </p>
+          )}
         </div>
       )}
     </section>
   );
 }
 
-function CockpitRow({ delayIndex, item }: { delayIndex: number; item: CockpitItem }) {
+function CockpitRow({
+  compact = false,
+  delayIndex,
+  item,
+}: {
+  compact?: boolean;
+  delayIndex: number;
+  item: CockpitItem;
+}) {
   return (
     <MotionAnchor
       href={item.href}
-      className="ap-card ap-washable block rounded border p-3"
+      className="ap-card ap-washable block rounded border p-2"
       delayIndex={delayIndex}
       data-cockpit-action={item.action.toLowerCase()}
       data-cockpit-tone={item.tone}
@@ -985,12 +1133,16 @@ function CockpitRow({ delayIndex, item }: { delayIndex: number; item: CockpitIte
           {item.action}
         </span>
       </div>
-      <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-        {item.detail}
-      </p>
-      <p className="ap-register-evidence ap-soft mt-2" style={{ fontSize: TYPE.scale.xs }}>
-        {item.source}
-      </p>
+      {!compact && (
+        <>
+          <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            {item.detail}
+          </p>
+          <p className="ap-register-evidence ap-soft mt-2" style={{ fontSize: TYPE.scale.xs }}>
+            {item.source}
+          </p>
+        </>
+      )}
     </MotionAnchor>
   );
 }
@@ -1289,7 +1441,189 @@ function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
   );
 }
 
-function WorkspaceLayer({
+function WorkspaceNotifications({ items }: { items: NotificationItem[] }) {
+  return (
+    <section className="ap-card rounded border p-2.5" data-testid="dashboard-notification-center">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+            Action summary
+          </h3>
+          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+            Requests, approvals, grants, and workflow attention from real rows.
+          </p>
+        </div>
+        <Chip>{items.length > 0 ? `${items.length} categories` : "empty"}</Chip>
+      </div>
+      {items.length === 0 ? (
+        <EmptyLine>No request, approval, workflow, grant, or team rows are visible.</EmptyLine>
+      ) : (
+        <div className="grid grid-cols-1 gap-1.5">
+          {items.map((item, index) => (
+            <MotionAnchor
+              key={`${item.category}:${item.title}`}
+              href={item.href}
+              className="ap-card ap-washable block rounded border px-2 py-1.5"
+              delayIndex={index}
+              data-testid="dashboard-notification-item"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+                    {item.category}
+                  </p>
+                  <p className="ap-register-chrome mt-0.5 truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+                    {item.title}
+                  </p>
+                </div>
+                {item.metric && <Chip mono>{item.metric}</Chip>}
+              </div>
+            </MotionAnchor>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function WorkspacePanel({
+  actor,
+  grantError,
+  grants,
+  inbox,
+  notificationItems,
+  onRevokeGrant,
+  projectById,
+  projects,
+  requests,
+  revokingGrantId,
+  roleScope,
+  workflowItems,
+}: {
+  actor: string;
+  grantError: string | null;
+  grants: AccessGrantRecord[];
+  inbox: AccessRequestRecord[];
+  notificationItems: NotificationItem[];
+  onRevokeGrant: (grantId: string) => void;
+  projectById: Map<string, GraphProject>;
+  projects: ProjectRecord[];
+  requests: AccessRequestRecord[];
+  revokingGrantId: string | null;
+  roleScope: RoleScopeSummary | null;
+  workflowItems: WorkflowItem[];
+}) {
+  const waitingWorkflowItems = workflowItems.filter((item) =>
+    ["pending", "blocked", "denied", "cancelled", "expired", "dismissed"].includes(item.status.toLowerCase()),
+  );
+
+  return (
+    <MotionSection
+      className="ap-card ap-glass rounded border p-3 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto"
+      data-testid="dashboard-workspace"
+      id="dashboard-workspace"
+    >
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Workspace
+          </p>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+            Work that may need a decision
+          </h2>
+          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            Review requests, approvals, grants, and workflow items without leaving the cockpit.
+          </p>
+        </div>
+        <Chip>{scopeModeLabel(roleScope)}</Chip>
+      </div>
+
+      <div className="space-y-3">
+        <WorkspaceNotifications items={notificationItems} />
+        <WorkflowCommandSubbar items={notificationItems} />
+
+        <WorkspaceBlock title="Requests and approvals" defaultOpen>
+          <RequestsList
+            actor={actor}
+            grantError={grantError}
+            grants={grants}
+            inbox={inbox}
+            onRevokeGrant={onRevokeGrant}
+            projectById={projectById}
+            requests={requests}
+            revokingGrantId={revokingGrantId}
+          />
+        </WorkspaceBlock>
+
+        <WorkspaceBlock title="Granted Knowledge" defaultOpen>
+          <GrantedKnowledgeList actor={actor} grants={grants} projectById={projectById} />
+        </WorkspaceBlock>
+
+        <WorkspaceBlock title="Workflow alerts">
+          {waitingWorkflowItems.length === 0 ? (
+            <EmptyLine compact>No waiting or blocked workflow rows are visible.</EmptyLine>
+          ) : (
+            <div className="space-y-2">
+              {waitingWorkflowItems.slice(0, 5).map((item, index) => (
+                <MotionAnchor
+                  key={item.item_id}
+                  href={`/project?cap=${encodeURIComponent(item.capability_id)}&as=${encodeURIComponent(actor)}`}
+                  className="ap-card ap-washable block rounded p-2"
+                  delayIndex={index}
+                  data-testid="dashboard-workspace-workflow-alert"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="ap-register-chrome min-w-0" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                      {item.title}
+                    </p>
+                    <Chip>{item.status}</Chip>
+                  </div>
+                  <p className="ap-register-evidence ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+                    {item.capability_id}
+                  </p>
+                </MotionAnchor>
+              ))}
+            </div>
+          )}
+        </WorkspaceBlock>
+
+        {(roleScope?.team_scope.has_team_scope || isDepartmentHead(roleScope?.derived_level)) && (
+          <WorkspaceBlock title="Team and department context">
+            {roleScope?.team_scope.has_team_scope && (
+              <WorkspaceFact
+                label="Team requests"
+                source="reporting line"
+                value={`${roleScope.team_scope.direct_report_count} direct ${roleScope.team_scope.direct_report_count === 1 ? "report" : "reports"}`}
+              />
+            )}
+            {isDepartmentHead(roleScope?.derived_level) && roleScope?.department_scope.department_id && (
+              <WorkspaceFact
+                label="Department context"
+                source="server scope"
+                value={roleScope.department_scope.department_id}
+              />
+            )}
+            <EmptyLine compact>Team workflow rows appear only when the API exposes them.</EmptyLine>
+          </WorkspaceBlock>
+        )}
+
+        <WorkspaceBlock title="Visible workflow layers">
+          <RoleAwareWorkflowLayer
+            actor={actor}
+            inbox={inbox}
+            projectById={projectById}
+            projects={projects}
+            requests={requests}
+            roleScope={roleScope}
+            workflowItems={workflowItems}
+          />
+        </WorkspaceBlock>
+      </div>
+    </MotionSection>
+  );
+}
+
+function ProfilePanel({
   actor,
   graph,
   grants,
@@ -1298,7 +1632,9 @@ function WorkspaceLayer({
   lens,
   projectById,
   requests,
+  roleExperienceCards,
   roleScope,
+  scopeBadges,
   summary,
 }: {
   actor: string;
@@ -1309,11 +1645,15 @@ function WorkspaceLayer({
   lens: LensResponse;
   projectById: Map<string, GraphProject>;
   requests: AccessRequestRecord[];
+  roleExperienceCards: RoleExperienceCard[];
   roleScope: RoleScopeSummary | null;
+  scopeBadges: ScopeBadge[];
   summary: NodeSummary | null;
 }) {
   const systems = deriveConnectedSystems(graph);
   const directReports = roleScope?.team_scope.direct_report_count ?? human?.manages.length ?? 0;
+  const knowledgeSections = lens.holdings.length;
+  const visibleKnowledgeRows = lens.holdings.reduce((sum, section) => sum + section.docs.length, 0);
   const auditRows = [
     ...requests.map((request) => ({
       id: request.request_id,
@@ -1337,17 +1677,17 @@ function WorkspaceLayer({
 
   return (
     <section
-      className="ap-card ap-elevated mb-4 rounded border p-4"
-      data-testid="dashboard-workspace"
-      id="dashboard-workspace"
+      className="ap-card ap-glass rounded border p-3 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto"
+      data-testid="dashboard-profile-panel"
+      id="dashboard-profile"
     >
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-            Work surface
+            Profile
           </p>
           <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
-            Work Identity
+            Identity, access, and systems
           </h2>
         </div>
         <Chip>{scopeModeLabel(roleScope)}</Chip>
@@ -1357,13 +1697,13 @@ function WorkspaceLayer({
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <WorkspaceBlock title="Identity">
+          <WorkspaceBlock title="Identity" defaultOpen>
             <WorkspaceFact label="Identity ID" source="selected Work Identity" value={actor} />
             <WorkspaceFact label="Name" source="Work Identity" value={human?.display_name ?? lens.subject.name} />
             <WorkspaceFact label="Title" source="people record" value={human?.title ?? "Role unavailable"} />
           </WorkspaceBlock>
 
-          <WorkspaceBlock title="Role">
+          <WorkspaceBlock title="Role" defaultOpen>
             <WorkspaceFact
               label="Role posture"
               source="server scope"
@@ -1464,20 +1804,120 @@ function WorkspaceLayer({
               )}
             </div>
           </WorkspaceBlock>
+
+          <WorkspaceBlock title="Role Experience">
+            <RoleExperienceSummary cards={roleExperienceCards} />
+          </WorkspaceBlock>
+
+          <WorkspaceBlock title="Scope Posture">
+            <ScopePosture badges={scopeBadges} />
+          </WorkspaceBlock>
+
+          <WorkspaceBlock title="My Agents">
+            <AgentsList agents={summary?.agents_owned ?? []} />
+          </WorkspaceBlock>
+
+          <WorkspaceBlock title="My Knowledge">
+            <KnowledgeSummary
+              sections={knowledgeSections}
+              rows={visibleKnowledgeRows}
+              holdings={lens.holdings.map((section) => ({
+                count: section.docs.length,
+                sentence: section.sentence,
+              }))}
+            />
+          </WorkspaceBlock>
         </div>
       </div>
     </section>
   );
 }
 
-function WorkspaceBlock({ children, title }: { children: React.ReactNode; title: string }) {
+function SettingsPanel({
+  roleScope,
+  summary,
+}: {
+  roleScope: RoleScopeSummary | null;
+  summary: NodeSummary | null;
+}) {
   return (
-    <section className="ap-card rounded border p-3">
-      <h3 className="ap-register-chrome mb-2" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
-        {title}
-      </h3>
-      <div className="space-y-2">{children}</div>
-    </section>
+    <MotionSection
+      className="ap-card ap-glass rounded border p-3 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto"
+      data-testid="dashboard-settings-panel"
+      id="dashboard-settings"
+    >
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Settings
+          </p>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+            Display and pilot settings
+          </h2>
+          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            These controls affect the local console only. Production identity and policy binding are not connected here.
+          </p>
+        </div>
+        <Chip>{scopeModeLabel(roleScope)}</Chip>
+      </div>
+
+      <div className="space-y-3">
+        <WorkspaceBlock title="Theme">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                Light or dark mode
+              </p>
+              <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+                Choose the display mode for this browser. Dark remains the default for the demo.
+              </p>
+            </div>
+            <ThemeToggle compact />
+          </div>
+        </WorkspaceBlock>
+
+        <WorkspaceBlock title="Agent preferences">
+          <WorkspaceFact
+            label="Owned agents"
+            source="node summary"
+            value={`${summary?.agents_owned?.length ?? 0} owned agents visible`}
+          />
+          <WorkspaceFact
+            label="Agent behavior"
+            source="not connected"
+            value="Personal agent preferences are not connected in this build"
+          />
+        </WorkspaceBlock>
+
+        <WorkspaceBlock title="Identity mode">
+          <DemoIdentityNotice compact context="employee" testId="dashboard-demo-identity-mode" />
+        </WorkspaceBlock>
+      </div>
+    </MotionSection>
+  );
+}
+
+function WorkspaceBlock({
+  children,
+  defaultOpen = false,
+  title,
+}: {
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+  title: string;
+}) {
+  return (
+    <details className="ap-card rounded border p-2.5" open={defaultOpen ? true : undefined}>
+      <summary className="ap-washable flex cursor-pointer list-none items-center justify-between gap-3 rounded px-1 py-0.5">
+        <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+          {title}
+        </h3>
+        <span aria-hidden="true" className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+          Details
+        </span>
+      </summary>
+      <div className="mt-2 space-y-2">{children}</div>
+    </details>
   );
 }
 
@@ -1691,6 +2131,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   const [workflows, setWorkflows] = useState<ProjectWorkflowResponse[]>([]);
   const [grantError, setGrantError] = useState<string | null>(null);
   const [revokingGrantId, setRevokingGrantId] = useState<string | null>(null);
+  const [activePanel, setActivePanel] = useState<DashboardPanelMode>("workspace");
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
 
@@ -1846,8 +2287,6 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   const human = lens.subject_human;
   const projects = human?.projects ?? [];
   const workflowItems = workflows.flatMap((workflow) => workflow.items);
-  const knowledgeSections = lens.holdings.length;
-  const visibleKnowledgeRows = lens.holdings.reduce((sum, section) => sum + section.docs.length, 0);
   const scopeBadges = deriveScopeBadges({
     grants,
     human,
@@ -1856,16 +2295,6 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
     roleScope,
     summary,
     subjectDepartment: lens.subject.department,
-  });
-  const commandPods = buildCommandPods({
-    actor,
-    grants,
-    inbox,
-    projects,
-    requests,
-    roleScope,
-    summary,
-    workflowItems,
   });
   const roleExperienceCards = buildRoleExperienceCards({
     actor,
@@ -1913,7 +2342,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
 
   return (
     <main className="min-w-0 flex-1" data-testid="employee-dashboard">
-      <header className="ap-card ap-focus-surface mb-4 overflow-hidden rounded p-4 md:p-5">
+      <header className="ap-card ap-focus-surface mb-4 overflow-hidden rounded p-4 md:p-5" data-testid="dashboard-cockpit-header">
         <div className="flex flex-wrap items-center gap-3">
           <PersonAvatar
             principalId={actor}
@@ -1937,8 +2366,8 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
               {human?.department_label ? ` / ${human.department_label}` : ""}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <NotificationCenter items={notificationItems} />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <DashboardPanelTabs active={activePanel} onSelect={setActivePanel} />
             <a
               href={`/ask?as=${encodeURIComponent(actor)}`}
               className="ap-affordance-button ap-register-chrome min-h-10 rounded px-3 py-2"
@@ -1951,113 +2380,74 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
         </div>
       </header>
 
-      <TodayCockpit model={todayCockpit} />
+      <section
+        className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_360px]"
+        data-testid="dashboard-compact-cockpit"
+      >
+        <div className="min-w-0 space-y-3" data-testid="dashboard-main-cockpit">
+          <TodayCockpit model={todayCockpit} />
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.05fr_0.95fr]">
+            <Panel
+              title="My Projects"
+              action={
+                <a
+                  className="ap-register-chrome ap-washable rounded px-2 py-1"
+                  href={`/project?as=${encodeURIComponent(actor)}`}
+                  style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+                >
+                  Open board / {projects.length}
+                </a>
+              }
+            >
+              <ProjectsList actor={actor} projects={projects} projectById={projectById} />
+            </Panel>
 
-      <CommandPods pods={commandPods} />
-
-      <WorkflowCommandSubbar items={notificationItems} />
-
-      <RoleAwareWorkflowLayer
-        actor={actor}
-        inbox={inbox}
-        projectById={projectById}
-        projects={projects}
-        requests={requests}
-        roleScope={roleScope}
-        workflowItems={workflowItems}
-      />
-
-      <WorkspaceLayer
-        actor={actor}
-        graph={graph}
-        grants={grants}
-        human={human}
-        inbox={inbox}
-        lens={lens}
-        projectById={projectById}
-        requests={requests}
-        roleScope={roleScope}
-        summary={summary}
-      />
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="space-y-4">
-          <Panel
-            title="Role Experience"
-            action={<Chip>{roleScope ? roleLabel(roleScope.derived_level) : "derived posture unavailable"}</Chip>}
-          >
-            <RoleExperienceSummary cards={roleExperienceCards} />
-          </Panel>
-
-          <Panel
-            title="Scope Posture"
-            action={<Chip>permission preview</Chip>}
-          >
-            <ScopePosture badges={scopeBadges} />
-          </Panel>
-
-          <Panel
-            title="My Projects"
-            action={<span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>{projects.length}</span>}
-          >
-            <ProjectsList actor={actor} projects={projects} projectById={projectById} />
-          </Panel>
-
-          <Panel
-            title="My Workflow"
-            action={<span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>{workflowItems.length}</span>}
-          >
-            <WorkflowSummary actor={actor} items={workflowItems} />
-          </Panel>
+            <Panel
+              title="My Workflow"
+              action={<span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>{workflowItems.length}</span>}
+            >
+              <WorkflowSummary actor={actor} items={workflowItems} />
+            </Panel>
+          </div>
+          <AskAgentCard actor={actor} grants={grants} />
         </div>
 
-        <div className="space-y-4">
-          <Panel
-            title="My Agents"
-            action={<span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>{summary?.agents_owned?.length ?? 0}</span>}
-          >
-            <AgentsList agents={summary?.agents_owned ?? []} />
-          </Panel>
-
-          <Panel
-            title="My Requests"
-            action={<span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>{requests.length + inbox.length + grants.length}</span>}
-          >
-            <RequestsList
+        <aside className="min-w-0 lg:sticky lg:top-4 lg:self-start" data-testid="dashboard-secondary-panel">
+          {activePanel === "workspace" ? (
+            <WorkspacePanel
               actor={actor}
               grantError={grantError}
               grants={grants}
-              requests={requests}
               inbox={inbox}
+              notificationItems={notificationItems}
               onRevokeGrant={revokeGrant}
               projectById={projectById}
+              projects={projects}
+              requests={requests}
               revokingGrantId={revokingGrantId}
+              roleScope={roleScope}
+              workflowItems={workflowItems}
             />
-          </Panel>
-
-          <Panel
-            title="Granted Knowledge"
-            action={
-              <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-                {grants.filter((grant) => grant.status === "active" && grant.grantee_id === actor).length}
-              </span>
-            }
-          >
-            <GrantedKnowledgeList actor={actor} grants={grants} projectById={projectById} />
-          </Panel>
-
-          <Panel title="My Knowledge">
-            <KnowledgeSummary
-              sections={knowledgeSections}
-              rows={visibleKnowledgeRows}
-              holdings={lens.holdings.map((section) => ({
-                count: section.docs.length,
-                sentence: section.sentence,
-              }))}
+          ) : activePanel === "profile" ? (
+            <ProfilePanel
+              actor={actor}
+              graph={graph}
+              grants={grants}
+              human={human}
+              inbox={inbox}
+              lens={lens}
+              projectById={projectById}
+              requests={requests}
+              roleExperienceCards={roleExperienceCards}
+              roleScope={roleScope}
+              scopeBadges={scopeBadges}
+              summary={summary}
             />
-          </Panel>
-        </div>
-      </div>
+          ) : (
+            <SettingsPanel roleScope={roleScope} summary={summary} />
+          )}
+        </aside>
+      </section>
     </main>
   );
 }
@@ -2173,15 +2563,16 @@ function ProjectsList({
   if (projects.length === 0) {
     return <EmptyLine>No assigned projects for this Work Identity.</EmptyLine>;
   }
+  const visibleProjects = projects.slice(0, 2);
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2" data-testid="dashboard-projects">
-      {projects.map((project, index) => {
+      {visibleProjects.map((project, index) => {
         const graphProject = projectById.get(project.capability_id);
         return (
           <MotionAnchor
             key={project.capability_id}
             href={`/project?cap=${encodeURIComponent(project.capability_id)}&as=${encodeURIComponent(actor)}`}
-            className="ap-card ap-washable rounded p-3"
+            className="ap-card ap-washable rounded p-2.5"
             delayIndex={index}
             data-testid="dashboard-project"
           >
@@ -2196,13 +2587,12 @@ function ProjectsList({
               </div>
               <Chip>{project.status}</Chip>
             </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              <Chip mono>{project.capability_id}</Chip>
+            <div className="mt-2 flex flex-wrap gap-1.5">
               <Chip>{project.role}</Chip>
-              {graphProject && <Chip>{graphProject.people} people</Chip>}
+              <Chip mono>{project.capability_id}</Chip>
             </div>
             {graphProject && Object.keys(graphProject.status_counts).length > 0 && (
-              <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs }}>
+              <p className="ap-soft mt-1.5 truncate" style={{ fontSize: TYPE.scale.xs }}>
                 {Object.entries(graphProject.status_counts)
                   .map(([status, count]) => `${status}: ${count}`)
                   .join(" / ")}
@@ -2246,15 +2636,26 @@ function WorkflowSummary({ actor, items }: { actor: string; items: WorkflowItem[
                 <MotionAnchor
                   key={item.item_id}
                   href={`/project?cap=${encodeURIComponent(item.capability_id)}&as=${encodeURIComponent(actor)}`}
-                  className="ap-washable block rounded px-2 py-1"
+                  className="ap-card ap-washable block rounded border px-2 py-2"
                   delayIndex={itemIndex}
                   data-testid="dashboard-workflow-item"
                 >
-                  <span className="ap-register-chrome block truncate" style={{ fontSize: TYPE.scale.xs }}>
+                  <span className="ap-register-chrome block truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
                     {item.title}
                   </span>
-                  <span className="ap-register-evidence ap-soft block truncate" style={{ fontSize: TYPE.scale.xs }}>
-                    {item.status}
+                  <span
+                    className="ap-soft mt-1 block truncate"
+                    style={{ fontSize: TYPE.scale.xs }}
+                    data-testid="dashboard-workflow-item-status"
+                  >
+                    Status: {workflowStatusLabel(item.status)}
+                  </span>
+                  <span
+                    className="ap-register-chrome mt-2 inline-flex rounded px-2 py-1"
+                    style={{ background: "var(--surface-chip)", fontSize: TYPE.scale.xs, fontWeight: 600 }}
+                    data-testid="dashboard-workflow-item-action"
+                  >
+                    {workflowActionLabel(item)}
                   </span>
                 </MotionAnchor>
               ))}

@@ -87,10 +87,80 @@ export function GuidedJourney({
   testId?: string;
 }) {
   const steps = journeySteps(principal);
+  const showAdminSteps = adminLinks || current === "home" || current === "bursar";
+  const visibleSteps = steps.filter((step) => !step.adminOnly || showAdminSteps);
+  const compact = current !== "home" && current !== "bursar";
   const selectionCopy =
     principal === null
       ? "Start with a Work Identity. Until one is selected, Enterprise Brain has no permission scope to show work, access, knowledge, or answers."
       : "This path carries the selected Work Identity through work, access, Ask, the Operating Map, and governed spend.";
+
+  if (compact) {
+    return (
+      <MotionSection
+        className="ap-card ap-glass rounded border p-2"
+        aria-label="Guided product path"
+        data-testid={testId}
+        data-compact="true"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+              Guided path
+            </p>
+            <h2 className="ap-register-chrome mt-0.5" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+              What to do next
+            </h2>
+          </div>
+          <nav className="flex max-w-full gap-1 overflow-x-auto pb-1" aria-label="Compact product path">
+            {visibleSteps.map((step, index) => {
+              const active = current === (step.activeSurface ?? step.surface);
+              const canOpen = !step.adminOnly || showAdminSteps;
+              const className = `${active ? "ap-affordance-button" : "ap-washable ap-flat"} ap-register-chrome inline-flex min-h-9 shrink-0 items-center gap-1 rounded border px-2.5 py-1.5`;
+              const content = (
+                <>
+                  <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+                    {index + 1}
+                  </span>
+                  <span style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>{step.label}</span>
+                </>
+              );
+
+              if (active || !canOpen) {
+                return (
+                  <span
+                    key={step.key}
+                    className={className}
+                    data-active={active ? "true" : "false"}
+                    data-testid={`guided-journey-step-${step.key}`}
+                    aria-current={active ? "step" : undefined}
+                    aria-disabled={!canOpen ? "true" : undefined}
+                    style={{ borderColor: "var(--hairline)" }}
+                  >
+                    {content}
+                  </span>
+                );
+              }
+
+              return (
+                <MotionAnchor
+                  key={step.key}
+                  href={step.href}
+                  className={className}
+                  data-active="false"
+                  data-testid={`guided-journey-step-${step.key}`}
+                  delayIndex={index}
+                  style={{ borderColor: "var(--hairline)" }}
+                >
+                  {content}
+                </MotionAnchor>
+              );
+            })}
+          </nav>
+        </div>
+      </MotionSection>
+    );
+  }
 
   return (
     <MotionSection
@@ -112,9 +182,9 @@ export function GuidedJourney({
         </p>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-        {steps.map((step, index) => {
+        {visibleSteps.map((step, index) => {
           const active = current === (step.activeSurface ?? step.surface);
-          const canOpen = !step.adminOnly || adminLinks || current === "home";
+          const canOpen = !step.adminOnly || showAdminSteps;
           const className = `${active ? "ap-affordance-button" : "ap-washable ap-flat"} ap-register-chrome flex min-h-24 flex-col justify-between rounded border px-3 py-2`;
           const content = (
             <>

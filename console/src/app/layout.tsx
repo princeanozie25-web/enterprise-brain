@@ -106,6 +106,7 @@ body {
 }
 .ap-glass {
   background: var(--surface-glass);
+  border-color: var(--hairline-strong);
   backdrop-filter: blur(var(--material-blur));
   box-shadow: var(--shadow-1), inset 0 1px 0 var(--edge-highlight);
 }
@@ -130,7 +131,9 @@ body {
   background-color: var(--surface-2);
   border-color: var(--hairline-strong);
   box-shadow: var(--shadow-1);
+  transform: translateY(-2px);
 }
+.ap-washable:active { transform: translateY(1px); }
 .ap-affordance-button {
   background: var(--affordance);
   color: var(--paper);
@@ -164,6 +167,11 @@ input, textarea {
   .ap-washable,
   .ap-affordance-button {
     transition: none;
+  }
+  .ap-washable:hover,
+  .ap-washable:active,
+  .ap-affordance-button:active {
+    transform: none;
   }
 }
 `;

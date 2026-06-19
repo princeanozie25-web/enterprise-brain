@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { GraphResponse, NodeSummary, RoleScopeSummary } from "@/lib/api";
 import { Console } from "@/components/Console";
@@ -8,6 +8,8 @@ import { ProductHome } from "@/components/ProductHome";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  localStorage.clear();
+  document.documentElement.setAttribute("data-theme", "dark");
   window.history.pushState({}, "", "/");
 });
 
@@ -164,6 +166,10 @@ describe("route separation", () => {
     expect(screen.getByTestId("admin-preview-badge").textContent).toContain("Demo Identity Mode");
     expect(screen.getByTestId("admin-preview-badge").textContent).toContain("production authority binding is not connected");
     expect(screen.getByTestId("shell-demo-identity-mode").textContent).toContain("Production identity is not connected");
+    expect(screen.getByTestId("theme-toggle").textContent).toContain("Light mode");
+    fireEvent.click(screen.getByTestId("theme-toggle"));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    expect(localStorage.getItem("ap-theme")).toBe("light");
   });
 
   it("renders direct Ask and Workflow Command route shells without fabricating access", () => {
