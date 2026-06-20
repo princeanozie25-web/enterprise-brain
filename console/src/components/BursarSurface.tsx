@@ -39,9 +39,8 @@ const BOUNDARIES = [
 
 function bursarPanelStyle(): React.CSSProperties {
   return {
-    backdropFilter: "blur(var(--material-blur))",
-    background: "var(--surface-glass)",
-    boxShadow: "var(--shadow-1), inset 0 1px 0 var(--edge-highlight)",
+    background: "var(--glass-fill)",
+    boxShadow: "var(--shadow-2), inset 0 1px 0 var(--glass-highlight)",
   };
 }
 
@@ -59,7 +58,7 @@ function StatusChip({ children }: { children: React.ReactNode }) {
 function DoctrineCard({ delayIndex, detail, label }: { delayIndex: number; detail: string; label: string }) {
   return (
     <MotionArticle
-      className="ap-card rounded border p-4"
+      className="ap-glass-panel rounded-2xl p-4"
       data-testid="bursar-doctrine-card"
       delayIndex={delayIndex}
       style={bursarPanelStyle()}
@@ -77,7 +76,7 @@ function DoctrineCard({ delayIndex, detail, label }: { delayIndex: number; detai
 export function BursarSurface() {
   return (
     <main className="min-w-0 flex-1" data-testid="bursar-surface">
-      <MotionSection className="ap-card ap-focus-surface mb-4 overflow-hidden rounded border p-5 md:p-6">
+      <MotionSection className="ap-glass-elevated mb-4 overflow-hidden rounded-2xl p-5 md:p-6">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_0.65fr]">
           <div className="max-w-3xl">
             <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
@@ -116,7 +115,7 @@ export function BursarSurface() {
         </div>
 
         <MotionSection
-          className="ap-card ap-elevated rounded border p-4"
+          className="ap-glass-panel rounded-2xl p-4"
           data-testid="bursar-contract-panel"
           delayIndex={3}
         >
@@ -141,7 +140,7 @@ export function BursarSurface() {
 
       <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[0.88fr_1.12fr]">
         <MotionSection
-          className="ap-card rounded border p-4"
+          className="ap-glass-panel rounded-2xl p-4"
           data-testid="bursar-empty-state"
           delayIndex={4}
           style={bursarPanelStyle()}
@@ -165,7 +164,7 @@ export function BursarSurface() {
         </MotionSection>
 
         <MotionSection
-          className="ap-card rounded border p-4"
+          className="ap-glass-panel rounded-2xl p-4"
           data-testid="bursar-future-beat"
           delayIndex={5}
           style={bursarPanelStyle()}

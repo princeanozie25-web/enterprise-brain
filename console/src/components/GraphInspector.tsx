@@ -112,8 +112,8 @@ export function GraphInspector({
 
   return (
     <aside
-      className="ap-card ap-elevated flex shrink-0 flex-col gap-3 overflow-y-auto rounded p-3"
-      style={{ width: 304, maxHeight: "82vh" }}
+      className="ap-glass-popover flex shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl p-3"
+      style={{ width: 292, maxHeight: "78vh" }}
       data-testid="inspector-card"
     >
       <div className="flex items-start justify-between gap-2">

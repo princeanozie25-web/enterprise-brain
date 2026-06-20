@@ -23,8 +23,8 @@ function tapState(shouldReduce: boolean) {
   return { scale: shouldReduce ? 1 : MOTION.framerTapScale };
 }
 
-function initialState() {
-  return { opacity: 0, y: MOTION.framerEnterY };
+function initialState(shouldReduce: boolean) {
+  return { opacity: 0, y: shouldReduce ? 0 : MOTION.framerEnterY };
 }
 
 export function MotionPanel({
@@ -34,7 +34,7 @@ export function MotionPanel({
   const shouldReduce = useReducedMotion() ?? false;
   return (
     <motion.div
-      initial={initialState()}
+      initial={initialState(shouldReduce)}
       animate={{ opacity: 1, y: 0 }}
       transition={motionTransition(shouldReduce, delayIndex)}
       {...props}
@@ -49,7 +49,7 @@ export function MotionCard({
   const shouldReduce = useReducedMotion() ?? false;
   return (
     <motion.div
-      initial={initialState()}
+      initial={initialState(shouldReduce)}
       animate={{ opacity: 1, y: 0 }}
       whileHover={hoverState(shouldReduce)}
       whileTap={tapState(shouldReduce)}
@@ -66,7 +66,7 @@ export function MotionAnchor({
   const shouldReduce = useReducedMotion() ?? false;
   return (
     <motion.a
-      initial={initialState()}
+      initial={initialState(shouldReduce)}
       animate={{ opacity: 1, y: 0 }}
       whileHover={hoverState(shouldReduce)}
       whileTap={tapState(shouldReduce)}
@@ -83,7 +83,7 @@ export function MotionArticle({
   const shouldReduce = useReducedMotion() ?? false;
   return (
     <motion.article
-      initial={initialState()}
+      initial={initialState(shouldReduce)}
       animate={{ opacity: 1, y: 0 }}
       transition={motionTransition(shouldReduce, delayIndex)}
       {...props}
@@ -98,7 +98,7 @@ export function MotionSection({
   const shouldReduce = useReducedMotion() ?? false;
   return (
     <motion.section
-      initial={initialState()}
+      initial={initialState(shouldReduce)}
       animate={{ opacity: 1, y: 0 }}
       transition={motionTransition(shouldReduce, delayIndex)}
       {...props}
@@ -113,7 +113,7 @@ export function MotionAside({
   const shouldReduce = useReducedMotion() ?? false;
   return (
     <motion.aside
-      initial={initialState()}
+      initial={initialState(shouldReduce)}
       animate={{ opacity: 1, y: 0 }}
       transition={motionTransition(shouldReduce, delayIndex)}
       {...props}

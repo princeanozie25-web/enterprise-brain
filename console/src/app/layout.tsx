@@ -77,9 +77,16 @@ const apertureBase = `
   --ease-iris: ${MOTION.irisEase};
   --dur-skeleton: ${MOTION.skeletonPulse};
   --material-blur: ${MATERIAL.blur};
+  --glass-fill: color-mix(in srgb, var(--surface-glass) 82%, transparent);
+  --glass-border: color-mix(in srgb, var(--hairline-strong) 86%, var(--edge-highlight) 14%);
+  --glass-highlight: color-mix(in srgb, var(--edge-highlight) 72%, transparent);
+  --glass-scrim: color-mix(in srgb, var(--paper) 52%, transparent);
 }
 body {
-  background: var(--surface-0);
+  background:
+    radial-gradient(circle at 12% 4%, color-mix(in srgb, var(--affordance) 16%, transparent), transparent 26rem),
+    radial-gradient(circle at 92% 10%, color-mix(in srgb, var(--accent-warm) 10%, transparent), transparent 24rem),
+    linear-gradient(180deg, var(--surface-0), color-mix(in srgb, var(--surface-0) 84%, var(--surface-1) 16%));
   color: var(--ink);
   font-family: var(--font-chrome);
   font-size: var(--text-sm);
@@ -105,10 +112,50 @@ body {
   box-shadow: var(--shadow-focus);
 }
 .ap-glass {
-  background: var(--surface-glass);
-  border-color: var(--hairline-strong);
+  background: var(--glass-fill);
+  border-color: var(--glass-border);
   backdrop-filter: blur(var(--material-blur));
-  box-shadow: var(--shadow-1), inset 0 1px 0 var(--edge-highlight);
+  -webkit-backdrop-filter: blur(var(--material-blur));
+  box-shadow: var(--shadow-1), inset 0 1px 0 var(--glass-highlight);
+}
+.ap-glass-nav {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--surface-glass) 94%, transparent), color-mix(in srgb, var(--surface-glass) 66%, transparent)),
+    var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(calc(var(--material-blur) * 1.2)) saturate(1.2);
+  -webkit-backdrop-filter: blur(calc(var(--material-blur) * 1.2)) saturate(1.2);
+  box-shadow: var(--shadow-2), inset 0 1px 0 var(--glass-highlight);
+}
+.ap-glass-panel {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-glass) 94%, transparent), color-mix(in srgb, var(--surface-glass) 74%, transparent)),
+    var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(calc(var(--material-blur) * 1.1)) saturate(1.16);
+  -webkit-backdrop-filter: blur(calc(var(--material-blur) * 1.1)) saturate(1.16);
+  box-shadow: var(--shadow-2), inset 0 1px 0 var(--glass-highlight);
+}
+.ap-glass-elevated {
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--affordance) 13%, transparent), transparent 18rem),
+    linear-gradient(145deg, color-mix(in srgb, var(--surface-glass) 96%, transparent), color-mix(in srgb, var(--surface-glass) 68%, transparent));
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(calc(var(--material-blur) * 1.25)) saturate(1.22);
+  -webkit-backdrop-filter: blur(calc(var(--material-blur) * 1.25)) saturate(1.22);
+  box-shadow: var(--shadow-focus), inset 0 1px 0 var(--glass-highlight);
+}
+.ap-glass-popover {
+  background: color-mix(in srgb, var(--surface-glass) 90%, transparent);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(calc(var(--material-blur) * 1.35)) saturate(1.25);
+  -webkit-backdrop-filter: blur(calc(var(--material-blur) * 1.35)) saturate(1.25);
+  box-shadow: var(--shadow-focus), inset 0 1px 0 var(--glass-highlight);
+}
+.ap-glass-scrim {
+  background: var(--glass-scrim);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .ap-flat {
   background: transparent;
@@ -130,8 +177,8 @@ body {
 .ap-washable:hover {
   background-color: var(--surface-2);
   border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-1);
-  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+  transform: translateY(-4px);
 }
 .ap-washable:active { transform: translateY(1px); }
 .ap-affordance-button {
@@ -184,7 +231,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" data-theme="dark">
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
         <style dangerouslySetInnerHTML={{ __html: apertureBase }} />

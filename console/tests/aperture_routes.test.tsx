@@ -163,9 +163,8 @@ describe("route separation", () => {
     expect(screen.getByTestId("view-door-admin-graph").getAttribute("href")).toBe("/admin/graph");
     expect(screen.getByTestId("view-door-admin-graph").textContent).toBe("Operating Map");
     expect(screen.queryByTestId("view-door-bursar")).toBeNull();
-    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("Demo Identity Mode");
-    expect(screen.getByTestId("admin-preview-badge").textContent).toContain("production authority binding is not connected");
-    expect(screen.getByTestId("shell-demo-identity-mode").textContent).toContain("Production identity is not connected");
+    expect(screen.queryByTestId("admin-preview-badge")).toBeNull();
+    expect(screen.queryByTestId("shell-demo-identity-mode")).toBeNull();
     expect(screen.getByTestId("theme-toggle").textContent).toContain("Light mode");
     fireEvent.click(screen.getByTestId("theme-toggle"));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");

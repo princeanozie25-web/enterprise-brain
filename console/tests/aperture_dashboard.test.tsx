@@ -469,16 +469,7 @@ describe("EmployeeDashboard", () => {
     expect(screen.getByTestId("dashboard-panel-tabs").textContent).toContain("Workspace");
     expect(screen.getByTestId("dashboard-panel-tabs").textContent).toContain("Profile");
     expect(screen.getByTestId("dashboard-panel-tabs").textContent).toContain("Settings");
-
-    const notifications = screen.getByTestId("dashboard-notification-center");
-    expect(notifications.textContent).toContain("Action summary");
-    expect(notifications.textContent).toContain("Request status");
-    expect(notifications.textContent).toContain("Approval queue");
-    expect(notifications.textContent).toContain("Workflow attention");
-    expect(notifications.textContent).toContain("Grant ledger events");
-    expect(notifications.textContent).toContain("Team scope available");
-    expect(notifications.textContent).toContain("Department context available");
-    expect(notifications.textContent).not.toMatch(/unread/i);
+    expect(screen.queryByTestId("dashboard-workspace")).toBeNull();
 
     const today = screen.getByTestId("dashboard-today-cockpit");
     expect(today.textContent).toContain("Today");
@@ -493,6 +484,18 @@ describe("EmployeeDashboard", () => {
     expect(screen.getByTestId("dashboard-today-needs-attention").textContent).not.toContain("Approval queue");
     expect(today.textContent).not.toMatch(/unread|overdue|risk score|bursar|governance/i);
 
+    fireEvent.click(screen.getByTestId("dashboard-workspace-panel-trigger"));
+    const workspace = await screen.findByTestId("dashboard-workspace");
+    const notifications = screen.getByTestId("dashboard-notification-center");
+    expect(notifications.textContent).toContain("Action summary");
+    expect(notifications.textContent).toContain("Request status");
+    expect(notifications.textContent).toContain("Approval queue");
+    expect(notifications.textContent).toContain("Workflow attention");
+    expect(notifications.textContent).toContain("Grant ledger events");
+    expect(notifications.textContent).toContain("Team scope available");
+    expect(notifications.textContent).toContain("Department context available");
+    expect(notifications.textContent).not.toMatch(/unread/i);
+
     const commandLayer = screen.getByTestId("dashboard-workflow-command");
     expect(commandLayer.textContent).toContain("Workflow Command");
     expect(commandLayer.textContent).toContain("Requests");
@@ -504,9 +507,8 @@ describe("EmployeeDashboard", () => {
     expect(approvalCommand?.textContent).toContain("Approval scope exists");
     expect(approvalCommand?.textContent).not.toContain("1");
 
-    const workspace = screen.getByTestId("dashboard-workspace");
     expect(workspace.textContent).toContain("Workspace");
-    expect(workspace.textContent).toContain("Work that may need a decision");
+    expect(workspace.textContent).toContain("Work needing a decision");
     expect(workspace.textContent).toContain("Requests and approvals");
     expect(workspace.textContent).toContain("Granted Knowledge");
     expect(workspace.textContent).toContain("Workflow alerts");
@@ -637,7 +639,7 @@ describe("EmployeeDashboard", () => {
     expect(screen.getByTestId("dashboard-main-cockpit").textContent).toContain("My Projects");
     expect(screen.getByTestId("dashboard-main-cockpit").textContent).toContain("My Workflow");
     expect(screen.getByTestId("dashboard-ask-agent-card").textContent).toContain("Ask AI agent");
-    expect(screen.getByTestId("dashboard-workspace")).toBeTruthy();
+    expect(screen.queryByTestId("dashboard-workspace")).toBeNull();
 
     const today = screen.getByTestId("dashboard-today-cockpit");
     expect(today.textContent).toContain("Today");
@@ -645,6 +647,8 @@ describe("EmployeeDashboard", () => {
     expect(today.textContent).not.toContain("Manager Context");
     expect(screen.queryByTestId("dashboard-today-manager-context")).toBeNull();
     expect(today.textContent).not.toMatch(/unread|overdue|risk score|bursar|governance/i);
+    fireEvent.click(screen.getByTestId("dashboard-workspace-panel-trigger"));
+    await screen.findByTestId("dashboard-workspace");
     const notifications = screen.getByTestId("dashboard-notification-center");
     expect(notifications.textContent).not.toContain("Team scope available");
     expect(notifications.textContent).not.toContain("Department context available");
@@ -690,10 +694,10 @@ describe("EmployeeDashboard", () => {
     const today = screen.getByTestId("dashboard-today-cockpit");
     const needsAttention = screen.getByTestId("dashboard-today-needs-attention");
     expect(today.textContent).toContain("0 attention rows");
-    expect(needsAttention.textContent).toContain("No approval, waiting workflow, or grant-status rows are present.");
+    expect(needsAttention.textContent).toContain("Nothing waiting.");
     expect(today.textContent).toContain("Continue active workflow");
-    expect(today.textContent).toContain("No active read grants are available for Ask.");
-    expect(today.textContent).toContain("No submitted access requests are waiting on approval.");
+    expect(today.textContent).toContain("No active grants for Ask.");
+    expect(today.textContent).toContain("No requests waiting.");
     expect(today.textContent).not.toMatch(/unread|notification count|overdue|risk score|bursar|governance/i);
     expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
     expect(container.querySelector("a[href='/admin/bursar']")).toBeNull();
@@ -719,6 +723,8 @@ describe("EmployeeDashboard", () => {
     expect(managerContext.textContent).toContain("Team context");
     expect(managerContext.textContent).toContain("Team workflow rows are not modeled here");
     expect(managerContext.textContent).not.toContain("Department workflow summary");
+    fireEvent.click(screen.getByTestId("dashboard-workspace-panel-trigger"));
+    await screen.findByTestId("dashboard-workspace");
     expect(screen.getByTestId("dashboard-employee-workflow-layer").textContent).toContain("Employee Layer");
     expect(screen.getByTestId("dashboard-team-workflow-layer").textContent).toContain("1 direct report");
     expect(screen.queryByTestId("dashboard-department-workflow-layer")).toBeNull();
@@ -747,6 +753,8 @@ describe("EmployeeDashboard", () => {
     expect(today.textContent).toContain("Today");
     expect(today.textContent).not.toContain("Manager Context");
     expect(today.textContent).not.toMatch(/admin|bursar|governance|unread|notification count/i);
+    fireEvent.click(screen.getByTestId("dashboard-workspace-panel-trigger"));
+    await screen.findByTestId("dashboard-workspace");
     expect(screen.getByTestId("dashboard-employee-workflow-layer").textContent).toContain("Employee Layer");
     expect(screen.getByTestId("dashboard-executive-workflow-label").textContent).toContain("label only");
     expect(screen.queryByTestId("dashboard-team-workflow-layer")).toBeNull();

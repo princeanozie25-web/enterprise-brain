@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "@/lib/api";
 import type {
   AccessGrantRecord,
@@ -91,8 +91,14 @@ export function Console({
     loading: boolean;
     card: DocCard | null;
   }>({ open: false, loading: false, card: null });
+  const lastEntrySearch = useRef<string | null>(null);
 
   const switchPrincipal = useCallback((next: string) => {
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname || "/";
+      const search = `?as=${encodeURIComponent(next)}`;
+      window.history.replaceState(null, "", `${path}${search}`);
+    }
     setPrincipal(next);
     // Clear EVERYTHING the previous lens saw, before any fetch: the iris
     // reveals a clean world.
@@ -114,31 +120,26 @@ export function Console({
   // the atlas loads; /lens?diff=… opens the diff view against the room's
   // subject; ?as=… carries the lens across a room change — and ONLY through
   // entryDoorActor above, the one function a real deployment swaps out.
-  // Read once on mount; absent in tests and direct visits.
+  // Read when the browser URL changes; client navigation can keep this shell
+  // mounted, so the demo entry door must be idempotent rather than one-shot.
   useEffect(() => {
     const search = window.location.search;
+    if (lastEntrySearch.current === search) return;
+    lastEntrySearch.current = search;
     const as = entryDoorActor(search);
     if (as !== null) {
       setPrincipal(as);
     }
     const params = new URLSearchParams(search);
     const cap = (params.get("cap") ?? "").trim();
-    if (cap.length > 0) {
-      setEntryCapability(cap);
-    }
+    setEntryCapability(cap.length > 0 ? cap : null);
     const grant = (params.get("grant") ?? "").trim();
-    if (grant.length > 0) {
-      setEntryGrantId(grant);
-    }
+    setEntryGrantId(grant.length > 0 ? grant : null);
     const diff = (params.get("diff") ?? "").trim();
-    if (diff.length > 0) {
-      setEntryDiff(diff);
-    }
+    setEntryDiff(diff.length > 0 ? diff : null);
     const subject = (params.get("subject") ?? "").trim();
-    if (subject.length > 0) {
-      setEntrySubject(subject);
-    }
-  }, []);
+    setEntrySubject(subject.length > 0 ? subject : null);
+  });
 
   useEffect(() => {
     setReduced(prefersReducedMotion());
@@ -269,12 +270,15 @@ export function Console({
           : view === "adminBursar"
             ? "bursar"
             : null;
+  const showGuidedJourney = journeySurface !== null && view !== "me";
+  const showShellDemoIdentity = view !== "adminGraph" && view !== "me";
+  const showAdminPreviewBadge = view === "adminGraph" || view === "adminBursar";
 
   return (
     <div className="min-h-screen">
       <LensBar principal={principal} onSwitch={switchPrincipal} />
 
-      <nav className="ap-card ap-glass border-x-0 border-t-0" aria-label="Product surfaces" data-testid="view-switcher">
+      <nav className="ap-glass-nav border-x-0 border-t-0" aria-label="Product surfaces" data-testid="view-switcher">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-1.5">
           <ViewDoor label="Work Identity" href="/me" active={view === "me"} principal={principal} testId="view-door-me" />
           <ViewDoor
@@ -301,26 +305,28 @@ export function Console({
               testId="view-door-bursar"
             />
           )}
-          <span
-            className="ap-register-evidence ap-soft rounded px-1.5 py-0.5"
-            style={{ fontSize: TYPE.scale.xs }}
-            data-testid="admin-preview-badge"
-          >
-            Demo Identity Mode: admin and spend rooms are previews; production authority binding is not connected
-          </span>
+          {showAdminPreviewBadge && (
+            <span
+              className="ap-register-evidence ap-soft rounded px-1.5 py-0.5"
+              style={{ fontSize: TYPE.scale.xs }}
+              data-testid="admin-preview-badge"
+            >
+              Demo Identity Mode: admin and spend rooms are previews; production authority binding is not connected
+            </span>
+          )}
           <ViewDoor label="Knowledge View" href="/lens" active={view === "lens"} principal={principal} testId="view-door-lens" />
           <ViewDoor label="Capability Map" href="/atlas" active={view === "atlas"} principal={principal} testId="view-door-atlas" />
           <ViewDoor label="Review Queue" href="/lane" active={view === "lane"} principal={principal} testId="view-door-lane" />
         </div>
       </nav>
 
-      {journeySurface !== null && (
+      {showGuidedJourney && (
         <div className="mx-auto max-w-6xl px-4 pt-4">
           <GuidedJourney adminLinks={view === "adminBursar"} current={journeySurface} principal={principal} />
         </div>
       )}
 
-      {view !== "adminGraph" && (
+      {showShellDemoIdentity && (
         <div className="mx-auto max-w-6xl px-4 pt-4">
           <DemoIdentityNotice
             compact
@@ -332,7 +338,7 @@ export function Console({
 
       <div
         key={principal ?? "no-work-identity"}
-        className={`mx-auto flex max-w-6xl flex-col gap-6 p-4 md:flex-row ${irisClass}`}
+        className={`mx-auto flex ${view === "me" ? "max-w-7xl gap-3 px-4 py-3" : "max-w-6xl gap-6 p-4"} flex-col md:flex-row ${irisClass}`}
         data-testid="iris-stage"
       >
         {view === "adminGraph" ? (
@@ -380,7 +386,7 @@ export function Console({
             </p>
           </MotionPanel>
 
-          <MotionPanel className="ap-card ap-focus-surface rounded p-3" delayIndex={1}>
+          <MotionPanel className="ap-glass-elevated rounded-2xl p-4" delayIndex={1}>
             {(entryGrantId !== null || grantContext !== null || grantContextUnavailable) && (
               <GrantedAskContextPanel
                 capabilityId={entryCapability}
@@ -450,7 +456,7 @@ export function Console({
 
           <div className="mt-4 space-y-4">
             {asking && (
-              <MotionPanel className="ap-card rounded p-4">
+              <MotionPanel className="ap-glass-panel rounded-2xl p-4">
                 <Skeleton lines={3} />
               </MotionPanel>
             )}
@@ -471,7 +477,7 @@ export function Console({
                   />
                 </div>
                 <AnswerCard envelope={envelope} onOpenDoc={openDoc} />
-                <MotionSection className="ap-card rounded p-3" delayIndex={1}>
+                <MotionSection className="ap-glass-panel rounded-2xl p-3" delayIndex={1}>
                   <h2
                     className="ap-soft px-2 pb-1 pt-1 uppercase tracking-wide"
                     style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -516,7 +522,7 @@ function GrantedAskContextPanel({
   const title = serverContext?.capability.name ?? capabilityId ?? "Granted capability";
   return (
     <MotionSection
-      className="ap-card ap-glass mb-3 rounded border p-3"
+      className="ap-glass-panel mb-3 rounded-2xl p-3"
       data-testid="ask-granted-context"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">

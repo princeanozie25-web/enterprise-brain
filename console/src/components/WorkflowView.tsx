@@ -162,14 +162,14 @@ export function WorkflowView({
 
       <WorkflowRolePosture workflow={workflow} roleScope={roleScope} />
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {GROUPS.map((group, groupIndex) => {
           const items = grouped.get(group.label) ?? [];
           return (
             <MotionPanel
               key={group.label}
-              className="ap-card min-w-0 rounded p-3"
-              style={{ minHeight: 280 }}
+              className="ap-glass-panel min-w-0 rounded-2xl p-3"
+              style={{ minHeight: 300 }}
               data-testid="workflow-group"
               delayIndex={groupIndex}
             >
@@ -313,32 +313,25 @@ function WorkflowCard({ item }: { item: WorkflowItem }) {
 
   return (
     <MotionArticle
-      className="ap-card ap-washable rounded border p-3"
+      className="ap-card ap-washable rounded-2xl border p-3"
       data-testid="workflow-item"
       data-status={item.status}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-            {KIND_LABEL[item.kind]}
+            Task
           </p>
           <p
             className="ap-register-chrome mt-1"
-            style={{ fontSize: TYPE.scale.sm, fontWeight: 600, lineHeight: TYPE.line.body }}
+            style={{ fontSize: TYPE.scale.md, fontWeight: 700, lineHeight: TYPE.line.body }}
             data-testid="workflow-item-title"
           >
             {item.title}
           </p>
-          <p
-            className="ap-register-evidence ap-soft mt-1 truncate"
-            style={{ fontSize: TYPE.scale.xs }}
-            data-testid="workflow-item-id"
-          >
-            {item.item_id}
-          </p>
         </div>
         <span
-          className="ap-chip ap-register-chrome shrink-0 rounded px-2 py-1"
+          className="ap-chip ap-register-chrome shrink-0 rounded-full px-2 py-1"
           style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
           data-testid="workflow-item-status"
         >
@@ -351,23 +344,50 @@ function WorkflowCard({ item }: { item: WorkflowItem }) {
         style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
         data-testid="workflow-provenance"
       >
-        {item.provenance.strategy.name} / {item.provenance.initiative.name} / {item.provenance.workflow.name}
+        {KIND_LABEL[item.kind]} in {item.provenance.workflow.name}
       </p>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-2" style={{ borderColor: "var(--hairline)" }}>
+      <div className="ap-hairline mt-3 rounded-xl border px-2 py-2">
+        <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+          Project / capability
+        </p>
+        <p className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+          {item.provenance.initiative.name} / {item.provenance.strategy.name}
+        </p>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3" style={{ borderColor: "var(--hairline)" }}>
+        <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Next action
+          </p>
+          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+            {statusLabel(item.status) === "Waiting" ? "Waiting on review or dependency." : "Open the work surface."}
+          </p>
+        </div>
         <span
-          className="ap-affordance-button ap-register-chrome rounded px-3 py-2"
+          className="ap-affordance-button ap-register-chrome rounded-full px-3 py-2"
           style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
           data-testid="workflow-item-action"
         >
           {actionLabel(item)}
         </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p
+          className="ap-register-evidence ap-soft truncate"
+          style={{ fontSize: TYPE.scale.xs }}
+          data-testid="workflow-item-id"
+        >
+          {item.item_id}
+        </p>
         <div className="flex flex-wrap justify-end gap-1.5">
-        {actors.map(([label, value]) => (
-          <Chip key={`${label}:${value}`} mono>
-            {label} {value}
-          </Chip>
-        ))}
+          {actors.slice(0, 2).map(([label, value]) => (
+            <Chip key={`${label}:${value}`} mono>
+              {label} {value}
+            </Chip>
+          ))}
         </div>
       </div>
 

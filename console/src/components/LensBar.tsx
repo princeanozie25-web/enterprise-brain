@@ -49,16 +49,16 @@ export function LensBar({
   };
 
   return (
-    <header className="ap-card ap-glass border-x-0 border-t-0" data-testid="lens-bar">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
+    <header className="ap-glass-nav border-x-0 border-t-0" data-testid="lens-bar">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Work Identity
           </span>
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
-            className="ap-washable flex min-h-10 items-center gap-2 rounded px-2 py-1"
+            className="ap-washable flex min-h-10 items-center gap-2 rounded-full px-2 py-1"
             data-testid="lens-current"
           >
             <span
@@ -90,6 +90,13 @@ export function LensBar({
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="principal-search"
           />
+          <span
+            className="ap-chip ap-register-chrome rounded-full px-2 py-1"
+            style={{ fontSize: TYPE.scale.xs }}
+            data-testid="demo-banner"
+          >
+            Demo Identity Mode: Production identity is not connected.
+          </span>
         </div>
         <ThemeToggle compact />
       </div>
@@ -127,13 +134,9 @@ export function LensBar({
         </div>
       )}
 
-      <div
-        className="mx-auto max-w-6xl px-4 pb-1.5 text-center"
-        style={{ fontSize: TYPE.scale.xs, color: COLOR.inkSoft }}
-        data-testid="demo-banner"
-      >
-        Demo Identity Mode: Work Identity selection previews permission boundaries in this local pilot workspace. Production identity is not connected.
-      </div>
+      <p className="sr-only">
+        Work Identity selection previews permission boundaries in this local pilot workspace. Production identity is not connected.
+      </p>
     </header>
   );
 }

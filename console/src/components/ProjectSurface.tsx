@@ -48,7 +48,7 @@ function ProjectEntryState({
   const carry = actor === null ? "?as=p060" : `?as=${encodeURIComponent(actor)}`;
   return (
     <main className="min-w-0 flex-1" data-testid={testId}>
-      <MotionSection className="ap-card ap-elevated rounded p-4">
+      <MotionSection className="ap-glass-elevated rounded-2xl p-4">
         <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
           Workflow Command
         </p>
@@ -183,7 +183,7 @@ export function ProjectSurface({
               {title}
             </h1>
           </div>
-          <div className="ap-card ap-glass flex shrink-0 gap-1 rounded p-1" data-testid="project-tabs">
+          <div className="ap-glass-panel flex shrink-0 gap-1 rounded-full p-1" data-testid="project-tabs">
             <TabButton active={tab === "graph"} onClick={() => setTab("graph")}>
               Operating Map Trace
             </TabButton>
@@ -270,7 +270,7 @@ function ProjectTraceView({
 
   return (
     <section className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr]" data-testid="project-graph-view">
-      <MotionArticle className="ap-card rounded p-4">
+      <MotionArticle className="ap-glass-panel rounded-2xl p-4">
         <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           Project Trace
         </h2>
@@ -289,7 +289,7 @@ function ProjectTraceView({
         </p>
       </MotionArticle>
 
-      <MotionArticle className="ap-card rounded p-4" delayIndex={1}>
+      <MotionArticle className="ap-glass-panel rounded-2xl p-4" delayIndex={1}>
         <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           Departments
         </h2>

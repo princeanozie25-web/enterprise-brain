@@ -426,7 +426,7 @@ function GraphAuditPanel({
 
   return (
     <MotionAside
-      className="ap-card ap-glass fixed left-4 top-[74px] z-20 flex w-[336px] max-w-[calc(100vw-32px)] flex-col gap-3 rounded p-3"
+      className="ap-glass-popover fixed left-4 top-[74px] z-20 flex w-[292px] max-w-[calc(100vw-32px)] flex-col gap-2 rounded-2xl p-3"
       data-testid="graph-audit-panel"
       aria-label="Audited Operating Map context"
     >
@@ -449,8 +449,7 @@ function GraphAuditPanel({
       </div>
 
       <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }} data-testid="graph-audited-line">
-        This view is audited. It draws only relationship records returned for this Work Identity; hidden or restricted
-        relationships are not shown.
+        This view is audited. Only visible relationship records are drawn; hidden or restricted relationships are not shown.
       </p>
 
       <div className="grid grid-cols-3 gap-1.5" aria-label="Data-backed map counts">
@@ -575,14 +574,17 @@ function AccessRequestRail({
 
   return (
     <MotionAside
-      className="ap-card ap-glass fixed left-4 top-[386px] z-20 flex max-h-[280px] w-[292px] max-w-[calc(100vw-32px)] flex-col gap-3 overflow-y-auto rounded p-3"
+      className="ap-glass-popover fixed bottom-4 right-4 z-20 flex max-h-[240px] w-[320px] max-w-[calc(100vw-32px)] flex-col gap-2 overflow-y-auto rounded-2xl p-3"
       data-testid="access-request-rail"
       aria-label="Access requests"
     >
       <div className="flex items-baseline justify-between gap-2">
-        <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+        <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 700 }}>
           Access requests
         </p>
+        <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }} data-testid="access-request-compact-count">
+          {requests.length + inbox.length}
+        </span>
         {loading && (
           <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Loading

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as api from "@/lib/api";
 import type {
   AccessGrantRecord,
@@ -120,9 +121,8 @@ function workflowActionLabel(item: WorkflowItem): string {
 
 function dashboardPanelStyle(): React.CSSProperties {
   return {
-    backdropFilter: "blur(var(--material-blur))",
-    background: "var(--surface-glass)",
-    boxShadow: "var(--shadow-1), inset 0 1px 0 var(--edge-highlight)",
+    background: "var(--glass-fill)",
+    boxShadow: "var(--shadow-2), inset 0 1px 0 var(--glass-highlight)",
   };
 }
 
@@ -466,9 +466,9 @@ function Panel({
   title: string;
 }) {
   return (
-    <MotionSection className="ap-card rounded p-3" delayIndex={delayIndex} style={dashboardPanelStyle()}>
+    <MotionSection className="ap-glass-panel rounded-2xl p-4" delayIndex={delayIndex} style={dashboardPanelStyle()}>
       <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+        <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
           {title}
         </h2>
         {action}
@@ -912,7 +912,7 @@ function DashboardPanelTabs({
   active,
   onSelect,
 }: {
-  active: DashboardPanelMode;
+  active: DashboardPanelMode | null;
   onSelect: (mode: DashboardPanelMode) => void;
 }) {
   const tabs: { label: string; mode: DashboardPanelMode }[] = [
@@ -923,10 +923,9 @@ function DashboardPanelTabs({
 
   return (
     <div
-      className="ap-card ap-glass flex flex-wrap gap-1 rounded p-1"
+      className="ap-glass-panel flex flex-wrap gap-1 rounded-full p-1"
       data-testid="dashboard-panel-tabs"
-      role="tablist"
-      aria-label="Employee cockpit panels"
+      aria-label="Open cockpit panels"
     >
       {tabs.map((tab) => {
         const selected = active === tab.mode;
@@ -934,11 +933,12 @@ function DashboardPanelTabs({
           <button
             key={tab.mode}
             type="button"
-            className={`${selected ? "ap-affordance-button" : "ap-washable"} ap-register-chrome min-h-10 rounded px-3 py-2`}
+            className={`${selected ? "ap-affordance-button" : "ap-washable"} ap-register-chrome min-h-10 rounded-full px-3 py-2`}
             style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
             onClick={() => onSelect(tab.mode)}
-            role="tab"
-            aria-selected={selected}
+            aria-haspopup="dialog"
+            aria-expanded={selected}
+            data-active={selected ? "true" : "false"}
             data-testid={`dashboard-${tab.mode}-panel-trigger`}
           >
             {tab.label}
@@ -959,31 +959,33 @@ function AskAgentCard({ actor, grants }: { actor: string; grants: AccessGrantRec
   return (
     <MotionAnchor
       href={href}
-      className="ap-card ap-focus-surface ap-washable block rounded border p-3"
+      className="ap-glass-elevated ap-washable block h-full rounded-2xl p-4"
       data-testid="dashboard-ask-agent-card"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex h-full flex-col justify-between gap-4">
         <div className="min-w-0">
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Ask AI agent
           </p>
-          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
             Ask with your current access
           </h2>
           <p className="ap-soft mt-1 max-w-2xl" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-            Permission-aware answers for this Work Identity.
+            Get an answer scoped to what this identity may see.
           </p>
         </div>
-        <span
-          className="ap-affordance-button ap-register-chrome rounded px-3 py-2"
-          style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
-        >
-          Ask
-        </span>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <Chip>{activeGrants.length > 0 ? `${activeGrants.length} active read grants` : "identity scope only"}</Chip>
-        <Chip mono>{actor}</Chip>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap gap-1.5">
+            <Chip>{activeGrants.length > 0 ? `${activeGrants.length} read grants` : "identity scope"}</Chip>
+            <Chip mono>{actor}</Chip>
+          </div>
+          <span
+            className="ap-affordance-button ap-register-chrome rounded-full px-4 py-2"
+            style={{ fontSize: TYPE.scale.sm, fontWeight: 700 }}
+          >
+            Ask
+          </span>
+        </div>
       </div>
     </MotionAnchor>
   );
@@ -993,45 +995,42 @@ function TodayCockpit({ model }: { model: TodayCockpitModel }) {
   const attentionCount = model.needsAttention.length;
   return (
     <MotionSection
-      className="ap-card ap-elevated rounded border p-3"
+      className="ap-glass-panel rounded-2xl p-3"
       data-testid="dashboard-today-cockpit"
     >
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Today
           </p>
-          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+          <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
             What needs attention?
           </h2>
-          <p className="ap-soft mt-1 max-w-2xl" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-            Start here. Open Workspace for the underlying request, grant, and workflow detail.
-          </p>
         </div>
         <Chip>{plural(attentionCount, "attention row")}</Chip>
       </div>
 
-      <div className="grid grid-cols-1 gap-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
         <CockpitSection
-          emptyLabel="No approval, waiting workflow, or grant-status rows are present."
+          emptyLabel="Nothing waiting."
           items={model.needsAttention}
           testId="dashboard-today-needs-attention"
           title="Needs Attention"
         />
         <CockpitSection
-          emptyLabel="No active project workflow rows are available."
+          emptyLabel="No active workflow rows."
           items={model.continueWork}
           testId="dashboard-today-continue-work"
           title="Continue Work"
         />
         <CockpitSection
-          emptyLabel="No active read grants are available for Ask."
+          emptyLabel="No active grants for Ask."
           items={model.askWithContext}
           testId="dashboard-today-ask-context"
-          title="Ask With Context"
+          title="Ask"
         />
         <CockpitSection
-          emptyLabel="No submitted access requests are waiting on approval."
+          emptyLabel="No requests waiting."
           items={model.waitingOn}
           testId="dashboard-today-waiting-on"
           title="Waiting On"
@@ -1039,7 +1038,7 @@ function TodayCockpit({ model }: { model: TodayCockpitModel }) {
       </div>
 
       {model.managerRows.length > 0 && (
-        <section className="mt-3" data-testid="dashboard-today-manager-context">
+        <section className="mt-2" data-testid="dashboard-today-manager-context">
           <div className="mb-2 flex items-center justify-between gap-3">
             <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
               Manager Context
@@ -1072,8 +1071,8 @@ function CockpitSection({
 }) {
   const visibleItems = items.slice(0, 2);
   return (
-    <section className="ap-card rounded border p-2" data-testid={testId}>
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <section className="ap-card rounded-xl border p-2" data-testid={testId}>
+      <div className="flex items-center justify-between gap-3">
         <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           {title}
         </h3>
@@ -1084,7 +1083,7 @@ function CockpitSection({
       {items.length === 0 ? (
         <EmptyLine>{emptyLabel}</EmptyLine>
       ) : (
-        <div className="space-y-2">
+        <div className="mt-2 space-y-2">
           {visibleItems.map((item, index) => (
             <CockpitRow compact item={item} key={`${item.title}:${item.metric}`} delayIndex={index} />
           ))}
@@ -1111,13 +1110,13 @@ function CockpitRow({
   return (
     <MotionAnchor
       href={item.href}
-      className="ap-card ap-washable block rounded border p-2"
+      className="ap-card ap-washable block rounded-xl border p-2"
       delayIndex={delayIndex}
       data-cockpit-action={item.action.toLowerCase()}
       data-cockpit-tone={item.tone}
       data-testid="dashboard-today-row"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             {item.metric}
@@ -1519,7 +1518,7 @@ function WorkspacePanel({
 
   return (
     <MotionSection
-      className="ap-card ap-glass rounded border p-3 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto"
+      className="ap-glass-panel rounded-2xl p-3"
       data-testid="dashboard-workspace"
       id="dashboard-workspace"
     >
@@ -1528,12 +1527,9 @@ function WorkspacePanel({
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Workspace
           </p>
-          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
-            Work that may need a decision
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
+            Work needing a decision
           </h2>
-          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-            Review requests, approvals, grants, and workflow items without leaving the cockpit.
-          </p>
         </div>
         <Chip>{scopeModeLabel(roleScope)}</Chip>
       </div>
@@ -1677,7 +1673,7 @@ function ProfilePanel({
 
   return (
     <section
-      className="ap-card ap-glass rounded border p-3 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto"
+      className="ap-glass-panel rounded-2xl p-3"
       data-testid="dashboard-profile-panel"
       id="dashboard-profile"
     >
@@ -1686,7 +1682,7 @@ function ProfilePanel({
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Profile
           </p>
-          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
             Identity, access, and systems
           </h2>
         </div>
@@ -1842,7 +1838,7 @@ function SettingsPanel({
 }) {
   return (
     <MotionSection
-      className="ap-card ap-glass rounded border p-3 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto"
+      className="ap-glass-panel rounded-2xl p-3"
       data-testid="dashboard-settings-panel"
       id="dashboard-settings"
     >
@@ -1851,12 +1847,9 @@ function SettingsPanel({
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Settings
           </p>
-          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
             Display and pilot settings
           </h2>
-          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-            These controls affect the local console only. Production identity and policy binding are not connected here.
-          </p>
         </div>
         <Chip>{scopeModeLabel(roleScope)}</Chip>
       </div>
@@ -1894,6 +1887,66 @@ function SettingsPanel({
         </WorkspaceBlock>
       </div>
     </MotionSection>
+  );
+}
+
+function DashboardPanelDrawer({
+  children,
+  mode,
+  onClose,
+}: {
+  children: React.ReactNode;
+  mode: DashboardPanelMode | null;
+  onClose: () => void;
+}) {
+  const shouldReduce = useReducedMotion() ?? false;
+  const title = mode === "workspace" ? "Workspace" : mode === "profile" ? "Profile" : "Settings";
+
+  return (
+    <AnimatePresence>
+      {mode !== null && (
+        <>
+          <motion.button
+            type="button"
+            className="ap-glass-scrim fixed inset-0 z-40 cursor-default"
+            aria-label={`Close ${title}`}
+            data-testid="dashboard-drawer-scrim"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: shouldReduce ? 0 : 0.18 }}
+          />
+          <motion.aside
+            role="dialog"
+            aria-modal="false"
+            aria-label={`${title} panel`}
+            className="ap-glass-popover fixed bottom-3 right-3 top-3 z-50 w-[min(456px,calc(100vw-24px))] overflow-y-auto rounded-2xl p-3"
+            data-testid="dashboard-active-drawer"
+            initial={{ opacity: 0, x: shouldReduce ? 0 : 42 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: shouldReduce ? 0 : 28 }}
+            transition={{ duration: shouldReduce ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
+                {title}
+              </p>
+              <button
+                type="button"
+                className="ap-washable ap-register-chrome min-h-10 rounded-full border px-3 py-2"
+                style={{ borderColor: "var(--hairline)", fontSize: TYPE.scale.xs, fontWeight: 700 }}
+                onClick={onClose}
+                data-testid="dashboard-drawer-close"
+              >
+                Close
+              </button>
+            </div>
+            {children}
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -2131,7 +2184,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   const [workflows, setWorkflows] = useState<ProjectWorkflowResponse[]>([]);
   const [grantError, setGrantError] = useState<string | null>(null);
   const [revokingGrantId, setRevokingGrantId] = useState<string | null>(null);
-  const [activePanel, setActivePanel] = useState<DashboardPanelMode>("workspace");
+  const [activePanel, setActivePanel] = useState<DashboardPanelMode | null>(null);
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
 
@@ -2342,51 +2395,55 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
 
   return (
     <main className="min-w-0 flex-1" data-testid="employee-dashboard">
-      <header className="ap-card ap-focus-surface mb-4 overflow-hidden rounded p-4 md:p-5" data-testid="dashboard-cockpit-header">
+      <header
+        className="ap-glass-nav sticky top-2 z-20 mb-3 rounded-2xl px-3 py-2"
+        data-layout="compact-strip"
+        data-testid="dashboard-cockpit-header"
+      >
         <div className="flex flex-wrap items-center gap-3">
           <PersonAvatar
             principalId={actor}
             displayName={human?.display_name ?? lens.subject.name}
             department={human?.department_label ?? lens.subject.department ?? null}
-            size={48}
+            size={40}
           />
           <div className="min-w-0 flex-1">
-            <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-              Work Identity {actor}
-            </p>
             <h1
               className="ap-register-chrome mt-1"
-              style={{ fontSize: TYPE.scale.xl, fontWeight: 600, lineHeight: TYPE.line.display }}
+              style={{ fontSize: TYPE.scale.md, fontWeight: 700, lineHeight: TYPE.line.display }}
               data-testid="dashboard-user-name"
             >
               {human?.display_name ?? lens.subject.name}
             </h1>
-            <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.sm }}>
+            <p className="ap-soft truncate" style={{ fontSize: TYPE.scale.xs }}>
               {human?.title ?? "Role unavailable"}
               {human?.department_label ? ` / ${human.department_label}` : ""}
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <DashboardPanelTabs active={activePanel} onSelect={setActivePanel} />
+          <Chip mono>{actor}</Chip>
+          <Chip>Demo Identity Mode</Chip>
+          <div className="flex flex-wrap items-center justify-end gap-2" data-testid="dashboard-identity-strip">
+            <DashboardPanelTabs active={activePanel} onSelect={(mode) => setActivePanel((current) => (current === mode ? null : mode))} />
             <a
               href={`/ask?as=${encodeURIComponent(actor)}`}
-              className="ap-affordance-button ap-register-chrome min-h-10 rounded px-3 py-2"
+              className="ap-affordance-button ap-register-chrome min-h-10 rounded-full px-3 py-2"
               style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
               data-testid="dashboard-ask-link"
             >
-              Ask Enterprise Brain
+              Ask
             </a>
+            <ThemeToggle compact />
           </div>
         </div>
       </header>
 
       <section
-        className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_360px]"
+        className="space-y-3"
         data-testid="dashboard-compact-cockpit"
       >
         <div className="min-w-0 space-y-3" data-testid="dashboard-main-cockpit">
           <TodayCockpit model={todayCockpit} />
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)_minmax(280px,0.72fr)]">
             <Panel
               title="My Projects"
               action={
@@ -2408,12 +2465,13 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
             >
               <WorkflowSummary actor={actor} items={workflowItems} />
             </Panel>
+            <AskAgentCard actor={actor} grants={grants} />
           </div>
-          <AskAgentCard actor={actor} grants={grants} />
         </div>
+      </section>
 
-        <aside className="min-w-0 lg:sticky lg:top-4 lg:self-start" data-testid="dashboard-secondary-panel">
-          {activePanel === "workspace" ? (
+      <DashboardPanelDrawer mode={activePanel} onClose={() => setActivePanel(null)}>
+        {activePanel === "workspace" ? (
             <WorkspacePanel
               actor={actor}
               grantError={grantError}
@@ -2443,11 +2501,10 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
               scopeBadges={scopeBadges}
               summary={summary}
             />
-          ) : (
+          ) : activePanel === "settings" ? (
             <SettingsPanel roleScope={roleScope} summary={summary} />
-          )}
-        </aside>
-      </section>
+          ) : null}
+      </DashboardPanelDrawer>
     </main>
   );
 }
