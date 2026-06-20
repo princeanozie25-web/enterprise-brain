@@ -1,0 +1,43 @@
+[package]
+name = "wiki"
+version = "0.1.0"
+edition = "2021"
+description = "Enterprise Brain — org knowledge layer (slices 1-2): deterministic + scoped-LLM entity pages derived from the synthetic Bryremead sources, firewalled from the compiled authorization model and scope-gated at derivation."
+publish = false
+
+# FIREWALL BY CONSTRUCTION (slice 1, preserved in slice 2): the runtime crate
+# has NO dependency on `scope-compiler` and therefore no compilable path to
+# `compile`, `write_artifacts`, or any mutation of the authorization model. The
+# compiled artifacts are read as immutable JSON through this crate's own
+# Deserialize-only structs (see `authz.rs`).
+#
+# Slice 2 adds a READ-ONLY dependency on `retrieval`: it is used to (a) load a
+# principal's compiled allowlist via the proven `PrincipalScope` loader and
+# (b) fetch scope-gated source material via governed search (allowlist applied
+# INSIDE the query). `retrieval`'s own runtime deps do NOT include
+# `scope-compiler` (it is dev-only there too), so depending on it introduces NO
+# authz write path — asserted by a test. Its `local_llm::LocalLlmClient` (a
+# loopback-only HTTP client) is reused to reach local Ollama; data never leaves.
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+retrieval = { path = "../retrieval" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+# Tests compile FRESH M1 artifacts into a temp dir via the frozen compiler
+# crate — exactly as `retrieval` and `service` do — to produce the read-only
+# authz INPUT. This is the ONLY place `scope-compiler` is linked, and even here
+# it only PRODUCES artifacts; the wiki runtime never touches it. sha2 powers the
+# byte-equality firewall proof (artifacts unchanged across a full derivation).
+scope-compiler = { path = "../compiler" }
+sha2 = "0.10"
+
+[lib]
+name = "wiki"
+path = "src/lib.rs"
+
+[[bin]]
+name = "wiki"
+path = "src/main.rs"
