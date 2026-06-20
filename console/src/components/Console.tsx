@@ -67,6 +67,12 @@ export function Console({
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
   const [query, setQuery] = useState("");
+  // Ask request modes. Both stay OFF: the toggles that set them are rendered
+  // DISABLED (see BROAD_SEARCH_AVAILABLE / VERIFIED_ANSWERS_AVAILABLE) because
+  // the engine 500s on hybrid (AR-1b regen dropped the vector index) and on
+  // judge (no judge model running). With the toggles disabled, /ask only ever
+  // runs the working lexical-only path. Re-enabling is a one-line flag flip
+  // once the engine supports each mode.
   const [hybrid, setHybrid] = useState(false);
   const [judge, setJudge] = useState(false);
   const [envelope, setEnvelope] = useState<AnswerEnvelope | null>(null);
@@ -417,31 +423,25 @@ export function Console({
               style={{ fontSize: TYPE.scale.sm }}
               data-testid="query-input"
             />
-            <div className="mt-2 flex items-center gap-4">
-              <label
-                className="ap-soft flex items-center gap-1.5"
-                style={{ fontSize: TYPE.scale.xs }}
-              >
-                <input
-                  type="checkbox"
-                  checked={hybrid}
-                  onChange={(e) => setHybrid(e.target.checked)}
-                  data-testid="toggle-hybrid"
-                />
-                hybrid
-              </label>
-              <label
-                className="ap-soft flex items-center gap-1.5"
-                style={{ fontSize: TYPE.scale.xs }}
-              >
-                <input
-                  type="checkbox"
-                  checked={judge}
-                  onChange={(e) => setJudge(e.target.checked)}
-                  data-testid="toggle-judge"
-                />
-                judge
-              </label>
+            <div className="mt-3 flex flex-wrap items-start gap-x-6 gap-y-3">
+              <AskToggle
+                checked={hybrid}
+                onChange={setHybrid}
+                label="Broad search"
+                helper="Finds documents by meaning, not only exact keywords."
+                testId="toggle-hybrid"
+                available={BROAD_SEARCH_AVAILABLE}
+                reason={BROAD_SEARCH_UNAVAILABLE_REASON}
+              />
+              <AskToggle
+                checked={judge}
+                onChange={setJudge}
+                label="Verified answers"
+                helper="Only shows answers it can check against your documents; unverifiable claims are left out."
+                testId="toggle-judge"
+                available={VERIFIED_ANSWERS_AVAILABLE}
+                reason={VERIFIED_ANSWERS_UNAVAILABLE_REASON}
+              />
               <button
                 type="button"
                 onClick={submitAsk}
@@ -450,7 +450,7 @@ export function Console({
                   asking ||
                   (entryGrantId !== null && entryCapability !== null && grantContext === null)
                 }
-                className="ap-affordance-button ml-auto min-h-10 rounded px-3 py-2"
+                className="ap-affordance-button ml-auto min-h-10 self-center rounded px-3 py-2"
                 style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
                 data-testid="ask-button"
               >
@@ -506,6 +506,103 @@ export function Console({
         onClose={() => setInspector({ open: false, loading: false, card: null })}
         onOpenDoc={openDoc}
       />
+    </div>
+  );
+}
+
+/**
+ * Ask control availability. A toggle is only offered if its engine path can
+ * actually run; flipping it otherwise 500s (a no-affordance / fail-closed
+ * violation). Flip a flag back to true once the engine supports that mode:
+ *   Broad search     -> needs the semantic/vector index rebuilt (dropped in the
+ *                       AR-1b corpus regen)
+ *   Verified answers -> needs a judge / verification model running
+ * While a flag is false the toggle renders disabled with an honest reason and
+ * only lexical-only Ask (both off) runs.
+ */
+const BROAD_SEARCH_AVAILABLE = false;
+const VERIFIED_ANSWERS_AVAILABLE = false;
+const BROAD_SEARCH_UNAVAILABLE_REASON = "Unavailable in this build — semantic index not loaded";
+const VERIFIED_ANSWERS_UNAVAILABLE_REASON = "Unavailable in this build — verification model not loaded";
+
+/**
+ * A labelled toggle switch for the Ask controls. Keyboard-accessible
+ * (role="switch", native button Enter/Space), visible focus via the global
+ * :focus-visible ring, motion honours prefers-reduced-motion. When `available`
+ * is false the switch is disabled (removed from the focus order, not flippable,
+ * cursor-not-allowed, greyed) and shows an always-visible `reason`; the
+ * plain-language helper stays. Colours come only from tokens (U-6).
+ */
+function AskToggle({
+  checked,
+  onChange,
+  label,
+  helper,
+  testId,
+  available = true,
+  reason,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  helper: string;
+  testId: string;
+  available?: boolean;
+  reason?: string;
+}) {
+  const disabled = !available;
+  return (
+    <div
+      className="flex items-start gap-2.5"
+      data-testid={`${testId}-control`}
+      data-available={available ? "true" : "false"}
+    >
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        aria-disabled={disabled || undefined}
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) onChange(!checked);
+        }}
+        data-testid={testId}
+        className={`inline-flex min-h-11 shrink-0 items-center rounded-full ${
+          disabled ? "cursor-not-allowed opacity-50" : "ap-washable"
+        }`}
+      >
+        <span
+          className="flex h-6 w-11 items-center rounded-full p-0.5"
+          style={{ background: checked ? "var(--affordance)" : "var(--surface-3)" }}
+        >
+          <span
+            className="block h-5 w-5 rounded-full border motion-safe:transition-transform"
+            style={{
+              background: "var(--paper)",
+              borderColor: "var(--hairline-strong)",
+              transform: checked ? "translateX(20px)" : "translateX(0)",
+            }}
+          />
+        </span>
+      </button>
+      <div className="min-w-0">
+        <span className="ap-register-chrome block" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+          {label}
+        </span>
+        <span className="ap-soft block" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+          {helper}
+        </span>
+        {disabled && reason ? (
+          <span
+            className="ap-register-evidence ap-soft mt-1 block"
+            style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
+            data-testid={`${testId}-reason`}
+          >
+            {reason}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

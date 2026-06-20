@@ -177,6 +177,9 @@ describe("U-22: the affordance lives in four homes and sends params only", () =>
     fireEvent.change(screen.getByTestId("query-input"), {
       target: { value: "payroll aggregate" },
     });
+    // Broad search is disabled in this build; clicking it is a no-op (no 500
+    // reachable), so the submitted params stay lexical-only.
+    expect((screen.getByTestId("toggle-hybrid") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId("toggle-hybrid"));
     fireEvent.click(screen.getByTestId("ask-button"));
     await waitFor(() => expect(screen.getByTestId("export-evidence")).toBeTruthy());
@@ -186,8 +189,39 @@ describe("U-22: the affordance lives in four homes and sends params only", () =>
     await waitFor(() => expect(exportBodies(fetchMock).length).toBe(1));
     expect(exportBodies(fetchMock)[0]).toEqual({
       view: "ask",
-      ask: { query: "payroll aggregate", hybrid: true, judge: false },
+      ask: { query: "payroll aggregate", hybrid: false, judge: false },
     });
+  });
+
+  it("Ask controls: plain-language toggles disabled with an honest reason (no 500 reachable)", () => {
+    stubFetch();
+    render(<Console view="ask" />);
+    fireEvent.change(screen.getByTestId("principal-search"), { target: { value: "p060" } });
+    fireEvent.click(screen.getAllByTestId("principal-row").find((b) => b.textContent === "p060")!);
+
+    const broad = screen.getByTestId("toggle-hybrid");
+    const verified = screen.getByTestId("toggle-judge");
+    // Renamed to plain language; no "hybrid"/"judge" jargon as control labels.
+    expect(broad.getAttribute("role")).toBe("switch");
+    expect(broad.getAttribute("aria-label")).toBe("Broad search");
+    expect(verified.getAttribute("role")).toBe("switch");
+    expect(verified.getAttribute("aria-label")).toBe("Verified answers");
+    expect(screen.getByText("Broad search")).toBeTruthy();
+    expect(screen.getByText("Verified answers")).toBeTruthy();
+    expect(screen.queryByText("hybrid")).toBeNull();
+    expect(screen.queryByText("judge")).toBeNull();
+    // Disabled in this build: off, marked for a11y, cannot be flipped, reason shown.
+    expect(broad.getAttribute("aria-checked")).toBe("false");
+    expect(verified.getAttribute("aria-checked")).toBe("false");
+    expect((broad as HTMLButtonElement).disabled).toBe(true);
+    expect((verified as HTMLButtonElement).disabled).toBe(true);
+    expect(broad.getAttribute("aria-disabled")).toBe("true");
+    expect(verified.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("toggle-hybrid-reason").textContent).toContain("semantic index not loaded");
+    expect(screen.getByTestId("toggle-judge-reason").textContent).toContain("verification model not loaded");
+    // Clicking a disabled toggle does nothing (no flip, no 500).
+    fireEvent.click(broad);
+    expect(broad.getAttribute("aria-checked")).toBe("false");
   });
 
   it("Ask entry door carries validated grant context to the existing ask endpoint", async () => {
