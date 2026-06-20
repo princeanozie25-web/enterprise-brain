@@ -228,9 +228,18 @@ fn group_reasons(entries: &[LensEntry]) -> Result<Vec<ReasonGroup>> {
 // The view
 // ---------------------------------------------------------------------------
 
-/// `Ok(None)` = not summarisable here (unknown id, or a dept/source node the
-/// client renders from the graph payload) -> the one 404.
-pub fn node_summary(state: &AppState, id: &str) -> Result<Option<Vec<u8>>, AskError> {
+/// `Ok(None)` = the one 404: an unknown CALLER (deny by default), an unknown
+/// id, or a dept/source node the client renders from the graph payload.
+pub fn node_summary(state: &AppState, actor: &str, id: &str) -> Result<Option<Vec<u8>>, AskError> {
+    // Deny by default: a caller the identity model does not know gets the one
+    // 404, exactly like /graph and /ask. The ACTOR gate runs before any branch,
+    // so it covers both the org core and a person/agent. A KNOWN principal still
+    // receives full org/person metadata — the documented, accepted pre-auth
+    // posture; per-identity scoping of the org map is the authorization build,
+    // deliberately NOT done here.
+    if !state.identity.is_known(actor) {
+        return Ok(None);
+    }
     if id == ORG_NODE_ID {
         return org_summary(state).map(Some).map_err(AskError::Internal);
     }

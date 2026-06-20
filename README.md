@@ -33,9 +33,10 @@ Python 3.11+, stdlib + pytest only. No network, no databases, no LLMs anywhere.
 
 ## The Lane's derivation rule (AP-6, verbatim)
 
-Aperture's rooms are Ask / Lens / Atlas / **Lane**, with Ledger still
-reserved (charter amendment, AP-6). The Lane is v4a — display only — and
-because `/synth` is frozen, its assignments DERIVE:
+Aperture's rooms are Ask / Lens / Atlas / **Lane** and **Export** (AP-5,
+server-derived attested evidence PDFs), with Ledger still reserved (charter
+amendment, AP-6). The Lane is v4a — display only — and because `/synth` is
+frozen, its assignments DERIVE:
 
 > At startup, deterministically derive assignments from verified inputs
 > only: for each human principal, take the capabilities whose realizing

@@ -1162,12 +1162,14 @@ async fn handle_graph(
 /// Metadata only: it can name no document (GR-7 enforces it).
 async fn handle_node_summary(
     State(state): State<Arc<AppState>>,
-    DemoPrincipal(_actor): DemoPrincipal,
+    DemoPrincipal(actor): DemoPrincipal,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Response {
     let blocking_state = state.clone();
-    let result =
-        tokio::task::spawn_blocking(move || node_summary::node_summary(&blocking_state, &id)).await;
+    let result = tokio::task::spawn_blocking(move || {
+        node_summary::node_summary(&blocking_state, &actor, &id)
+    })
+    .await;
     match result {
         Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
         Ok(Ok(None)) => doc_not_found(),

@@ -16,12 +16,58 @@ Binds `127.0.0.1:8787` ONLY (`loopback_listener` refuses anything else, A-9).
 
 ## Endpoints
 
-| Endpoint | Identity | Behavior |
+Every endpoint except `GET /healthz` requires `X-Demo-Principal` (the demo
+stand-in for OIDC); a missing header → 401, and there is no default principal.
+An unknown principal is NOT rejected at the door — it flows in and is denied by
+default downstream (empty envelope / the one 404), indistinguishable from a
+principal granted nothing (A-5). Every response carries `demo_identity_mode:
+true`.
+
+### Ask & documents
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /ask` `{query, hybrid?, judge?}` | the answer pipeline below; results carry `{title, sensitivity}` copied from the same scope-checked source as `/doc` |
+| `GET /doc/{id}` | scope-checked document card (title, sensitivity, ≤480-char snippet, superseded notice + in-allowlist successor); out-of-scope and nonexistent ids return a BYTE-IDENTICAL 404 (A-10) — never full bodies |
+| `GET /scope` | the caller's REAL scope statement (groups/sites/band from company.json) — their own only |
+| `GET /me/scope` | the caller's own scope, as the console's identity probe reads it |
+| `GET /healthz` | `{"status":"ok"}`, no identity, reveals nothing |
+
+### Aperture rooms
+
+| Endpoint | Room | Behavior |
 | --- | --- | --- |
-| `POST /ask` `{query, hybrid?, judge?}` | `X-Demo-Principal` required | the answer pipeline below; results carry `{title, sensitivity}` copied from the same scope-checked source as `/doc` |
-| `GET /doc/{id}` | `X-Demo-Principal` required | scope-checked document card (title, sensitivity, ≤480-char snippet, superseded notice + in-allowlist successor); out-of-scope and nonexistent ids return a BYTE-IDENTICAL 404 (A-10) — never full bodies |
-| `GET /scope` | `X-Demo-Principal` required | the caller's REAL scope statement (groups/sites/band from company.json) — their own only |
-| `GET /healthz` | none | `{"status":"ok"}`, reveals nothing |
+| `GET /lens/{id}` | Lens (AP-2) | one principal's access, reason-grouped, audited (actor + subject) |
+| `GET /lens/diff` | Lens diff (AP-4) | set-exact two-principal comparison in a single audited act |
+| `GET /atlas` | Atlas (AP-3) | the capability surface, from the service-pinned trust root |
+| `POST /export` | Export (AP-5) | server-derived, attested evidence PDFs (dual-audited) |
+| `GET /lane` · `GET /lane/inbox` · `GET /lane/rollup` | Lane (AP-6) | display-only derived assignments, inbox, and rollup (Ledger still reserved) |
+| `POST /lane/box/{id}/status` · `POST /lane/inbox/{id}/accept` · `POST /lane/inbox/{id}/dismiss` | Lane (AP-6) | box-status + inbox accept/dismiss (dual-audited) |
+
+### Org graph & directory
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /graph` | the scope-filtered org graph — structure only, no holdings (GR-3) |
+| `GET /node/{id}/summary` | org-graph inspector: metadata-only counts (GR-7); **404 to unknown callers** (`is_known` gate, GR-8) and to non-principal ids |
+| `GET /people` | the org-structural roster (AR-1) |
+| `GET /workflow/project/{capability_id}` | a capability's project/workflow view |
+
+### Agents & proposals (M4)
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /agent/{id}/run` | owner-only agent run; proposal-only, mutates nothing (the agent itself is refused) |
+| `GET /proposals` | owner-scoped proposal list |
+| `POST /proposals/{id}/approve` · `POST /proposals/{id}/reject` | owner-only and HUMAN-only; changes STATUS only |
+
+### Access control (requests & grants)
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /access-requests` · `POST /access-requests` · `GET /access-requests/inbox` | list / create / inbox of access requests |
+| `POST /access-requests/{id}/approve` · `POST /access-requests/{id}/deny` | decide a request — audited before any effect |
+| `GET /access-grants` · `GET /access-grants/{id}` · `POST /access-grants/{id}/revoke` | list / read / revoke effective grants |
 
 CORS allows exactly `http://localhost:3000` and `http://127.0.0.1:3000` (the
 console); constructing the layer from any non-loopback origin is refused at

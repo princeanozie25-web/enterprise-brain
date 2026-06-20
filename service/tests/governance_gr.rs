@@ -631,3 +631,47 @@ async fn gr7_node_summary_is_real_scoped_and_metadata_only() {
     }
     println!("GR-7: node summary is real (counts == compiled), scope-respecting, metadata-only");
 }
+
+// ---------------------------------------------------------------------------
+// GR-8 ACTOR GATE: /node/* fail-closes for UNKNOWN callers (deny by default,
+// the same is_known discipline as /graph and /ask), while a KNOWN principal
+// still receives the metadata (the documented, accepted pre-auth posture —
+// per-identity scoping of the org map is the authorization build, NOT this).
+// Closes the v2-council INV2 break: an unregistered x-demo-principal used to
+// receive full org + personnel metadata from this endpoint.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn gr8_node_summary_denies_unknown_callers_but_serves_known() {
+    let router = app(Arc::new(gr_state()));
+
+    // UNKNOWN caller (not in the identity model): both the org core and a real
+    // person are denied with the one 404 — no metadata escapes to a stranger.
+    for uri in ["/node/org/summary", "/node/p060/summary"] {
+        let (status, _) = get(&router, uri, "p999").await;
+        assert_eq!(
+            status,
+            StatusCode::NOT_FOUND,
+            "unknown caller p999 -> {uri} -> the one 404 (no metadata leak)"
+        );
+    }
+
+    // KNOWN caller: the accepted pre-auth posture is preserved unchanged — a
+    // signed-in Work Identity still sees the org map + person metadata.
+    for uri in ["/node/org/summary", "/node/p060/summary"] {
+        let (status, _) = get(&router, uri, "p060").await;
+        assert_eq!(status, StatusCode::OK, "known caller p060 -> {uri} -> 200");
+    }
+
+    // A KNOWN but empty-scope principal (p_void is registered, granted nothing)
+    // is still a known caller and receives the metadata: the gate is is_known(),
+    // not scope size.
+    let (status, _) = get(&router, "/node/org/summary", "p_void").await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "p_void is a known principal -> 200 (gate is is_known, not scope)"
+    );
+
+    println!("GR-8: /node/* 404s unknown callers, still serves known principals (INV2 closed)");
+}
