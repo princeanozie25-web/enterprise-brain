@@ -242,8 +242,10 @@ export function GraphRoom({
           </span>
           {adminPreview && (
             <span className="block truncate" data-testid="admin-graph-preview-banner">
-              Demo Identity Mode: admin-side preview, production admin authority not connected /{" "}
-              {roleScope?.admin_surface_allowed ? "admin allowed by preview scope" : "admin not granted"}
+              Demo Identity Mode: Operating Map preview, production admin authority not connected.{" "}
+              {roleScope?.admin_surface_allowed
+                ? "Role model flags admin (a derived signal, not enforced on this map)."
+                : "Org structure is not per-identity access-enforced in this build (authorization build pending)."}
             </span>
           )}
         </div>

@@ -680,6 +680,8 @@ export interface LensResponse {
   /** AR-1: the viewer's own directory card (absent with no humanization layer). */
   actor?: PersonCard;
   actor_id: string;
+  /** Honesty contract: the service carries this on every response (demo mode). */
+  demo_identity_mode?: boolean;
   agents: LensAgent[];
   cross_lens: boolean;
   holdings: LensSection[];
@@ -748,6 +750,8 @@ export interface AtlasResponse {
   /** AR-1: the viewer's own directory card (the BRM names no other principal). */
   actor?: PersonCard;
   actor_id: string;
+  /** Honesty contract: the service carries this on every response (demo mode). */
+  demo_identity_mode?: boolean;
   snapshot_version: string;
   /** `[]` = the actor has no standing (the empty atlas, their own produce). */
   strategies: AtlasStrategy[];
@@ -802,6 +806,8 @@ export interface DiffResponse {
   /** AR-1: the viewer's own directory card. */
   actor?: PersonCard;
   actor_id: string;
+  /** Honesty contract: the service carries this on every response (demo mode). */
+  demo_identity_mode?: boolean;
   left: DiffPassport;
   /** AR-1: the left principal's directory card (name/title/department/avatar). */
   left_human?: PersonCard;

@@ -8,46 +8,46 @@ import { MotionPanel } from "./MotionPrimitives";
 import { DemoIdentityNotice } from "./TrustPosture";
 
 /**
- * AdminPreviewGate — the authorization gate for the admin-domain surfaces
- * (Operating Map, Bursar Ledger Room).
+ * AdminPreviewGate — an HONEST preview interstitial for the admin-domain
+ * surfaces (Operating Map, Bursar Ledger Room).
  *
- * The product's grammar is fail-closed: the engine (/me/scope) reports
- * admin_surface_allowed / bursar_surface_allowed, and in demo-identity mode
- * no actor is granted these sensitive surfaces ("no explicit super-admin
- * primitive exists"). So this gate does NOT render the surface by default —
- * it renders an honest "not authorized" panel that shows the engine's own
- * reasons. The surface is reachable only through ONE explicit, clearly
- * labelled opt-in ("View demo preview"), and even then it stays a read-only,
- * scope-filtered preview that grants no authority.
+ * THIS IS NOT AN AUTHORIZATION BOUNDARY. The engine does NOT gate /graph or
+ * /node/summary on admin_surface_allowed — org structure and node metadata are
+ * currently visible to ANY signed-in Work Identity, and per-identity
+ * enforcement of these surfaces is pending the authorization build. So this
+ * component does not "grant" or "deny" anything; it states plainly what is and
+ * isn't enforced today and reveals the surface on one explicit opt-in. The
+ * *_surface_allowed flag from /me/scope is a DERIVED signal, not an enforced
+ * boundary for these surfaces.
  *
- * If a real deployment ever returns *_surface_allowed === true, the gate
- * renders the surface directly — visibility follows authority, not the other
- * way round. (Closes the P0: "UI renders admin surfaces without a gate.")
+ * What IS enforced, separately and server-side: the governed document corpus
+ * (Ask, documents, granted knowledge) is permission-scoped per principal.
+ *
+ * If a real deployment ever returns *_surface_allowed === true (the auth
+ * build), the gate renders the surface directly.
  */
 type GatedSurface = "admin" | "bursar";
 
 const SURFACE_COPY: Record<
   GatedSurface,
-  { context: "admin" | "bursar"; heading: string; lead: string }
+  { context: "admin" | "bursar"; heading: string; lead: string; note: string }
 > = {
   admin: {
     context: "admin",
-    heading: "Operating Map is an admin-domain preview",
+    heading: "Operating Map — preview (not access-enforced)",
     lead:
-      "This Work Identity is not granted the admin surface. The route is a demo preview only — production admin authority is not connected in this build.",
+      "The Operating Map shows the company org structure. It is a preview, not an access-enforced surface in this build.",
+    note:
+      "Enforced today: your document access (Ask, documents, granted knowledge) is permission-scoped on the server. Not enforced yet: this org-structure map and its node metadata are visible to any signed-in Work Identity. Per-identity enforcement of this surface is pending the authorization build.",
   },
   bursar: {
     context: "bursar",
-    heading: "Bursar Ledger Room is an admin-domain preview",
-    lead:
-      "This Work Identity is not granted the Bursar surface. The route is a demo preview only — production finance authority and ledger data are not connected in this build.",
+    heading: "Bursar Ledger Room — preview (not connected)",
+    lead: "The Bursar Ledger Room is a placeholder for the future governed-spend room.",
+    note:
+      "No ledger data and no finance authority are connected in this build. Per-identity enforcement of this surface is pending the authorization build; your document access is separately permission-scoped on the server.",
   },
 };
-
-const FALLBACK_REASONS = [
-  "No explicit admin, Bursar, or governance primitive exists for this Work Identity.",
-  "Sensitive surfaces remain disallowed by the current demo-identity contract.",
-];
 
 export function AdminPreviewGate({
   actor,
@@ -61,8 +61,8 @@ export function AdminPreviewGate({
   const [roleScope, setRoleScope] = useState<RoleScopeSummary | null>(null);
   const [revealed, setRevealed] = useState(false);
 
-  // Read role posture for THIS actor. Fail-closed: any error leaves roleScope
-  // null and the surface gated. (A null actor cannot be authorized either.)
+  // Read role posture for THIS actor. NOTE: *_surface_allowed is a DERIVED
+  // signal, not an enforced boundary for these surfaces in this build.
   useEffect(() => {
     setRevealed(false);
     if (actor === null) {
@@ -86,14 +86,12 @@ export function AdminPreviewGate({
   const allowed =
     surface === "admin" ? roleScope?.admin_surface_allowed : roleScope?.bursar_surface_allowed;
 
-  // Engine-authorized, OR the viewer explicitly opened the labelled preview.
+  // Engine-flagged allowed (the future auth build), OR the viewer opened the preview.
   if (allowed === true || revealed) {
     return <>{children}</>;
   }
 
   const copy = SURFACE_COPY[surface];
-  const reasons =
-    roleScope?.reasons && roleScope.reasons.length > 0 ? roleScope.reasons : FALLBACK_REASONS;
 
   return (
     <main className="min-w-0 flex-1" data-testid={`admin-preview-gate-${surface}`}>
@@ -102,7 +100,7 @@ export function AdminPreviewGate({
         data-testid="admin-preview-gate"
       >
         <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-          Authorization gate
+          Preview — not access-enforced
         </p>
         <h1
           className="ap-register-chrome mt-2"
@@ -114,23 +112,13 @@ export function AdminPreviewGate({
           {copy.lead}
         </p>
 
-        <section className="mt-4" aria-label="Why this surface is not granted">
-          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-            Why this is not granted
-          </p>
-          <ul className="mt-2 grid grid-cols-1 gap-2">
-            {reasons.map((reason) => (
-              <li
-                key={reason}
-                className="ap-chip rounded px-3 py-2"
-                style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
-                data-testid="admin-preview-gate-reason"
-              >
-                {reason}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <p
+          className="ap-chip mt-4 rounded-2xl px-4 py-3"
+          style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
+          data-testid="admin-preview-gate-note"
+        >
+          {copy.note}
+        </p>
 
         <DemoIdentityNotice
           className="mt-4"
@@ -146,10 +134,10 @@ export function AdminPreviewGate({
             onClick={() => setRevealed(true)}
             data-testid="admin-preview-gate-reveal"
           >
-            View demo preview
+            Open preview
           </button>
           <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-            Read-only preview. Shows only what this Work Identity may see — no authority is granted.
+            Read-only preview. Not per-identity access-enforced in this build.
           </p>
         </div>
       </MotionPanel>

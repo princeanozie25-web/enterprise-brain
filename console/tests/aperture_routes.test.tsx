@@ -229,9 +229,13 @@ describe("route separation", () => {
 
     render(<Console view="adminGraph" />);
 
-    // Fail-closed gate: the Operating Map is not rendered until the viewer
-    // explicitly opens the labelled demo preview.
-    expect(await screen.findByTestId("admin-preview-gate")).toBeTruthy();
+    // Honest preview interstitial (NOT an authorization claim): the Operating
+    // Map opens on an explicit opt-in, and the copy states what is/isn't enforced.
+    const gate = await screen.findByTestId("admin-preview-gate");
+    expect(gate.textContent).toContain("not access-enforced");
+    expect(gate.textContent).toMatch(/pending the authorization build/i);
+    expect(gate.textContent).not.toContain("Authorization gate");
+    expect(gate.textContent).not.toContain("not granted");
     expect(screen.queryByTestId("graph-room")).toBeNull();
     fireEvent.click(screen.getByTestId("admin-preview-gate-reveal"));
 
@@ -240,7 +244,7 @@ describe("route separation", () => {
       expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("Demo Identity Mode");
     });
     expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("production admin authority not connected");
-    expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("admin not granted");
+    expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("not per-identity access-enforced");
     await waitFor(() => expect(screen.getByTestId("graph-audited-line").textContent).toContain("This view is audited"));
     expect(screen.getByTestId("graph-acting-context").textContent).toContain("Acting as p060");
     expect(screen.getByTestId("graph-relationship-summary").textContent).toContain("Keyboard-readable rows");
