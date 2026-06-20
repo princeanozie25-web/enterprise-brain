@@ -16,11 +16,11 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use retrieval::index::{canonical_json_bytes, sha256_hex};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::answer::AskError;
 use crate::graph::ORG_NODE_ID;
 use crate::lens::{display_reason, load_subject_artifact, reason_class, sentence_for, LensEntry};
+use crate::visibility::{self, Visibility};
 use crate::AppState;
 
 // ---------------------------------------------------------------------------
@@ -105,14 +105,8 @@ struct NodeSummary {
 #[derive(Debug, Deserialize)]
 struct SummaryCompany {
     company: SummaryMeta,
-    departments: Vec<String>,
     people: Vec<SummaryPerson>,
     agents: Vec<SummaryAgent>,
-    groups: Vec<Value>,
-    #[serde(default)]
-    sources: Vec<String>,
-    #[serde(default)]
-    sites: Vec<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -152,9 +146,7 @@ fn load_company(fixtures_dir: &Path, expected_sha256: &str) -> Result<SummaryCom
 
 #[derive(Debug, Deserialize)]
 struct IndexTotals {
-    allow_entries: usize,
     documents: usize,
-    principals: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -169,31 +161,6 @@ fn index_totals(state: &AppState) -> Result<IndexTotals> {
     let index: IndexFile =
         serde_json::from_slice(&bytes).with_context(|| format!("{} fails parse", path.display()))?;
     Ok(index.totals)
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct BrmCounts {
-    #[serde(default)]
-    capabilities: Vec<Value>,
-    #[serde(default)]
-    initiatives: Vec<Value>,
-    #[serde(default)]
-    strategies: Vec<Value>,
-    #[serde(default)]
-    workflows: Vec<Value>,
-}
-
-fn load_brm(state: &AppState) -> Result<BrmCounts> {
-    let path = state.fixtures_dir.join("brm.json");
-    let Ok(bytes) = std::fs::read(&path) else {
-        return Ok(BrmCounts::default());
-    };
-    if let Some(expected) = &state.brm_sha256 {
-        if &sha256_hex(&bytes) != expected {
-            bail!("brm.json does not match the pinned hash; refusing");
-        }
-    }
-    serde_json::from_slice(&bytes).with_context(|| format!("{} fails parse", path.display()))
 }
 
 // ---------------------------------------------------------------------------
@@ -231,17 +198,22 @@ fn group_reasons(entries: &[LensEntry]) -> Result<Vec<ReasonGroup>> {
 /// `Ok(None)` = the one 404: an unknown CALLER (deny by default), an unknown
 /// id, or a dept/source node the client renders from the graph payload.
 pub fn node_summary(state: &AppState, actor: &str, id: &str) -> Result<Option<Vec<u8>>, AskError> {
-    // Deny by default: a caller the identity model does not know gets the one
-    // 404, exactly like /graph and /ask. The ACTOR gate runs before any branch,
-    // so it covers both the org core and a person/agent. A KNOWN principal still
-    // receives full org/person metadata — the documented, accepted pre-auth
-    // posture; per-identity scoping of the org map is the authorization build,
-    // deliberately NOT done here.
-    if !state.identity.is_known(actor) {
-        return Ok(None);
-    }
+    // AUTH-2 (FC-A2): metadata is scoped to the actor's projection (DD-2). The
+    // visibility set is computed BEFORE any summary is assembled; an out-of-scope
+    // node — or a principal with no standing (p_void / unknown) — gets the one
+    // 404. This subsumes the AUTH-1 is_known gate: standing requires a known
+    // principal that carries group scope.
+    let visibility = visibility::compute(state, actor)?;
     if id == ORG_NODE_ID {
-        return org_summary(state).map(Some).map_err(AskError::Internal);
+        if !visibility.org {
+            return Ok(None);
+        }
+        return org_summary(state, actor, &visibility)
+            .map(Some)
+            .map_err(AskError::Internal);
+    }
+    if !visibility.node_visible(id) {
+        return Ok(None);
     }
 
     // A person or agent must be a compiled principal (carry an M1 artifact).
@@ -327,31 +299,26 @@ pub fn node_summary(state: &AppState, actor: &str, id: &str) -> Result<Option<Ve
         .map_err(AskError::Internal)
 }
 
-fn org_summary(state: &AppState) -> Result<Vec<u8>> {
+/// AUTH-2: the SCOPED org aggregate — only the actor's in-scope structural
+/// counts, with the N=5 aggregation floor (a count below 5 is suppressed to 0,
+/// so it cannot identify individuals). Corpus / BRM / governance totals are NOT
+/// projected by the structural core (they would be dark counts here) and stay 0;
+/// `document_total` is the ACTOR's own visible allowlist size, never the corpus.
+fn org_summary(state: &AppState, actor: &str, visibility: &Visibility) -> Result<Vec<u8>> {
     let company = load_company(&state.fixtures_dir, &state.company_sha256)?;
-    let totals = index_totals(state)?;
-    let brm = load_brm(state)?;
-    let people = state
-        .people
-        .as_deref()
-        .map(|layer| layer.roster().count())
-        .unwrap_or(company.people.len());
+    let visible_docs = load_subject_artifact(state, actor)
+        .ok()
+        .flatten()
+        .map(|entries| entries.len())
+        .unwrap_or(0);
 
     let stats = OrgStats {
-        agents: company.agents.len(),
-        capabilities: brm.capabilities.len(),
-        departments: company.departments.len(),
-        document_total: totals.documents,
-        groups: company.groups.len(),
-        initiatives: brm.initiatives.len(),
-        people,
-        permission_edges: totals.allow_entries,
-        principals: totals.principals,
-        sites: company.sites.len(),
-        sources: company.sources.len(),
-        strategies: brm.strategies.len(),
-        total_decisions: totals.principals * totals.documents,
-        workflows: brm.workflows.len(),
+        people: floor_n5(visibility.people.len()),
+        departments: floor_n5(visibility.departments.len()),
+        agents: floor_n5(visibility.agents.len()),
+        sources: floor_n5(visibility.sources.len()),
+        document_total: visible_docs,
+        ..Default::default()
     };
 
     let summary = NodeSummary {
@@ -363,4 +330,14 @@ fn org_summary(state: &AppState) -> Result<Vec<u8>> {
         ..Default::default()
     };
     canonical_json_bytes(&summary)
+}
+
+/// The Aperture §6.6 aggregation floor: a multi-principal count below 5 is
+/// suppressed to 0.
+fn floor_n5(n: usize) -> usize {
+    if n < 5 {
+        0
+    } else {
+        n
+    }
 }

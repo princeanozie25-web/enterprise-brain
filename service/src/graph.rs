@@ -27,6 +27,7 @@ use retrieval::index::{canonical_json_bytes, sha256_hex};
 use serde::{Deserialize, Serialize};
 
 use crate::answer::AskError;
+use crate::visibility;
 use crate::AppState;
 
 // ---------------------------------------------------------------------------
@@ -211,6 +212,11 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
     if !state.identity.is_known(actor) {
         return Ok(None);
     }
+    // AUTH-2 (FC-A2): the graph IS the actor's scope projection (DD-2). A
+    // standing-less principal (p_void) projects to the EMPTY set, so every node
+    // list below filters to nothing -> an empty graph (200), never padded with
+    // ghost/"+N hidden" nodes.
+    let vis = visibility::compute(state, actor)?;
     let company =
         load_company(&state.fixtures_dir, &state.company_sha256).map_err(AskError::Internal)?;
 
@@ -223,6 +229,7 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
     let departments: Vec<GraphDept> = company
         .departments
         .iter()
+        .filter(|dept| vis.departments.contains(dept.as_str()))
         .map(|dept| GraphDept {
             id: dept.clone(),
             label: dept.clone(),
@@ -250,6 +257,9 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
     // Anchors = Leadership tier (deterministic; the AR-1 seniority).
     let mut graph_people: Vec<GraphPerson> = Vec::new();
     for record in people.roster() {
+        if !vis.people.contains(&record.id) {
+            continue;
+        }
         let ring = if record.seniority == "Leadership" {
             "anchor"
         } else {
@@ -272,6 +282,9 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
     let mut project_acc: BTreeMap<String, ProjectAccumulator> = BTreeMap::new();
     let mut project_person_edges: BTreeSet<(String, String)> = BTreeSet::new();
     for record in people.roster() {
+        if !vis.people.contains(&record.id) {
+            continue;
+        }
         for project in &record.projects {
             let entry = project_acc
                 .entry(project.capability_id.clone())
@@ -317,6 +330,7 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
     let mut tools: Vec<GraphTool> = company
         .agents
         .iter()
+        .filter(|a| vis.agents.contains(a.id.as_str()))
         .map(|a| GraphTool {
             department_id: dept_of.get(a.owner_user_id.as_str()).map(|d| d.to_string()),
             id: a.id.clone(),
@@ -333,6 +347,7 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
     let mut sources: Vec<GraphSource> = company
         .sources
         .iter()
+        .filter(|s| vis.sources.contains(s.as_str()))
         .map(|s| GraphSource {
             id: s.clone(),
             kind: "source".to_string(),
@@ -401,6 +416,21 @@ pub fn graph_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
             to: ORG_NODE_ID.to_string(),
         });
     }
+
+    // Keep only edges whose BOTH endpoints are in scope. Nodes were filtered to
+    // the projection above; this drops any relationship dangling to an
+    // out-of-scope node. Projects in this payload are in-scope by construction
+    // (built only from visible people's assignments).
+    let mut visible_ids: BTreeSet<String> = BTreeSet::new();
+    if vis.org {
+        visible_ids.insert(ORG_NODE_ID.to_string());
+    }
+    visible_ids.extend(vis.people.iter().cloned());
+    visible_ids.extend(vis.departments.iter().cloned());
+    visible_ids.extend(vis.agents.iter().cloned());
+    visible_ids.extend(vis.sources.iter().cloned());
+    visible_ids.extend(projects.iter().map(|p| p.id.clone()));
+    edges.retain(|e| visible_ids.contains(&e.from) && visible_ids.contains(&e.to));
 
     let response = GraphResponse {
         actor_id: actor.to_string(),

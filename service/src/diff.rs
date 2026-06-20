@@ -331,6 +331,14 @@ pub fn diff_view(
     left_id: &str,
     right_id: &str,
 ) -> Result<Option<(Vec<u8>, u64)>, AskError> {
+    // AUTH-2 (FC-A2): a diff compares two principals' scopes — cross-principal
+    // viewing, the AUTH-3 boundary (admin view-as). DENIED with the one 404
+    // (None) unless both sides are the caller. This gate lives at the source so
+    // it also covers the export path, which re-derives the diff here directly
+    // (not via the /lens/diff HTTP handler).
+    if left_id != actor || right_id != actor {
+        return Ok(None);
+    }
     if left_id == right_id {
         return Err(AskError::BadRequest(
             "a diff of a lens against itself is a category error".to_string(),

@@ -112,93 +112,111 @@ fn people_seniority() -> BTreeMap<String, String> {
         .collect()
 }
 
+/// AUTH-2: the structural-core PEOPLE projection for `actor`, computed
+/// independently from company.json (mirrors service::visibility / DD-2). Empty
+/// when the actor has no group standing (p_void). Used to prove /graph is the
+/// actor's scope projection — not the whole org.
+fn projection_people(company: &Value, actor: &str) -> BTreeSet<String> {
+    let people = company["people"].as_array().unwrap();
+    let groups = company["groups"].as_array().unwrap();
+    let standing = groups.iter().any(|g| {
+        g["member_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m.as_str() == Some(actor))
+    });
+    let mut out = BTreeSet::new();
+    if !standing {
+        return out;
+    }
+    let dept_of = |id: &str| {
+        people
+            .iter()
+            .find(|p| p["id"].as_str() == Some(id))
+            .map(|p| p["department"].as_str().unwrap().to_string())
+    };
+    let actor_dept = dept_of(actor);
+    let actor_manager = people
+        .iter()
+        .find(|p| p["id"].as_str() == Some(actor))
+        .and_then(|p| p["manager_id"].as_str().map(|s| s.to_string()));
+    for p in people {
+        let id = p["id"].as_str().unwrap();
+        let same_dept = actor_dept.is_some() && p["department"].as_str() == actor_dept.as_deref();
+        let is_actor_manager = actor_manager.as_deref() == Some(id);
+        let reports_to_actor = p["manager_id"].as_str() == Some(actor);
+        if id == actor || same_dept || is_actor_manager || reports_to_actor {
+            out.insert(id.to_string());
+        }
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
-// GR-1 STRUCTURE
+// GR-1 STRUCTURE (AUTH-2: the graph IS the actor's scope projection, DD-2)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn gr1_people_set_matches_roster_and_edges_match_company() {
+async fn gr1_graph_is_the_actor_scope_projection() {
     let router = app(Arc::new(gr_state()));
+    let company = company();
 
+    // p060 (Finance head): the graph's people == the scope projection — a STRICT
+    // subset of the roster, never the whole org.
     let (gs, gb) = get(&router, "/graph", "p060").await;
     assert_eq!(gs, StatusCode::OK);
     let graph: Value = serde_json::from_slice(&gb).expect("graph parses");
-    let (ps, pb) = get(&router, "/people", "p060").await;
-    assert_eq!(ps, StatusCode::OK);
-    let people: Value = serde_json::from_slice(&pb).expect("people parses");
-
-    // Internal-grade consistency: the graph's people set == the /people roster.
-    let graph_ids: BTreeSet<&str> = graph["people"]
+    let graph_ids: BTreeSet<String> = graph["people"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|p| p["id"].as_str().unwrap())
-        .collect();
-    let roster_ids: BTreeSet<&str> = people["people"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| p["id"].as_str().unwrap())
-        .collect();
-    assert_eq!(graph_ids, roster_ids, "graph people == /people roster");
-    assert_eq!(graph_ids.len(), 120, "all 120 humans in the graph");
-
-    // Departments match company.json (the 8 declared, in order).
-    let company = company();
-    let expected_depts: Vec<&str> = company["departments"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|d| d.as_str().unwrap())
-        .collect();
-    let graph_depts: Vec<&str> = graph["departments"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|d| d["label"].as_str().unwrap())
+        .map(|p| p["id"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(
-        graph_depts, expected_depts,
-        "department hubs match company.json"
+        graph_ids,
+        projection_people(&company, "p060"),
+        "graph people == p060 scope projection"
+    );
+    assert!(graph_ids.contains("p060"), "p060 sees itself");
+    assert!(graph_ids.len() < 120, "p060 does NOT see the whole org");
+    // No out-of-scope leak ANYWHERE (nodes or edges): p088 (HR) never appears.
+    assert!(
+        !String::from_utf8_lossy(&gb).contains("p088"),
+        "p060 (Finance) graph leaks no HR principal (p088)"
     );
 
-    // Reporting edges match company.json manager_id, and every person with a
-    // manager has exactly one reports_to edge.
-    let manager_of: BTreeMap<&str, &str> = company["people"]
+    // p_void (no group standing): the EMPTY graph (200), never padded.
+    let (vs, vb) = get(&router, "/graph", "p_void").await;
+    assert_eq!(vs, StatusCode::OK, "p_void -> 200 empty, not 404");
+    let vg: Value = serde_json::from_slice(&vb).unwrap();
+    assert!(vg["people"].as_array().unwrap().is_empty(), "p_void: no people");
+    assert!(vg["edges"].as_array().unwrap().is_empty(), "p_void: no edges");
+    assert!(vg["departments"].as_array().unwrap().is_empty(), "p_void: no departments");
+
+    // p088 (HR): symmetric — sees itself, never p060 (Finance).
+    let (hs, hb) = get(&router, "/graph", "p088").await;
+    assert_eq!(hs, StatusCode::OK);
+    let hg: Value = serde_json::from_slice(&hb).unwrap();
+    let hr_ids: BTreeSet<String> = hg["people"]
         .as_array()
         .unwrap()
         .iter()
-        .filter_map(|p| {
-            p["manager_id"]
-                .as_str()
-                .map(|m| (p["id"].as_str().unwrap(), m))
-        })
+        .map(|p| p["id"].as_str().unwrap().to_string())
         .collect();
-    let mut reports_edges: BTreeMap<&str, &str> = BTreeMap::new();
-    for e in graph["edges"].as_array().unwrap() {
-        if e["kind"] == "reports_to" {
-            let from = e["from"].as_str().unwrap();
-            assert!(
-                reports_edges
-                    .insert(from, e["to"].as_str().unwrap())
-                    .is_none(),
-                "one reports_to per person"
-            );
-        }
-    }
-    assert_eq!(
-        reports_edges, manager_of,
-        "reports_to edges == company manager_id"
+    assert!(hr_ids.contains("p088"), "p088 sees itself");
+    assert!(
+        !String::from_utf8_lossy(&hb).contains("p060"),
+        "p088 (HR) graph leaks no Finance head (p060)"
     );
     println!(
-        "GR-1: graph people == roster (120); {} departments; {} reporting edges match company.json",
-        graph_depts.len(),
-        reports_edges.len()
+        "GR-1: /graph is the scope projection (p060 sees {} of 120, p_void 0, HR!=Finance)",
+        graph_ids.len()
     );
 }
 
 // ---------------------------------------------------------------------------
-// GR-2 ANCHORS
+// GR-2 ANCHORS (over the VISIBLE slice)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -209,27 +227,21 @@ async fn gr2_anchors_are_exactly_the_leadership_tier() {
     let graph: Value = serde_json::from_slice(&bytes).unwrap();
     let seniority = people_seniority();
 
-    let mut anchors = 0usize;
+    // Among the actor's VISIBLE people, ring=="anchor" iff Leadership tier.
+    let mut checked = 0usize;
     for p in graph["people"].as_array().unwrap() {
         let id = p["id"].as_str().unwrap();
         let ring = p["ring"].as_str().unwrap();
-        let is_leadership = seniority[id] == "Leadership";
         assert_eq!(
             ring == "anchor",
-            is_leadership,
+            seniority[id] == "Leadership",
             "{id}: ring={ring} but seniority={}",
             seniority[id]
         );
-        if ring == "anchor" {
-            anchors += 1;
-        }
+        checked += 1;
     }
-    // ~12 sector leads (the org's Leadership), derived deterministically.
-    assert!(
-        (8..=16).contains(&anchors),
-        "anchor count {anchors} is the ~12 leadership band"
-    );
-    println!("GR-2: {anchors} anchors == Leadership tier (deterministic, ~12)");
+    assert!(checked > 0, "p060's slice is non-empty");
+    println!("GR-2: ring==anchor iff Leadership across the {checked} visible people");
 }
 
 // ---------------------------------------------------------------------------
@@ -352,10 +364,10 @@ async fn gr5_every_person_carries_a_real_humanized_name_no_placeholder() {
         assert_eq!(title, exp_title, "{id}: graph title == people.json title");
         checked += 1;
     }
-    assert_eq!(checked, 120, "all 120 people carry a real name + title");
-    println!(
-        "GR-5: all {checked} people carry a real 2-token humanized name + title; zero placeholders"
-    );
+    // AUTH-2: the graph is scoped, so this is the actor's VISIBLE slice (not all
+    // 120) — every visible node still carries a real, baked-at-source name.
+    assert!(checked > 0, "p060's visible slice carries real names");
+    println!("GR-5: all {checked} VISIBLE people carry a real humanized name + title; zero placeholders");
 }
 
 // ---------------------------------------------------------------------------
@@ -366,7 +378,8 @@ async fn gr5_every_person_carries_a_real_humanized_name_no_placeholder() {
 async fn gr4_is_self_marks_only_the_actor_and_unknown_is_404() {
     let router = app(Arc::new(gr_state()));
 
-    for actor in ["p060", "p001", "p_void"] {
+    // Standing actors: exactly the actor is is_self within their slice.
+    for actor in ["p060", "p001"] {
         let (status, bytes) = get(&router, "/graph", actor).await;
         assert_eq!(status, StatusCode::OK, "{actor} ok");
         let graph: Value = serde_json::from_slice(&bytes).unwrap();
@@ -380,10 +393,19 @@ async fn gr4_is_self_marks_only_the_actor_and_unknown_is_404() {
         assert_eq!(selves, vec![actor], "exactly the actor is is_self");
     }
 
+    // AUTH-2: p_void has no standing -> the EMPTY graph, hence no is_self node.
+    let (vs, vb) = get(&router, "/graph", "p_void").await;
+    assert_eq!(vs, StatusCode::OK, "p_void -> 200 empty");
+    let vg: Value = serde_json::from_slice(&vb).unwrap();
+    assert!(
+        vg["people"].as_array().unwrap().is_empty(),
+        "p_void: empty graph, no is_self"
+    );
+
     // Unknown principal: the one 404.
     let (status, _) = get(&router, "/graph", "p_ghost_404").await;
     assert_eq!(status, StatusCode::NOT_FOUND, "unknown actor -> 404");
-    println!("GR-4: is_self marks only the actor; unknown actor -> the one 404");
+    println!("GR-4: is_self marks only the actor; p_void empty; unknown -> the one 404");
 }
 
 // ---------------------------------------------------------------------------
@@ -519,18 +541,38 @@ async fn gr7_node_summary_is_real_scoped_and_metadata_only() {
     let org: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(org["kind"], "org");
     let stats = &org["stats"];
-    assert_eq!(stats["people"], 120, "people");
-    assert_eq!(stats["departments"], 8, "departments");
-    assert_eq!(stats["document_total"], 600, "documents");
-    assert_eq!(stats["workflows"], 40, "workflows");
-    assert_eq!(stats["capabilities"], 90, "capabilities");
-    assert_eq!(stats["agents"], 4, "agents");
-    assert_eq!(stats["sources"], 5, "sources");
-    assert_eq!(stats["groups"], 14, "groups");
-    assert_eq!(stats["sites"], 2, "sites");
-    assert_eq!(stats["permission_edges"], 16881, "compiled allow edges");
-    assert_eq!(stats["principals"], 124, "principals");
-    assert_eq!(stats["total_decisions"], 74400, "the conformance total");
+    // AUTH-2: the org summary is the actor's SCOPED structural aggregate, with
+    // the N=5 floor. Corpus / BRM / governance totals are NOT projected here
+    // (they would be dark counts); document_total is the actor's own allowlist.
+    let company = company();
+    let visible_people = projection_people(&company, "p060").len();
+    let expect_people = if visible_people < 5 { 0 } else { visible_people };
+    assert_eq!(
+        stats["people"].as_u64().unwrap() as usize,
+        expect_people,
+        "scoped people count (N5 floor)"
+    );
+    assert_eq!(
+        stats["document_total"].as_u64().unwrap() as usize,
+        index_entry_count("p060"),
+        "document_total == p060's own visible allowlist, not the 600-doc corpus"
+    );
+    for dark in [
+        "capabilities",
+        "workflows",
+        "strategies",
+        "initiatives",
+        "groups",
+        "principals",
+        "permission_edges",
+        "total_decisions",
+    ] {
+        assert_eq!(
+            stats[dark].as_u64().unwrap(),
+            0,
+            "{dark} not projected by the structural core (no dark counts)"
+        );
+    }
     assert_metadata_only(&org, "org");
 
     // PERSON: scope + reason-grouped COUNTS that sum to the compiled allowlist.
@@ -642,36 +684,31 @@ async fn gr7_node_summary_is_real_scoped_and_metadata_only() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn gr8_node_summary_denies_unknown_callers_but_serves_known() {
+async fn gr8_node_summary_denies_unknown_and_no_standing_and_out_of_scope() {
     let router = app(Arc::new(gr_state()));
 
-    // UNKNOWN caller (not in the identity model): both the org core and a real
-    // person are denied with the one 404 — no metadata escapes to a stranger.
+    // UNKNOWN caller (p999): the one 404 on the org core and a person.
     for uri in ["/node/org/summary", "/node/p060/summary"] {
         let (status, _) = get(&router, uri, "p999").await;
-        assert_eq!(
-            status,
-            StatusCode::NOT_FOUND,
-            "unknown caller p999 -> {uri} -> the one 404 (no metadata leak)"
-        );
+        assert_eq!(status, StatusCode::NOT_FOUND, "unknown p999 -> {uri} -> 404");
     }
 
-    // KNOWN caller: the accepted pre-auth posture is preserved unchanged — a
-    // signed-in Work Identity still sees the org map + person metadata.
+    // AUTH-2: a KNOWN but NO-STANDING principal (p_void, no groups) now also
+    // gets 404 everywhere — including its OWN org/person node. p_void sees nothing.
+    for uri in ["/node/org/summary", "/node/p060/summary", "/node/p_void/summary"] {
+        let (status, _) = get(&router, uri, "p_void").await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "no-standing p_void -> {uri} -> 404");
+    }
+
+    // STANDING caller: the org core and its own node -> 200.
     for uri in ["/node/org/summary", "/node/p060/summary"] {
         let (status, _) = get(&router, uri, "p060").await;
-        assert_eq!(status, StatusCode::OK, "known caller p060 -> {uri} -> 200");
+        assert_eq!(status, StatusCode::OK, "standing p060 -> {uri} -> 200");
     }
 
-    // A KNOWN but empty-scope principal (p_void is registered, granted nothing)
-    // is still a known caller and receives the metadata: the gate is is_known(),
-    // not scope size.
-    let (status, _) = get(&router, "/node/org/summary", "p_void").await;
-    assert_eq!(
-        status,
-        StatusCode::OK,
-        "p_void is a known principal -> 200 (gate is is_known, not scope)"
-    );
+    // STANDING caller, OUT-OF-SCOPE node (p088 is HR; p060 is Finance) -> 404.
+    let (status, _) = get(&router, "/node/p088/summary", "p060").await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "p060 -> out-of-scope p088 -> 404");
 
-    println!("GR-8: /node/* 404s unknown callers, still serves known principals (INV2 closed)");
+    println!("GR-8: /node/* 404s unknown + no-standing callers AND out-of-scope nodes; serves in-scope (FC-A2)");
 }

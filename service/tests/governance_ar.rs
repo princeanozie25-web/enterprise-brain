@@ -307,16 +307,16 @@ async fn ar4_display_name_overrides_the_frozen_name_on_every_surface() {
     assert_eq!(lens["subject_human"]["display_name"], name("p060").as_str());
     assert_eq!(lens["actor"]["display_name"], name("p060").as_str());
 
-    // /lens/diff passports show the generated names on both sides.
-    let (status, bytes) = get(&router, "/lens/diff?left=p016&right=p087", "p060").await;
-    assert_eq!(status, StatusCode::OK);
-    let diff: Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(diff["left"]["name"], name("p016").as_str());
-    assert_eq!(diff["right"]["name"], name("p087").as_str());
-    assert_eq!(diff["left_human"]["display_name"], name("p016").as_str());
-    assert_eq!(diff["right_human"]["display_name"], name("p087").as_str());
+    // AUTH-2 (FC-A2): cross-principal diff is denied (the AUTH-3 boundary). The
+    // self-lens masthead above already proves the humanized name on every field.
+    let (status, _) = get(&router, "/lens/diff?left=p016&right=p087", "p060").await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "cross-principal diff denied in this slice"
+    );
     println!(
-        "AR-4: p060 masthead + diff show '{}' (corpus + humanization layer agree post-AR-1b)",
+        "AR-4: p060 self-lens masthead shows '{}' (corpus + humanization layer agree post-AR-1b)",
         name("p060")
     );
 }

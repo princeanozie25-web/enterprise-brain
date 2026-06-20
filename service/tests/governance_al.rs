@@ -271,7 +271,7 @@ async fn al1_holdings_equal_the_artifact_exactly_with_priority_grouping() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn al2_cross_lens_views_audit_before_render_self_views_do_not() {
+async fn al2_cross_lens_is_denied_self_lens_is_served() {
     let store_dir = scratch("al2_store");
     let router = app(Arc::new(lens_state(Some(&store_dir))));
     let read_audit = || -> Vec<AuditEvent> {
@@ -283,41 +283,29 @@ async fn al2_cross_lens_views_audit_before_render_self_views_do_not() {
             .collect()
     };
 
-    // Self view: no audit row.
-    let (status, _, _) = get_lens(&router, "p060", "p060").await;
-    assert_eq!(status, StatusCode::OK);
+    // Self view: served (200), no audit row (a self view is not an audited act).
+    let (status, _, bytes) = get_lens(&router, "p060", "p060").await;
+    assert_eq!(status, StatusCode::OK, "self lens -> 200");
+    let body: Value = serde_json::from_slice(&bytes).expect("parses");
+    assert_eq!(body["cross_lens"], Value::Bool(false));
+    assert!(read_audit().is_empty(), "self view writes no audit row");
+
+    // AUTH-2 (FC-A2): a cross-principal lens is cross-principal viewing — the
+    // AUTH-3 boundary (admin view-as) — and is DENIED with the one 404. Nothing
+    // is assembled and nothing is audited (a denied act is not an act).
+    for (actor, subject) in [("p061", "p060"), ("p060", "agent_finance_analyst")] {
+        let (status, _, _) = get_lens(&router, actor, subject).await;
+        assert_eq!(
+            status,
+            StatusCode::NOT_FOUND,
+            "cross lens {actor}->{subject} -> 404 (denied)"
+        );
+    }
     assert!(
         read_audit().is_empty(),
-        "actor == subject writes no audit row"
+        "a DENIED cross view is never assembled or audited"
     );
-
-    // Cross view: exactly one row, fields exact, ordinal 0.
-    let (status, _, bytes) = get_lens(&router, "p061", "p060").await;
-    assert_eq!(status, StatusCode::OK);
-    let body: Value = serde_json::from_slice(&bytes).expect("parses");
-    assert_eq!(body["cross_lens"], Value::Bool(true));
-    assert_eq!(body["actor_id"], "p061");
-    let audit = read_audit();
-    assert_eq!(audit.len(), 1, "exactly one lens_view row per cross view");
-    assert_eq!(audit[0].action, "lens_view");
-    assert_eq!(audit[0].actor_principal, "p061");
-    assert_eq!(audit[0].target, "p060");
-    assert_eq!(audit[0].outcome, "allowed_demo");
-    assert_eq!(audit[0].ordinal, 0);
-
-    // Ordinals increase per audited act — the row is written at request
-    // time (before the response renders), not batched after.
-    let (status, _, _) = get_lens(&router, "p060", "agent_finance_analyst").await;
-    assert_eq!(status, StatusCode::OK);
-    let audit = read_audit();
-    assert_eq!(audit.len(), 2);
-    assert_eq!(audit[1].ordinal, 1);
-    assert!(audit[0].ordinal < audit[1].ordinal);
-
-    // Another self view: still no new row.
-    let (status, _, _) = get_lens(&router, "p061", "p061").await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(read_audit().len(), 2);
+    println!("AL-2: lens is self-only; cross-principal lens denied (404) + unaudited (AUTH-3 boundary)");
 }
 
 // ---------------------------------------------------------------------------

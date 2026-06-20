@@ -30,6 +30,7 @@ pub mod role_scope;
 pub mod scope;
 pub mod session;
 pub mod sidecar;
+pub mod visibility;
 pub mod workflow;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -821,6 +822,12 @@ async fn handle_lens_diff(
         return bad_request("left and right are required");
     };
     let (left, right) = (left.clone(), right.clone());
+    // AUTH-2 (FC-A2): a diff compares two principals' scopes — cross-principal
+    // viewing, which is the AUTH-3 boundary (admin view-as). DENIED here with the
+    // one 404 (no existence leak) unless both sides are the caller themselves.
+    if left != actor || right != actor {
+        return doc_not_found();
+    }
 
     let blocking_state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
