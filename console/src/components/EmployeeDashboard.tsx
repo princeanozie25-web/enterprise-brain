@@ -97,28 +97,6 @@ function workflowStatusLabel(status: string): string {
   }
 }
 
-function workflowActionLabel(item: WorkflowItem): string {
-  switch (item.status.toLowerCase()) {
-    case "active":
-      return "Continue";
-    case "pending":
-      return item.kind === "access_request" ? "Review" : "Open";
-    case "blocked":
-    case "denied":
-    case "cancelled":
-    case "expired":
-    case "dismissed":
-      return "Check";
-    case "done":
-    case "approved":
-      return "View";
-    case "planned":
-    case "candidate":
-    default:
-      return "Open";
-  }
-}
-
 function dashboardPanelStyle(): React.CSSProperties {
   return {
     background: "var(--glass-fill)",
@@ -915,9 +893,10 @@ function DashboardPanelTabs({
   active: DashboardPanelMode | null;
   onSelect: (mode: DashboardPanelMode) => void;
 }) {
+  // Profile opens from the identity strip (avatar + name); only Workspace and
+  // Settings remain as header pill triggers.
   const tabs: { label: string; mode: DashboardPanelMode }[] = [
     { label: "Workspace", mode: "workspace" },
-    { label: "Profile", mode: "profile" },
     { label: "Settings", mode: "settings" },
   ];
 
@@ -933,7 +912,7 @@ function DashboardPanelTabs({
           <button
             key={tab.mode}
             type="button"
-            className={`${selected ? "ap-affordance-button" : "ap-washable"} ap-register-chrome min-h-10 rounded-full px-3 py-2`}
+            className={`${selected ? "ap-affordance-button" : "ap-washable"} ap-register-chrome inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 py-2`}
             style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
             onClick={() => onSelect(tab.mode)}
             aria-haspopup="dialog"
@@ -941,6 +920,12 @@ function DashboardPanelTabs({
             data-active={selected ? "true" : "false"}
             data-testid={`dashboard-${tab.mode}-panel-trigger`}
           >
+            {/* Side-panel glyph: marks this as a control that OPENS a panel,
+                not a route tab that swaps content in place (no-affordance contract). */}
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+              <line x1="10" y1="3" x2="10" y2="13" />
+            </svg>
             {tab.label}
           </button>
         );
@@ -1010,7 +995,7 @@ function TodayCockpit({ model }: { model: TodayCockpitModel }) {
         <Chip>{plural(attentionCount, "attention row")}</Chip>
       </div>
 
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
         <CockpitSection
           emptyLabel="Nothing waiting."
           items={model.needsAttention}
@@ -1022,12 +1007,6 @@ function TodayCockpit({ model }: { model: TodayCockpitModel }) {
           items={model.continueWork}
           testId="dashboard-today-continue-work"
           title="Continue Work"
-        />
-        <CockpitSection
-          emptyLabel="No active grants for Ask."
-          items={model.askWithContext}
-          testId="dashboard-today-ask-context"
-          title="Ask"
         />
         <CockpitSection
           emptyLabel="No requests waiting."
@@ -1256,7 +1235,7 @@ function buildRoleExperienceCards({
 function RoleExperienceSummary({ cards }: { cards: RoleExperienceCard[] }) {
   return (
     <div
-      className="grid grid-cols-1 gap-2 md:grid-cols-2"
+      className="grid grid-cols-1 gap-2"
       data-testid="dashboard-role-experience"
       id="dashboard-role-experience"
     >
@@ -1621,7 +1600,6 @@ function WorkspacePanel({
 
 function ProfilePanel({
   actor,
-  graph,
   grants,
   human,
   inbox,
@@ -1634,7 +1612,6 @@ function ProfilePanel({
   summary,
 }: {
   actor: string;
-  graph: GraphResponse | null;
   grants: AccessGrantRecord[];
   human: LensResponse["subject_human"];
   inbox: AccessRequestRecord[];
@@ -1646,7 +1623,6 @@ function ProfilePanel({
   scopeBadges: ScopeBadge[];
   summary: NodeSummary | null;
 }) {
-  const systems = deriveConnectedSystems(graph);
   const directReports = roleScope?.team_scope.direct_report_count ?? human?.manages.length ?? 0;
   const knowledgeSections = lens.holdings.length;
   const visibleKnowledgeRows = lens.holdings.reduce((sum, section) => sum + section.docs.length, 0);
@@ -1683,7 +1659,7 @@ function ProfilePanel({
             Profile
           </p>
           <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
-            Identity, access, and systems
+            Identity, access, and knowledge
           </h2>
         </div>
         <Chip>{scopeModeLabel(roleScope)}</Chip>
@@ -1691,8 +1667,8 @@ function ProfilePanel({
 
       <DemoIdentityNotice className="mb-3" compact context="employee" testId="dashboard-demo-identity-mode" />
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <WorkspaceBlock title="Identity" defaultOpen>
             <WorkspaceFact label="Identity ID" source="selected Work Identity" value={actor} />
             <WorkspaceFact label="Name" source="Work Identity" value={human?.display_name ?? lens.subject.name} />
@@ -1740,40 +1716,6 @@ function ProfilePanel({
         </div>
 
         <div className="space-y-3">
-          <WorkspaceBlock title="Connected Systems">
-            <div className="grid grid-cols-1 gap-2" data-testid="dashboard-connected-systems">
-              {systems.length === 0 ? (
-                <EmptyLine compact>No supported connected systems are visible through this graph.</EmptyLine>
-              ) : (
-                systems.map((system) => (
-                  <div
-                    key={`${system.name}:${system.source}`}
-                    className="ap-card flex items-center justify-between gap-3 rounded p-2"
-                    data-testid="dashboard-connected-system"
-                  >
-                    <div className="min-w-0">
-                      <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
-                        {system.name}
-                      </p>
-                      <p className="ap-register-evidence ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
-                        {system.source}
-                      </p>
-                    </div>
-                    <Chip>{system.status}</Chip>
-                  </div>
-                ))
-              )}
-            </div>
-          </WorkspaceBlock>
-
-          <WorkspaceBlock title="Preferences">
-            <WorkspaceFact label="Workspace preferences" source="not modeled" value="Unavailable" />
-          </WorkspaceBlock>
-
-          <WorkspaceBlock title="Agent Preferences">
-            <WorkspaceFact label="Owned agents" source="node summary" value={`${summary?.agents_owned?.length ?? 0} owned agents visible`} />
-          </WorkspaceBlock>
-
           <WorkspaceBlock title="Audit Activity">
             <div className="space-y-2" data-testid="dashboard-audit-activity">
               {auditRows.length === 0 ? (
@@ -1830,12 +1772,15 @@ function ProfilePanel({
 }
 
 function SettingsPanel({
+  graph,
   roleScope,
   summary,
 }: {
+  graph: GraphResponse | null;
   roleScope: RoleScopeSummary | null;
   summary: NodeSummary | null;
 }) {
+  const systems = deriveConnectedSystems(graph);
   return (
     <MotionSection
       className="ap-glass-panel rounded-2xl p-3"
@@ -1848,14 +1793,14 @@ function SettingsPanel({
             Settings
           </p>
           <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
-            Display and pilot settings
+            Display, systems, and preferences
           </h2>
         </div>
         <Chip>{scopeModeLabel(roleScope)}</Chip>
       </div>
 
-      <div className="space-y-3">
-        <WorkspaceBlock title="Theme">
+      <div className="grid grid-cols-1 gap-3">
+        <WorkspaceBlock title="Theme" defaultOpen>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
@@ -1869,7 +1814,37 @@ function SettingsPanel({
           </div>
         </WorkspaceBlock>
 
-        <WorkspaceBlock title="Agent preferences">
+        <WorkspaceBlock title="Connected Systems">
+          <div className="grid grid-cols-1 gap-2" data-testid="dashboard-connected-systems">
+            {systems.length === 0 ? (
+              <EmptyLine compact>No supported connected systems are visible through this graph.</EmptyLine>
+            ) : (
+              systems.map((system) => (
+                <div
+                  key={`${system.name}:${system.source}`}
+                  className="ap-card flex items-center justify-between gap-3 rounded p-2"
+                  data-testid="dashboard-connected-system"
+                >
+                  <div className="min-w-0">
+                    <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+                      {system.name}
+                    </p>
+                    <p className="ap-register-evidence ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+                      {system.source}
+                    </p>
+                  </div>
+                  <Chip>{system.status}</Chip>
+                </div>
+              ))
+            )}
+          </div>
+        </WorkspaceBlock>
+
+        <WorkspaceBlock title="Preferences">
+          <WorkspaceFact label="Workspace preferences" source="not modeled" value="Unavailable" />
+        </WorkspaceBlock>
+
+        <WorkspaceBlock title="Agent Preferences">
           <WorkspaceFact
             label="Owned agents"
             source="node summary"
@@ -2464,24 +2439,43 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
         data-testid="dashboard-cockpit-header"
       >
         <div className="flex flex-wrap items-center gap-3">
-          <PersonAvatar
-            principalId={actor}
-            displayName={human?.display_name ?? lens.subject.name}
-            department={human?.department_label ?? lens.subject.department ?? null}
-            size={40}
-          />
-          <div className="min-w-0 flex-1">
-            <h1
-              className="ap-register-chrome mt-1"
-              style={{ fontSize: TYPE.scale.md, fontWeight: 700, lineHeight: TYPE.line.display }}
-              data-testid="dashboard-user-name"
-            >
-              {human?.display_name ?? lens.subject.name}
-            </h1>
-            <p className="ap-soft truncate" style={{ fontSize: TYPE.scale.xs }}>
-              {human?.title ?? "Role unavailable"}
-              {human?.department_label ? ` / ${human.department_label}` : ""}
-            </p>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setActivePanel("profile")}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setActivePanel("profile");
+              }
+            }}
+            aria-label="Open profile"
+            data-testid="dashboard-identity-open-profile"
+            className="ap-washable inline-flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-2xl px-1.5 py-1 text-left"
+          >
+            <PersonAvatar
+              principalId={actor}
+              displayName={human?.display_name ?? lens.subject.name}
+              department={human?.department_label ?? lens.subject.department ?? null}
+              size={40}
+            />
+            <div className="min-w-0 flex-1">
+              <h1
+                className="ap-register-chrome mt-1"
+                style={{ fontSize: TYPE.scale.md, fontWeight: 700, lineHeight: TYPE.line.display }}
+                data-testid="dashboard-user-name"
+              >
+                {human?.display_name ?? lens.subject.name}
+              </h1>
+              <p className="ap-soft truncate" style={{ fontSize: TYPE.scale.xs }}>
+                {human?.title ?? "Role unavailable"}
+                {human?.department_label ? ` / ${human.department_label}` : ""}
+              </p>
+            </div>
+            {/* Trailing chevron: the no-affordance cue that this opens the Profile drawer. */}
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" className="ap-soft shrink-0">
+              <path d="M6 4l4 4-4 4" />
+            </svg>
           </div>
           <Chip mono>{actor}</Chip>
           <Chip>Demo Identity Mode</Chip>
@@ -2552,7 +2546,6 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
           ) : activePanel === "profile" ? (
             <ProfilePanel
               actor={actor}
-              graph={graph}
               grants={grants}
               human={human}
               inbox={inbox}
@@ -2565,7 +2558,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
               summary={summary}
             />
           ) : activePanel === "settings" ? (
-            <SettingsPanel roleScope={roleScope} summary={summary} />
+            <SettingsPanel graph={graph} roleScope={roleScope} summary={summary} />
           ) : null}
       </DashboardPanelDrawer>
     </main>
@@ -2641,7 +2634,7 @@ function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
         authorization is still handled by the existing scoped APIs; this label is derived, not
         enforced.
       </p>
-      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+      <div className="mt-3 grid grid-cols-1 gap-2">
         {badges.map((badge, index) => (
           <MotionArticle key={`${badge.label}:${badge.detail}`} className="ap-card rounded p-2" delayIndex={index}>
             <div className="flex items-start justify-between gap-2">
@@ -2729,61 +2722,54 @@ function WorkflowSummary({ actor, items }: { actor: string; items: WorkflowItem[
   if (items.length === 0) {
     return <EmptyLine>No workflow items are projected for your assigned projects.</EmptyLine>;
   }
-  const grouped = new Map<string, WorkflowItem[]>();
-  for (const group of WORKFLOW_GROUPS) grouped.set(group.label, []);
-  for (const item of items) grouped.get(workflowGroup(item.status))?.push(item);
+  // Cockpit digest: only the items actually in flight (everything except Done),
+  // in lane-priority order, capped at five. The full five-lane board lives on the
+  // Workflow Command surface (/project), reachable via "Open workflow".
+  const ACTIVE_ORDER = ["In Progress", "Next", "Waiting", "Blocked"];
+  const active = items
+    .filter((item) => workflowGroup(item.status) !== "Done")
+    .sort(
+      (a, b) =>
+        ACTIVE_ORDER.indexOf(workflowGroup(a.status)) - ACTIVE_ORDER.indexOf(workflowGroup(b.status)),
+    );
+  const digest = active.slice(0, 5);
   return (
-    <div className="grid grid-cols-1 gap-2 lg:grid-cols-5" data-testid="dashboard-workflow" id="dashboard-workflow">
-      {WORKFLOW_GROUPS.map((group, groupIndex) => {
-        const groupItems = grouped.get(group.label) ?? [];
-        return (
-          <MotionArticle
-            key={group.label}
-            className="ap-card rounded p-2"
-            delayIndex={groupIndex}
-            data-testid="dashboard-workflow-group"
+    <div className="space-y-2" data-testid="dashboard-workflow" id="dashboard-workflow">
+      {digest.length === 0 ? (
+        <EmptyLine>No active workflow items in flight. Completed work lives in Workflow Command.</EmptyLine>
+      ) : (
+        digest.map((item, index) => (
+          <MotionAnchor
+            key={item.item_id}
+            href={`/project?cap=${encodeURIComponent(item.capability_id)}&as=${encodeURIComponent(actor)}`}
+            className="ap-card ap-washable flex items-center justify-between gap-3 rounded border px-2.5 py-2"
+            delayIndex={index}
+            data-testid="dashboard-workflow-item"
           >
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
-                {group.label}
-              </span>
-              <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-                {groupItems.length}
-              </span>
-            </div>
-            <div className="space-y-1.5">
-              {groupItems.slice(0, 3).map((item, itemIndex) => (
-                <MotionAnchor
-                  key={item.item_id}
-                  href={`/project?cap=${encodeURIComponent(item.capability_id)}&as=${encodeURIComponent(actor)}`}
-                  className="ap-card ap-washable block rounded border px-2 py-2"
-                  delayIndex={itemIndex}
-                  data-testid="dashboard-workflow-item"
-                >
-                  <span className="ap-register-chrome block truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
-                    {item.title}
-                  </span>
-                  <span
-                    className="ap-soft mt-1 block truncate"
-                    style={{ fontSize: TYPE.scale.xs }}
-                    data-testid="dashboard-workflow-item-status"
-                  >
-                    Status: {workflowStatusLabel(item.status)}
-                  </span>
-                  <span
-                    className="ap-register-chrome mt-2 inline-flex rounded px-2 py-1"
-                    style={{ background: "var(--surface-chip)", fontSize: TYPE.scale.xs, fontWeight: 600 }}
-                    data-testid="dashboard-workflow-item-action"
-                  >
-                    {workflowActionLabel(item)}
-                  </span>
-                </MotionAnchor>
-              ))}
-              {groupItems.length === 0 && <EmptyLine compact>Empty</EmptyLine>}
-            </div>
-          </MotionArticle>
-        );
-      })}
+            <span className="ap-register-chrome min-w-0 truncate" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+              {item.title}
+            </span>
+            <span
+              className="ap-soft shrink-0"
+              style={{ fontSize: TYPE.scale.xs }}
+              data-testid="dashboard-workflow-item-status"
+            >
+              {workflowStatusLabel(item.status)}
+            </span>
+          </MotionAnchor>
+        ))
+      )}
+      <a
+        href={`/project?as=${encodeURIComponent(actor)}`}
+        className="ap-affordance-text ap-register-chrome inline-flex min-h-10 items-center gap-1 px-1 py-1"
+        style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+        data-testid="dashboard-workflow-open"
+      >
+        Open workflow
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+          <path d="M6 4l4 4-4 4" />
+        </svg>
+      </a>
     </div>
   );
 }

@@ -467,8 +467,11 @@ describe("EmployeeDashboard", () => {
     expect(screen.getByTestId("dashboard-ask-link").getAttribute("href")).toBe("/ask?as=p060");
     expect(screen.getByTestId("dashboard-compact-cockpit")).toBeTruthy();
     expect(screen.getByTestId("dashboard-panel-tabs").textContent).toContain("Workspace");
-    expect(screen.getByTestId("dashboard-panel-tabs").textContent).toContain("Profile");
     expect(screen.getByTestId("dashboard-panel-tabs").textContent).toContain("Settings");
+    // Profile pill removed; Profile opens from the identity strip (avatar + name).
+    expect(screen.getByTestId("dashboard-panel-tabs").textContent).not.toContain("Profile");
+    expect(screen.queryByTestId("dashboard-profile-panel-trigger")).toBeNull();
+    expect(screen.getByTestId("dashboard-identity-open-profile")).toBeTruthy();
     expect(screen.queryByTestId("dashboard-workspace")).toBeNull();
 
     const today = screen.getByTestId("dashboard-today-cockpit");
@@ -476,7 +479,6 @@ describe("EmployeeDashboard", () => {
     expect(today.textContent).toContain("What needs attention?");
     expect(today.textContent).toContain("Workflow waiting");
     expect(today.textContent).toContain("Continue active workflow");
-    expect(today.textContent).toContain("Ask with granted knowledge");
     expect(today.textContent).toContain("Waiting on approval");
     expect(today.textContent).toContain("Manager Context");
     expect(today.textContent).toContain("Team context");
@@ -529,9 +531,10 @@ describe("EmployeeDashboard", () => {
     expect(screen.getByTestId("dashboard-department-workflow-layer").textContent).toContain("Finance");
     expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
 
-    const workflowGroups = screen.getAllByTestId("dashboard-workflow-group");
-    expect(within(workflowGroups[0]).getAllByTestId("dashboard-workflow-item").length).toBe(1);
-    expect(within(workflowGroups[2]).getAllByTestId("dashboard-workflow-item").length).toBe(1);
+    // /me shows a compact digest (no lane board); the full board lives on Workflow Command.
+    expect(screen.queryAllByTestId("dashboard-workflow-group").length).toBe(0);
+    expect(screen.getAllByTestId("dashboard-workflow-item").length).toBe(2);
+    expect(screen.getByTestId("dashboard-workflow-open").getAttribute("href")).toBe("/project?as=p060");
 
     expect(screen.getByTestId("dashboard-request").textContent).toContain("pending");
     const grants = screen.getAllByTestId("dashboard-grant");
@@ -560,26 +563,19 @@ describe("EmployeeDashboard", () => {
       }),
     );
 
-    fireEvent.click(screen.getByTestId("dashboard-profile-panel-trigger"));
+    fireEvent.click(screen.getByTestId("dashboard-identity-open-profile"));
     const profile = await screen.findByTestId("dashboard-profile-panel");
     expect(profile.textContent).toContain("Profile");
     expect(profile.textContent).toContain("Identity");
     expect(profile.textContent).toContain("Role");
     expect(profile.textContent).toContain("Department");
     expect(profile.textContent).toContain("Manager");
-    expect(profile.textContent).toContain("Connected Systems");
-    expect(profile.textContent).toContain("Preferences");
-    expect(profile.textContent).toContain("Agent Preferences");
     expect(profile.textContent).toContain("Security");
     expect(profile.textContent).toContain("Audit Activity");
     expect(profile.textContent).toContain("Ingrid Cohen");
-    const systems = screen.getByTestId("dashboard-connected-systems");
-    expect(systems.textContent).toContain("Slack");
-    expect(systems.textContent).toContain("SharePoint");
-    expect(systems.textContent).toContain("GitHub");
-    expect(systems.textContent).toContain("Available");
-    expect(systems.textContent).not.toContain("Gmail");
-    expect(systems.textContent).not.toContain("Not Connected");
+    // Connected Systems / Preferences moved to Settings (IA pass): not on Profile.
+    expect(profile.textContent).not.toContain("Connected Systems");
+    expect(screen.queryByTestId("dashboard-connected-systems")).toBeNull();
     expect(screen.getByTestId("dashboard-agent").textContent).toContain("Finance analysis assistant");
 
     const scope = screen.getByTestId("dashboard-scope");
@@ -609,9 +605,18 @@ describe("EmployeeDashboard", () => {
     const settings = await screen.findByTestId("dashboard-settings-panel");
     expect(settings.textContent).toContain("Settings");
     expect(settings.textContent).toContain("Light or dark mode");
-    expect(settings.textContent).toContain("Agent preferences");
+    // Connected Systems / Preferences / Agent Preferences relocated here (IA pass).
+    expect(settings.textContent).toContain("Connected Systems");
+    expect(settings.textContent).toContain("Preferences");
+    expect(settings.textContent).toContain("Agent Preferences");
     expect(settings.textContent).toContain("Demo Identity Mode");
     expect(screen.getAllByTestId("theme-toggle").length).toBeGreaterThan(0);
+    const settingsSystems = screen.getByTestId("dashboard-connected-systems");
+    expect(settingsSystems.textContent).toContain("Slack");
+    expect(settingsSystems.textContent).toContain("SharePoint");
+    expect(settingsSystems.textContent).toContain("GitHub");
+    expect(settingsSystems.textContent).toContain("Available");
+    expect(settingsSystems.textContent).not.toContain("Gmail");
 
     const text = container.textContent ?? "";
     expect(text).not.toContain("document_id");
@@ -661,7 +666,7 @@ describe("EmployeeDashboard", () => {
     expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
     expect(screen.queryByTestId("dashboard-executive-workflow-label")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("dashboard-profile-panel-trigger"));
+    fireEvent.click(screen.getByTestId("dashboard-identity-open-profile"));
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Employee baseline");
     expect(roleExperience.textContent).toContain("Surface boundary");
@@ -696,7 +701,6 @@ describe("EmployeeDashboard", () => {
     expect(today.textContent).toContain("0 attention rows");
     expect(needsAttention.textContent).toContain("Nothing waiting.");
     expect(today.textContent).toContain("Continue active workflow");
-    expect(today.textContent).toContain("No active grants for Ask.");
     expect(today.textContent).toContain("No requests waiting.");
     expect(today.textContent).not.toMatch(/unread|notification count|overdue|risk score|bursar|governance/i);
     expect(container.querySelector("[data-testid='bursar-surface']")).toBeNull();
@@ -761,7 +765,7 @@ describe("EmployeeDashboard", () => {
     expect(screen.queryByTestId("dashboard-department-workflow-layer")).toBeNull();
     expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("dashboard-profile-panel-trigger"));
+    fireEvent.click(screen.getByTestId("dashboard-identity-open-profile"));
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Executive candidate");
     expect(roleExperience.textContent).toContain("label only");
