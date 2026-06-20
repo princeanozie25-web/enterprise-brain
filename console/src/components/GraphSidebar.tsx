@@ -3,12 +3,13 @@
 import type { GraphDept, GraphResponse, OrgStats } from "@/lib/api";
 import { DEPARTMENT_TINT, TYPE } from "@/lib/tokens";
 
-/** The node KINDS the graph actually draws and can filter. Documents (600) and
- * workflows (90 capabilities) are NOT graph nodes — drawing document ids would
- * breach the no-leak law and 600 nodes is decorative density; they live in the
- * counts here and behind the audited lens. */
+/** The node KINDS the graph actually draws and can filter. Documents (600) are
+ * never graph nodes. Project/capability nodes are grouped from real person
+ * assignments and stay hidden until search/focus/trace to avoid decorative
+ * density. */
 export const FILTER_KINDS: { key: string; label: string }[] = [
   { key: "people", label: "People" },
+  { key: "projects", label: "Projects" },
   { key: "agents", label: "Agents" },
   { key: "sources", label: "Sources" },
 ];
@@ -61,13 +62,13 @@ export function GraphSidebar({
 
   return (
     <aside
-      className="ap-card flex shrink-0 flex-col gap-3 overflow-y-auto rounded p-3"
+      className="ap-card ap-elevated flex shrink-0 flex-col gap-3 overflow-y-auto rounded p-3"
       style={{ width: 232, maxHeight: "82vh" }}
       data-testid="graph-sidebar"
     >
       <div>
         <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
-          Organisation Brain
+          Operating Map
         </h2>
         <p className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
           {orgName}
@@ -80,6 +81,7 @@ export function GraphSidebar({
         <Stat label="Documents" value={stats?.document_total ?? null} />
         <Stat label="Workflows" value={stats?.workflows ?? null} />
         <Stat label="Capabilities" value={stats?.capabilities ?? null} />
+        <Stat label="Graph projects" value={graph.projects.length} />
         <Stat label="Agents" value={stats?.agents ?? null} />
         <Stat label="Sources" value={stats?.sources ?? null} />
         <Stat label="Groups" value={stats?.groups ?? null} />
@@ -88,13 +90,13 @@ export function GraphSidebar({
 
       <div className="ap-hairline border-t pt-2">
         <p className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-          Viewing as
+          Work Identity
         </p>
         <p className="ap-register-evidence" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }} data-testid="sidebar-actor">
           {actor}
         </p>
         <p className="ap-soft mt-0.5" style={{ fontSize: TYPE.scale.xs }}>
-          The graph is the company through this lens.
+          The graph shows company relationships visible to this Work Identity.
         </p>
       </div>
 
@@ -110,7 +112,7 @@ export function GraphSidebar({
                 key={f.key}
                 type="button"
                 onClick={() => onToggleKind(f.key)}
-                className={`ap-hairline ap-register-chrome rounded border px-2 py-0.5${on ? " ap-affordance-button" : " ap-soft"}`}
+                className={`ap-register-chrome rounded px-2 py-0.5${on ? " ap-affordance-button" : " ap-chip"}`}
                 style={{ fontSize: TYPE.scale.xs }}
                 data-testid="filter-toggle"
                 data-kind={f.key}

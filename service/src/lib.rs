@@ -10,6 +10,8 @@
 //! Async lives in THIS crate only (the HTTP edge); the whole governed
 //! pipeline (`answer::ask`) is synchronous, auditable code.
 
+pub mod access_grants;
+pub mod access_requests;
 pub mod agent;
 pub mod answer;
 pub mod atlas;
@@ -24,8 +26,10 @@ pub mod identity;
 pub mod lane;
 pub mod lens;
 pub mod node_summary;
+pub mod role_scope;
 pub mod scope;
 pub mod sidecar;
+pub mod workflow;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, SocketAddr, TcpListener};
@@ -180,6 +184,11 @@ pub struct AppState {
     pub agents: Option<agent::standing::AgentRegistry>,
     /// M4: the append-only proposal + audit store.
     pub proposals: Option<Arc<agent::proposals::ProposalStore>>,
+    /// Access request ledger: append-only request/decision records.
+    pub access_requests: Option<Arc<access_requests::AccessRequestStore>>,
+    /// Access grant ledger: append-only read entitlements derived from
+    /// approved access requests. Grants never mutate compiled artifacts.
+    pub access_grants: Option<Arc<access_grants::AccessGrantStore>>,
     /// AP-5: the vendored print fonts (OFL TTFs decompressed from the
     /// console's own woff2 subsets). Compile-time crate path — a demo
     /// deployment choice, flagged in the AP-5 closeout.
@@ -350,6 +359,8 @@ impl AppState {
             usage_out: None,
             agents: None,
             proposals: None,
+            access_requests: None,
+            access_grants: None,
             export_fonts_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fonts"),
             export_fixed_date: None,
             lane_graph,
@@ -372,12 +383,9 @@ impl AppState {
     /// closed). Absent file = `None`, the frozen names stand. Display only:
     /// the humanization layer is consulted for labels, never authorization.
     pub fn with_people(mut self) -> Result<AppState> {
-        self.people = humanize::load_and_verify(
-            &self.fixtures_dir,
-            &self.company_sha256,
-            &self.lane_seeds,
-        )?
-        .map(Arc::new);
+        self.people =
+            humanize::load_and_verify(&self.fixtures_dir, &self.company_sha256, &self.lane_seeds)?
+                .map(Arc::new);
         Ok(self)
     }
 
@@ -420,6 +428,19 @@ impl AppState {
 
     pub fn with_proposals(mut self, store: Arc<agent::proposals::ProposalStore>) -> AppState {
         self.proposals = Some(store);
+        self
+    }
+
+    pub fn with_access_requests(
+        mut self,
+        store: Arc<access_requests::AccessRequestStore>,
+    ) -> AppState {
+        self.access_requests = Some(store);
+        self
+    }
+
+    pub fn with_access_grants(mut self, store: Arc<access_grants::AccessGrantStore>) -> AppState {
+        self.access_grants = Some(store);
         self
     }
 
@@ -531,6 +552,10 @@ pub fn loopback_listener(addr: &str) -> Result<TcpListener> {
 pub struct AskRequest {
     pub query: String,
     #[serde(default)]
+    pub capability_id: Option<String>,
+    #[serde(default)]
+    pub grant_id: Option<String>,
+    #[serde(default)]
     pub hybrid: bool,
     #[serde(default)]
     pub judge: bool,
@@ -543,6 +568,7 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/ask", post(handle_ask))
         .route("/doc/{id}", get(handle_doc))
         .route("/scope", get(handle_scope))
+        .route("/me/scope", get(handle_me_scope))
         .route("/healthz", get(handle_healthz))
         .route("/agent/{id}/run", post(handle_agent_run))
         .route("/lens/diff", get(handle_lens_diff))
@@ -555,9 +581,30 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/lane/inbox/{id}/accept", post(handle_inbox_accept))
         .route("/lane/inbox/{id}/dismiss", post(handle_inbox_dismiss))
         .route("/lane/rollup", get(handle_rollup))
+        .route(
+            "/workflow/project/{capability_id}",
+            get(handle_project_workflow),
+        )
         .route("/graph", get(handle_graph))
         .route("/node/{id}/summary", get(handle_node_summary))
         .route("/people", get(handle_people))
+        .route("/access-requests", get(handle_access_requests_list))
+        .route("/access-requests", post(handle_access_request_create))
+        .route("/access-requests/inbox", get(handle_access_requests_inbox))
+        .route("/access-grants", get(handle_access_grants_list))
+        .route("/access-grants/{id}", get(handle_access_grant_get))
+        .route(
+            "/access-grants/{id}/revoke",
+            post(handle_access_grant_revoke),
+        )
+        .route(
+            "/access-requests/{id}/approve",
+            post(handle_access_request_approve),
+        )
+        .route(
+            "/access-requests/{id}/deny",
+            post(handle_access_request_deny),
+        )
         .route("/proposals", get(handle_proposals_list))
         .route("/proposals/{id}/approve", post(handle_proposal_approve))
         .route("/proposals/{id}/reject", post(handle_proposal_reject))
@@ -576,10 +623,24 @@ async fn handle_ask(
     DemoPrincipal(principal): DemoPrincipal,
     Json(request): Json<AskRequest>,
 ) -> Response {
+    let granted_context = match (request.grant_id, request.capability_id) {
+        (Some(grant_id), Some(capability_id)) => Some(answer::GrantedContextRequest {
+            capability_id,
+            grant_id,
+        }),
+        (None, None) => None,
+        _ => {
+            return json_bytes_response(
+                StatusCode::BAD_REQUEST,
+                b"{\"demo_identity_mode\":true,\"error\":\"granted context requires grant_id and capability_id\"}\n".to_vec(),
+            );
+        }
+    };
     let options = AskOptions {
         hybrid: request.hybrid,
         judge: request.judge,
-        bypass_cache: false,
+        bypass_cache: granted_context.is_some(),
+        granted_context,
     };
     let blocking_state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
@@ -1034,6 +1095,28 @@ async fn handle_rollup(
     }
 }
 
+/// GET /workflow/project/{capability_id}: a read-only project execution
+/// surface. It projects existing lane boxes, accepted agent boxes, and access
+/// request rows; it never exposes evidence or creates task rows.
+async fn handle_project_workflow(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(actor): DemoPrincipal,
+    axum::extract::Path(capability_id): axum::extract::Path<String>,
+) -> Response {
+    let blocking_state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        workflow::project_workflow_view(&blocking_state, &actor, &capability_id)
+    })
+    .await;
+    match result {
+        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => lane_bad_request(&message),
+        Ok(Err(AskError::Internal(err))) => lane_internal(err, "project workflow"),
+        Err(join_error) => lane_internal(anyhow::anyhow!("{join_error}"), "project workflow task"),
+    }
+}
+
 /// GET /graph — the Org Graph (AR-2): the org's shape as nodes + edges,
 /// INTERNAL-GRADE and consistent with /people (no holding, no count, no
 /// document id ever appears). An unknown actor or a world with no humanization
@@ -1133,7 +1216,12 @@ async fn handle_people(
     let people: Vec<humanize::PersonCard> = state
         .people
         .as_ref()
-        .map(|layer| layer.roster().map(humanize::PersonCard::from_record).collect())
+        .map(|layer| {
+            layer
+                .roster()
+                .map(humanize::PersonCard::from_record)
+                .collect()
+        })
         .unwrap_or_default();
     match retrieval::index::canonical_json_bytes(&PeopleResponse {
         demo_identity_mode: true,
@@ -1169,6 +1257,45 @@ async fn handle_scope(
         Ok(bytes) => json_bytes_response(StatusCode::OK, bytes),
         Err(err) => {
             eprintln!("scope serialization failed: {err:#}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+    }
+}
+
+/// GET /me/scope - server-derived role/scope posture for the current demo
+/// principal. It grants nothing and always reports enforcement as derived_only.
+async fn handle_me_scope(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(principal): DemoPrincipal,
+) -> Response {
+    let blocking_state = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        role_scope::role_scope_summary(&blocking_state, &principal)
+    })
+    .await;
+    match result {
+        Ok(Ok(Some(bytes))) => json_bytes_response(StatusCode::OK, bytes),
+        Ok(Ok(None)) => doc_not_found(),
+        Ok(Err(AskError::BadRequest(message))) => json_bytes_response(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{{\"demo_identity_mode\":true,\"error\":{}}}\n",
+                serde_json::to_string(&message).unwrap_or_else(|_| "\"bad request\"".into())
+            )
+            .into_bytes(),
+        ),
+        Ok(Err(AskError::Internal(err))) => {
+            eprintln!("role scope failed: {err:#}");
+            json_bytes_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+            )
+        }
+        Err(join_error) => {
+            eprintln!("role scope task failed: {join_error}");
             json_bytes_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
@@ -1214,6 +1341,109 @@ fn reply_canonical(value: &impl serde::Serialize) -> Reply {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessRequestCreateBody {
+    justification: String,
+    target: access_requests::AccessTarget,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessRequestDecisionBody {
+    #[serde(default)]
+    reason_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AccessCompany {
+    people: Vec<AccessCompanyPerson>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AccessCompanyPerson {
+    id: String,
+    #[serde(default)]
+    manager_id: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct AccessRequestsResponse {
+    actor_id: String,
+    demo_identity_mode: bool,
+    requests: Vec<access_requests::AccessRequest>,
+    snapshot_version: String,
+}
+
+#[derive(serde::Serialize)]
+struct AccessGrantsResponse {
+    actor_id: String,
+    demo_identity_mode: bool,
+    grants: Vec<access_grants::AccessGrant>,
+    snapshot_version: String,
+}
+
+#[derive(serde::Serialize)]
+struct AccessGrantResponse {
+    demo_identity_mode: bool,
+    grant: access_grants::AccessGrant,
+    snapshot_version: String,
+}
+
+#[derive(serde::Serialize)]
+struct AccessRequestMutationResponse {
+    demo_identity_mode: bool,
+    request: access_requests::AccessRequest,
+    snapshot_version: String,
+}
+
+fn load_access_people(state: &AppState) -> Result<BTreeMap<String, Option<String>>> {
+    let path = state.fixtures_dir.join("company.json");
+    let bytes = std::fs::read(&path).with_context(|| format!("cannot read {}", path.display()))?;
+    if sha256_hex(&bytes) != state.company_sha256 {
+        bail!("company.json does not match the M1-pinned hash; refusing");
+    }
+    let company: AccessCompany = serde_json::from_slice(&bytes)
+        .with_context(|| format!("{} fails parse", path.display()))?;
+    Ok(company
+        .people
+        .into_iter()
+        .map(|person| (person.id, person.manager_id))
+        .collect())
+}
+
+fn access_target_exists(state: &AppState, target: &access_requests::AccessTarget) -> bool {
+    let Some(people) = state.people.as_deref() else {
+        return false;
+    };
+    let capability_id = target.capability_id();
+    !capability_id.trim().is_empty()
+        && people.roster().any(|person| {
+            person
+                .projects
+                .iter()
+                .any(|project| project.capability_id == capability_id)
+        })
+}
+
+fn clean_reason_code(reason_code: Option<String>) -> Result<Option<String>> {
+    let Some(reason) = reason_code else {
+        return Ok(None);
+    };
+    let trimmed = reason.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.len() > 80
+        || !trimmed
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':' | b'.'))
+    {
+        bail!("reason_code fails validation");
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
 async fn run_blocking(
     state: Arc<AppState>,
     task: impl FnOnce(&AppState) -> Reply + Send + 'static,
@@ -1231,6 +1461,523 @@ async fn run_blocking(
 /// POST /agent/{id}/run — invocable ONLY by the agent's owner. Anyone else,
 /// including the agent itself, is refused with an audit row. The run is an
 /// explicit invocation: no scheduler, no daemon, no background anything.
+fn create_access_request(state: &AppState, caller: &str, body: &[u8]) -> Reply {
+    use access_requests::CreateOutcome;
+
+    let Some(store) = &state.access_requests else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    let audit =
+        |target: &str, outcome: &str| store.audit("access_request_create", caller, target, outcome);
+    let request: AccessRequestCreateBody = match serde_json::from_slice(body) {
+        Ok(request) => request,
+        Err(err) => {
+            eprintln!("access request create refused: {err}");
+            if audit("access_request", "refused_strict_parse").is_err() {
+                return reply_internal();
+            }
+            return reply_error(StatusCode::BAD_REQUEST, "request fails strict parse");
+        }
+    };
+    let target_id = request.target.capability_id().to_string();
+    let target_label = format!("{}:{target_id}", request.target.kind());
+    let justification = request.justification.trim();
+    if justification.len() < 8 || justification.len() > 1200 {
+        if audit(&target_label, "refused_bad_justification").is_err() {
+            return reply_internal();
+        }
+        return reply_error(
+            StatusCode::BAD_REQUEST,
+            "justification must be between 8 and 1200 characters",
+        );
+    }
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("access request people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    let Some(manager) = people.get(caller) else {
+        if audit(&target_label, "refused_unknown_principal").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::FORBIDDEN, "forbidden");
+    };
+    let Some(approver_id) = manager.as_deref() else {
+        if audit(&target_label, "refused_no_approver").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::CONFLICT, "no approver");
+    };
+    if !people.contains_key(approver_id) {
+        if audit(&target_label, "refused_no_approver").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::CONFLICT, "no approver");
+    }
+    if !access_target_exists(state, &request.target) {
+        if audit(&target_label, "refused_unknown_target").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    if audit(&target_label, "allowed").is_err() {
+        return reply_internal();
+    }
+    match store.create(
+        caller,
+        request.target,
+        justification,
+        approver_id,
+        &state.snapshot_version,
+    ) {
+        Ok(CreateOutcome::Created(request)) | Ok(CreateOutcome::Existing(request)) => {
+            reply_canonical(&AccessRequestMutationResponse {
+                demo_identity_mode: true,
+                request: *request,
+                snapshot_version: state.snapshot_version.clone(),
+            })
+        }
+        Err(err) => {
+            eprintln!("access request create failed: {err:#}");
+            reply_internal()
+        }
+    }
+}
+
+fn list_access_requests(state: &AppState, caller: &str) -> Reply {
+    let Some(store) = &state.access_requests else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    reply_canonical(&AccessRequestsResponse {
+        actor_id: caller.to_string(),
+        demo_identity_mode: true,
+        requests: store.requested_by(caller),
+        snapshot_version: state.snapshot_version.clone(),
+    })
+}
+
+fn inbox_access_requests(state: &AppState, caller: &str) -> Reply {
+    let Some(store) = &state.access_requests else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("access request people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    if !people.contains_key(caller) {
+        return reply_canonical(&AccessRequestsResponse {
+            actor_id: caller.to_string(),
+            demo_identity_mode: true,
+            requests: Vec::new(),
+            snapshot_version: state.snapshot_version.clone(),
+        });
+    }
+    reply_canonical(&AccessRequestsResponse {
+        actor_id: caller.to_string(),
+        demo_identity_mode: true,
+        requests: store.inbox_for(caller),
+        snapshot_version: state.snapshot_version.clone(),
+    })
+}
+
+fn list_access_grants(state: &AppState, caller: &str) -> Reply {
+    let Some(store) = &state.access_grants else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    let audit = |outcome: &str| store.audit("access_grant_list", caller, "access_grants", outcome);
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("access grant people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    if !people.contains_key(caller) {
+        if audit("refused_unknown_principal").is_err() {
+            return reply_internal();
+        }
+        return reply_canonical(&AccessGrantsResponse {
+            actor_id: caller.to_string(),
+            demo_identity_mode: true,
+            grants: Vec::new(),
+            snapshot_version: state.snapshot_version.clone(),
+        });
+    }
+    if audit("allowed").is_err() {
+        return reply_internal();
+    }
+    reply_canonical(&AccessGrantsResponse {
+        actor_id: caller.to_string(),
+        demo_identity_mode: true,
+        grants: store.visible_to(caller, &state.snapshot_version),
+        snapshot_version: state.snapshot_version.clone(),
+    })
+}
+
+fn get_access_grant(state: &AppState, caller: &str, grant_id: &str) -> Reply {
+    let Some(store) = &state.access_grants else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    let audit = |outcome: &str| store.audit("access_grant_get", caller, grant_id, outcome);
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("access grant people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    if !people.contains_key(caller) {
+        if audit("refused_unknown_principal").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    let Some(grant) = store.get_effective(grant_id, &state.snapshot_version) else {
+        if audit("refused_not_found").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    if grant.grantee_id != caller && grant.approver_id != caller {
+        if audit("refused_not_party").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    if audit("allowed").is_err() {
+        return reply_internal();
+    }
+    reply_canonical(&AccessGrantResponse {
+        demo_identity_mode: true,
+        grant,
+        snapshot_version: state.snapshot_version.clone(),
+    })
+}
+
+fn revoke_access_grant(state: &AppState, caller: &str, grant_id: &str, body: &[u8]) -> Reply {
+    use access_grants::GrantRevokeError;
+
+    let Some(store) = &state.access_grants else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    let audit = |outcome: &str| store.audit("access_grant_revoke", caller, grant_id, outcome);
+    let decision_body: AccessRequestDecisionBody = if body.is_empty() {
+        AccessRequestDecisionBody::default()
+    } else {
+        match serde_json::from_slice(body) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                eprintln!("access grant revoke refused: {err}");
+                if audit("refused_strict_parse").is_err() {
+                    return reply_internal();
+                }
+                return reply_error(StatusCode::BAD_REQUEST, "revoke request fails strict parse");
+            }
+        }
+    };
+    let reason_code = match clean_reason_code(decision_body.reason_code) {
+        Ok(reason) => reason,
+        Err(err) => {
+            eprintln!("access grant revoke reason refused: {err:#}");
+            if audit("refused_bad_reason_code").is_err() {
+                return reply_internal();
+            }
+            return reply_error(StatusCode::BAD_REQUEST, "reason_code fails validation");
+        }
+    };
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("access grant people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    if !people.contains_key(caller) {
+        if audit("refused_unknown_principal").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    let Some(grant) = store.get_effective(grant_id, &state.snapshot_version) else {
+        if audit("refused_not_found").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    if grant.approver_id != caller {
+        if grant.grantee_id == caller {
+            if audit("refused_not_approver").is_err() {
+                return reply_internal();
+            }
+            return reply_error(StatusCode::FORBIDDEN, "forbidden");
+        }
+        if audit("refused_not_party").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    if grant.snapshot_version != state.snapshot_version {
+        if audit("refused_stale").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::CONFLICT, "stale grant");
+    }
+    if grant.status != access_grants::STATUS_ACTIVE {
+        if audit("refused_inactive").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::CONFLICT, "inactive grant");
+    }
+    if audit("allowed").is_err() {
+        return reply_internal();
+    }
+    match store.revoke(grant_id, caller, reason_code, &state.snapshot_version) {
+        Ok(Ok(grant)) => reply_canonical(&AccessGrantResponse {
+            demo_identity_mode: true,
+            grant,
+            snapshot_version: state.snapshot_version.clone(),
+        }),
+        Ok(Err(GrantRevokeError::NotFound)) => reply_error(StatusCode::NOT_FOUND, "not found"),
+        Ok(Err(GrantRevokeError::AlreadyInactive)) => {
+            reply_error(StatusCode::CONFLICT, "inactive grant")
+        }
+        Err(err) => {
+            eprintln!("access grant revoke failed: {err:#}");
+            reply_internal()
+        }
+    }
+}
+
+fn decide_access_request(
+    state: &AppState,
+    caller: &str,
+    request_id: &str,
+    status: &str,
+    body: &[u8],
+) -> Reply {
+    use access_requests::{DecideError, STATUS_PENDING};
+
+    let Some(store) = &state.access_requests else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    let action = if status == access_requests::STATUS_APPROVED {
+        "access_request_approve"
+    } else {
+        "access_request_deny"
+    };
+    let audit = |outcome: &str| store.audit(action, caller, request_id, outcome);
+    let decision_body: AccessRequestDecisionBody = if body.is_empty() {
+        AccessRequestDecisionBody::default()
+    } else {
+        match serde_json::from_slice(body) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                eprintln!("access request decision refused: {err}");
+                if audit("refused_strict_parse").is_err() {
+                    return reply_internal();
+                }
+                return reply_error(
+                    StatusCode::BAD_REQUEST,
+                    "decision request fails strict parse",
+                );
+            }
+        }
+    };
+    let reason_code = match clean_reason_code(decision_body.reason_code) {
+        Ok(reason) => reason,
+        Err(err) => {
+            eprintln!("access request decision reason refused: {err:#}");
+            if audit("refused_bad_reason_code").is_err() {
+                return reply_internal();
+            }
+            return reply_error(StatusCode::BAD_REQUEST, "reason_code fails validation");
+        }
+    };
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("access request people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    if !people.contains_key(caller) {
+        if audit("refused_unknown_principal").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::FORBIDDEN, "forbidden");
+    }
+    let Some(request) = store.get(request_id) else {
+        if audit("refused_not_found").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    if request.approver_id != caller {
+        if audit("refused_not_approver").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::FORBIDDEN, "forbidden");
+    }
+    if request.snapshot_version != state.snapshot_version {
+        if audit("refused_stale").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::CONFLICT, "stale request");
+    }
+    if request.status != STATUS_PENDING {
+        if audit("refused_already_decided").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::CONFLICT, "already decided");
+    }
+    if audit("allowed").is_err() {
+        return reply_internal();
+    }
+    match store.decide(
+        request_id,
+        status,
+        caller,
+        reason_code,
+        &state.snapshot_version,
+    ) {
+        Ok(Ok(request)) => {
+            if status == access_requests::STATUS_APPROVED {
+                if let Some(grant_store) = &state.access_grants {
+                    let grant_target = format!(
+                        "{}:{}",
+                        request.target.kind(),
+                        request.target.capability_id()
+                    );
+                    if grant_store
+                        .audit("access_grant_create", caller, &grant_target, "allowed")
+                        .is_err()
+                    {
+                        return reply_internal();
+                    }
+                    if let Err(err) = grant_store.create_from_approved_request(&request) {
+                        eprintln!("access grant create failed: {err:#}");
+                        return reply_internal();
+                    }
+                }
+            }
+            reply_canonical(&AccessRequestMutationResponse {
+                demo_identity_mode: true,
+                request,
+                snapshot_version: state.snapshot_version.clone(),
+            })
+        }
+        Ok(Err(DecideError::NotFound)) => reply_error(StatusCode::NOT_FOUND, "not found"),
+        Ok(Err(DecideError::Stale)) => reply_error(StatusCode::CONFLICT, "stale request"),
+        Ok(Err(DecideError::AlreadyDecided)) => {
+            reply_error(StatusCode::CONFLICT, "already decided")
+        }
+        Err(err) => {
+            eprintln!("access request decision failed: {err:#}");
+            reply_internal()
+        }
+    }
+}
+
+async fn handle_access_request_create(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    body: axum::body::Bytes,
+) -> Response {
+    let body = body.to_vec();
+    run_blocking(state, move |state| {
+        create_access_request(state, &caller, &body)
+    })
+    .await
+}
+
+async fn handle_access_requests_list(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+) -> Response {
+    run_blocking(state, move |state| list_access_requests(state, &caller)).await
+}
+
+async fn handle_access_requests_inbox(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+) -> Response {
+    run_blocking(state, move |state| inbox_access_requests(state, &caller)).await
+}
+
+async fn handle_access_grants_list(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+) -> Response {
+    run_blocking(state, move |state| list_access_grants(state, &caller)).await
+}
+
+async fn handle_access_grant_get(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    axum::extract::Path(grant_id): axum::extract::Path<String>,
+) -> Response {
+    run_blocking(state, move |state| {
+        get_access_grant(state, &caller, &grant_id)
+    })
+    .await
+}
+
+async fn handle_access_grant_revoke(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    axum::extract::Path(grant_id): axum::extract::Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    let body = body.to_vec();
+    run_blocking(state, move |state| {
+        revoke_access_grant(state, &caller, &grant_id, &body)
+    })
+    .await
+}
+
+async fn handle_access_request_approve(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    axum::extract::Path(request_id): axum::extract::Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    let body = body.to_vec();
+    run_blocking(state, move |state| {
+        decide_access_request(
+            state,
+            &caller,
+            &request_id,
+            access_requests::STATUS_APPROVED,
+            &body,
+        )
+    })
+    .await
+}
+
+async fn handle_access_request_deny(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    axum::extract::Path(request_id): axum::extract::Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    let body = body.to_vec();
+    run_blocking(state, move |state| {
+        decide_access_request(
+            state,
+            &caller,
+            &request_id,
+            access_requests::STATUS_DENIED,
+            &body,
+        )
+    })
+    .await
+}
+
 async fn handle_agent_run(
     State(state): State<Arc<AppState>>,
     DemoPrincipal(caller): DemoPrincipal,

@@ -51,3 +51,32 @@ department equal to the principal's department; visibility is membership
 in the principal's compiled M1 allowlist. Implemented in
 `service/src/lane.rs::seeds_for_human`; held deterministic by AW-7 (two
 startups derive byte-identical lanes).
+
+## Ask controls (console)
+
+The Ask surface (`/ask`) has two toggles. Both sit on top of the engine's
+permission scope — they never widen what you can see; they only change *how*
+the system searches and how careful it is before answering.
+
+- **Broad search** — when on, Ask finds documents by **meaning as well as exact
+  keywords** (keyword/BM25 *and* vector/embedding search, combined with
+  Reciprocal Rank Fusion, `RRF_K = 60`, in `retrieval/src/fuse.rs`). When off,
+  Ask falls back to **keyword-only** (`lexical_only`) search, so close-but-not-
+  exact wording can be missed. (Engine names: this is the "hybrid" retrieval
+  mode in `service/src/answer.rs`.)
+- **Verified answers** — when on, after an answer is drafted from your
+  authorised documents the system **checks each claim against that evidence and
+  leaves out anything it cannot support** (fail-closed). When off, that
+  verification step is skipped. (Engine name: the "judge" grounding pass.)
+
+**Current limitation (honest):** in this build **both toggles are DISABLED in
+the UI** and only keyword-only answers run. Each switch is greyed out, cannot be
+flipped, and shows an always-visible reason — "semantic index not loaded"
+(Broad search) and "verification model not loaded" (Verified answers) — because
+turning them on would hit an engine path that currently errors: the regenerated
+corpus dropped its vector index (AR-1b), and no judge model is running. They are
+disabled rather than left flippable so no one can trigger a 500 from the UI.
+Re-enabling each is a single flag in `console/src/components/Console.tsx`
+(`BROAD_SEARCH_AVAILABLE`, `VERIFIED_ANSWERS_AVAILABLE`); flip it back to `true`
+once the engine supports that mode. Rebuilding the vector index, running a judge
+model, and adopting RRF end-to-end are separate, sequenced engine tasks.

@@ -148,6 +148,7 @@ impl AgentContext for ProductionContext<'_> {
             hybrid: self.agent.hybrid,
             judge: self.agent.judge,
             bypass_cache: false,
+            granted_context: None,
         };
         let (bytes, trace) =
             ask(self.state, &self.agent.agent_id, query, &options).map_err(|err| match err {

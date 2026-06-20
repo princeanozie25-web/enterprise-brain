@@ -144,6 +144,8 @@ pub struct LensResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor: Option<humanize::PersonCard>,
     pub actor_id: String,
+    /// Honesty contract (identity.rs): every response carries this.
+    pub demo_identity_mode: bool,
     pub agents: Vec<LensAgent>,
     pub cross_lens: bool,
     pub holdings: Vec<LensSection>,
@@ -449,6 +451,7 @@ pub fn lens_view(
     let response = LensResponse {
         actor: humanize::card_for(state.people.as_deref(), actor),
         actor_id: actor.to_string(),
+        demo_identity_mode: true,
         agents,
         cross_lens: actor != subject_id,
         holdings,

@@ -46,6 +46,27 @@ function stubFetch() {
     if (url.endsWith("/atlas")) {
       return new Response(JSON.stringify(atlasP060), { status: 200 });
     }
+    if (url.endsWith("/access-grants/ag_123")) {
+      return new Response(
+        JSON.stringify({
+          demo_identity_mode: true,
+          grant: {
+            approver_id: "p001",
+            created_ordinal: 0,
+            grant_id: "ag_123",
+            grantee_id: "p060",
+            permission: "read",
+            reason: "manager_approved",
+            request_id: "ar_approved",
+            snapshot_version: "snap",
+            status: "active",
+            target: { kind: "project", capability_id: "cap31" },
+          },
+          snapshot_version: "snap",
+        }),
+        { status: 200 },
+      );
+    }
     if (url.endsWith("/ask")) {
       return new Response(JSON.stringify(richEnvelope), { status: 200 });
     }
@@ -70,6 +91,12 @@ function stubFetch() {
 function exportBodies(fetchMock: ReturnType<typeof vi.fn>): unknown[] {
   return fetchMock.mock.calls
     .filter((call) => String(call[0]).endsWith("/export"))
+    .map((call) => JSON.parse(String((call[1] as RequestInit).body)));
+}
+
+function askBodies(fetchMock: ReturnType<typeof vi.fn>): unknown[] {
+  return fetchMock.mock.calls
+    .filter((call) => String(call[0]).endsWith("/ask") && (call[1] as RequestInit | undefined)?.method === "POST")
     .map((call) => JSON.parse(String((call[1] as RequestInit).body)));
 }
 
@@ -150,6 +177,9 @@ describe("U-22: the affordance lives in four homes and sends params only", () =>
     fireEvent.change(screen.getByTestId("query-input"), {
       target: { value: "payroll aggregate" },
     });
+    // Broad search is disabled in this build; clicking it is a no-op (no 500
+    // reachable), so the submitted params stay lexical-only.
+    expect((screen.getByTestId("toggle-hybrid") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId("toggle-hybrid"));
     fireEvent.click(screen.getByTestId("ask-button"));
     await waitFor(() => expect(screen.getByTestId("export-evidence")).toBeTruthy());
@@ -159,7 +189,62 @@ describe("U-22: the affordance lives in four homes and sends params only", () =>
     await waitFor(() => expect(exportBodies(fetchMock).length).toBe(1));
     expect(exportBodies(fetchMock)[0]).toEqual({
       view: "ask",
-      ask: { query: "payroll aggregate", hybrid: true, judge: false },
+      ask: { query: "payroll aggregate", hybrid: false, judge: false },
+    });
+  });
+
+  it("Ask controls: plain-language toggles disabled with an honest reason (no 500 reachable)", () => {
+    stubFetch();
+    render(<Console view="ask" />);
+    fireEvent.change(screen.getByTestId("principal-search"), { target: { value: "p060" } });
+    fireEvent.click(screen.getAllByTestId("principal-row").find((b) => b.textContent === "p060")!);
+
+    const broad = screen.getByTestId("toggle-hybrid");
+    const verified = screen.getByTestId("toggle-judge");
+    // Renamed to plain language; no "hybrid"/"judge" jargon as control labels.
+    expect(broad.getAttribute("role")).toBe("switch");
+    expect(broad.getAttribute("aria-label")).toBe("Broad search");
+    expect(verified.getAttribute("role")).toBe("switch");
+    expect(verified.getAttribute("aria-label")).toBe("Verified answers");
+    expect(screen.getByText("Broad search")).toBeTruthy();
+    expect(screen.getByText("Verified answers")).toBeTruthy();
+    expect(screen.queryByText("hybrid")).toBeNull();
+    expect(screen.queryByText("judge")).toBeNull();
+    // Disabled in this build: off, marked for a11y, cannot be flipped, reason shown.
+    expect(broad.getAttribute("aria-checked")).toBe("false");
+    expect(verified.getAttribute("aria-checked")).toBe("false");
+    expect((broad as HTMLButtonElement).disabled).toBe(true);
+    expect((verified as HTMLButtonElement).disabled).toBe(true);
+    expect(broad.getAttribute("aria-disabled")).toBe("true");
+    expect(verified.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("toggle-hybrid-reason").textContent).toContain("semantic index not loaded");
+    expect(screen.getByTestId("toggle-judge-reason").textContent).toContain("verification model not loaded");
+    // Clicking a disabled toggle does nothing (no flip, no 500).
+    fireEvent.click(broad);
+    expect(broad.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("Ask entry door carries validated grant context to the existing ask endpoint", async () => {
+    const fetchMock = stubFetch();
+    window.history.pushState({}, "", "/ask?as=p060&grant=ag_123&cap=cap31");
+    render(<Console view="ask" />);
+
+    await waitFor(() => expect(screen.getByTestId("ask-granted-context").textContent).toContain("active"));
+    expect(screen.getByTestId("ask-granted-context").textContent).toContain("grant ag_123");
+    expect(screen.getByTestId("ask-granted-context").textContent).toContain("capability cap31");
+
+    fireEvent.change(screen.getByTestId("query-input"), {
+      target: { value: "summarise this granted capability" },
+    });
+    fireEvent.click(screen.getByTestId("ask-button"));
+
+    await waitFor(() => expect(askBodies(fetchMock).length).toBe(1));
+    expect(askBodies(fetchMock)[0]).toEqual({
+      query: "summarise this granted capability",
+      hybrid: false,
+      judge: false,
+      grant_id: "ag_123",
+      capability_id: "cap31",
     });
   });
 });

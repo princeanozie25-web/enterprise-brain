@@ -277,6 +277,8 @@ pub struct AtlasResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor: Option<humanize::PersonCard>,
     pub actor_id: String,
+    /// Honesty contract (identity.rs): every response carries this.
+    pub demo_identity_mode: bool,
     pub snapshot_version: String,
     pub strategies: Vec<AtlasStrategy>,
 }
@@ -438,6 +440,7 @@ pub fn atlas_view(state: &AppState, actor: &str) -> Result<Option<Vec<u8>>, AskE
     let response = AtlasResponse {
         actor: humanize::card_for(state.people.as_deref(), actor),
         actor_id: actor.to_string(),
+        demo_identity_mode: true,
         snapshot_version: state.snapshot_version.clone(),
         strategies,
     };

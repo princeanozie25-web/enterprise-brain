@@ -451,6 +451,7 @@ async fn at4_ghost_gets_the_empty_atlas_and_the_minimal_actor_gets_structure() {
         body,
         serde_json::json!({
             "actor_id": "p_ghost_at4",
+            "demo_identity_mode": true,
             "snapshot_version": snapshot,
             "strategies": [],
         }),

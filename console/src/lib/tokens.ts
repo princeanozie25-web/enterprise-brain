@@ -6,19 +6,20 @@
 // import from here (or consume the CSS variables layout.tsx generates from
 // here). U-6 enforces this mechanically over src/components and src/app.
 //
-// No gradients. No shadows beyond the 1px hairline. Whitespace is the
-// elevation system.
+// Material depth is centralized here. Components may opt into layers, but do
+// not invent one-off color, shadow, blur, or elevation values.
 
 export const COLOR = {
-  /** App background. */
-  paper: "#FAFAF7",
-  /** Primary text. */
-  ink: "#16160F",
+  /** App background — a faint cool-tinted off-white (not flat white), calm. */
+  paper: "#F4F7FC",
+  /** Primary text — deep navy-charcoal, never pure black. */
+  ink: "#1A2233",
   /** Secondary text, rules; borders at 24% where hairline. */
-  inkSoft: "#5C5C54",
-  /** Interactive elements ONLY — links, buttons, focus rings. Never
-   * decorative. */
-  affordance: "#3D5A80",
+  inkSoft: "#5A6478",
+  /** Interactive elements ONLY — links, buttons, focus rings. The signature
+   * blue-violet (periwinkle/indigo), deep enough to carry paper-white text at
+   * AA. Never decorative. */
+  affordance: "#4954C9",
 } as const;
 
 /** Derived washes of permitted colors (alpha only — no new hues). */
@@ -31,20 +32,23 @@ export const DERIVED = {
 
 /**
  * DARK THEME (the org-graph command surface defaults to it). A designed dark
- * palette — NOT an inversion: a warm near-black paper, warm off-white ink, a
- * lifted affordance blue legible on dark, and SOLID hairline/wash (dark can't
- * reuse the ink-soft alphas — they vanish on near-black). The five labeled
- * sensitivity hues are shared across themes (they read as luminous chips on
- * dark, soft tints on light). Selected via [data-theme="dark"] in layout.tsx;
- * U-6 still sees every literal HERE and nowhere else.
+ * palette — NOT an inversion: a rich, desaturated deep navy-charcoal paper
+ * (never pure black — murkiness comes from flat near-black, fixed here with a
+ * cool blue undertone and layered elevation), an off-white ink that kills
+ * glare, a luminous periwinkle affordance legible on navy, and SOLID
+ * hairline/wash tinted toward the navy (dark can't reuse the ink-soft alphas —
+ * they vanish on the base). The five labeled sensitivity hues are shared
+ * across themes (they read as luminous chips on dark, soft tints on light).
+ * Selected via [data-theme="dark"] in layout.tsx; U-6 still sees every literal
+ * HERE and nowhere else.
  */
 export const DARK = {
-  paper: "#14130E",
-  ink: "#F4F3EE",
-  inkSoft: "#9A9A90",
-  affordance: "#7AA0CE",
-  hairline: "#33322C",
-  wash: "#222019",
+  paper: "#0F1422",
+  ink: "#E6EBF5",
+  inkSoft: "#AEB8CC",
+  affordance: "#93A7F2",
+  hairline: "#2A3142",
+  wash: "#1A2030",
 } as const;
 
 /**
@@ -54,6 +58,56 @@ export const DARK = {
  */
 export const ACCENT = {
   warm: "#C77F3A",
+} as const;
+
+/**
+ * ATMOSPHERE — the cinematic ambient wash (the colour the surface was missing).
+ * A desaturated blue->violet depth haze, applied ONLY to the backdrop and a
+ * few hero surfaces (never painted on every panel), always at low opacity via
+ * color-mix so it reads as volumetric light, not paint. Deliberately OUTSIDE
+ * amber's hue range so the reserved governance signal (ACCENT.warm) stays
+ * semantically distinct. Declared here so U-6 sees these two hues centrally.
+ */
+export const ATMOSPHERE = {
+  blue: "#2D4A7C",
+  violet: "#4A3A8C",
+} as const;
+
+/**
+ * Premium material hierarchy. This is intentionally conservative: depth is
+ * created through tone, hairline strength, and narrow shadows, not through
+ * neon glow or blanket glass.
+ */
+export const MATERIAL = {
+  light: {
+    surface0: COLOR.paper,
+    surface1: `color-mix(in srgb, ${COLOR.paper} 96%, ${COLOR.ink} 4%)`,
+    surface2: `color-mix(in srgb, ${COLOR.paper} 91%, ${COLOR.ink} 9%)`,
+    surface3: `color-mix(in srgb, ${COLOR.paper} 86%, ${COLOR.ink} 14%)`,
+    focus: `color-mix(in srgb, ${COLOR.paper} 82%, ${COLOR.affordance} 18%)`,
+    glass: `color-mix(in srgb, ${COLOR.paper} 74%, transparent)`,
+    chip: `color-mix(in srgb, ${COLOR.paper} 92%, ${COLOR.inkSoft} 8%)`,
+    hairlineStrong: "rgba(92, 92, 84, 0.38)",
+    edge: "rgba(92, 92, 84, 0.14)",
+    shadow1: "0 1px 0 rgba(92, 92, 84, 0.10), 0 20px 48px -32px rgba(92, 92, 84, 0.48)",
+    shadow2: "0 1px 0 rgba(92, 92, 84, 0.14), 0 34px 82px -42px rgba(92, 92, 84, 0.58)",
+    shadowFocus: "0 1px 0 rgba(92, 92, 84, 0.14), 0 42px 96px -48px rgba(92, 92, 84, 0.46)",
+  },
+  dark: {
+    surface0: DARK.paper,
+    surface1: `color-mix(in srgb, ${DARK.paper} 92%, ${DARK.ink} 8%)`,
+    surface2: `color-mix(in srgb, ${DARK.paper} 86%, ${DARK.ink} 14%)`,
+    surface3: `color-mix(in srgb, ${DARK.paper} 80%, ${DARK.ink} 20%)`,
+    focus: `color-mix(in srgb, ${DARK.paper} 78%, ${DARK.affordance} 22%)`,
+    glass: `color-mix(in srgb, ${DARK.paper} 68%, transparent)`,
+    chip: `color-mix(in srgb, ${DARK.paper} 80%, ${DARK.inkSoft} 20%)`,
+    hairlineStrong: "rgba(92, 92, 84, 0.52)",
+    edge: "rgba(92, 92, 84, 0.18)",
+    shadow1: "0 1px 0 rgba(92, 92, 84, 0.12), 0 28px 66px -36px rgba(92, 92, 84, 0.72)",
+    shadow2: "0 1px 0 rgba(92, 92, 84, 0.18), 0 44px 104px -48px rgba(92, 92, 84, 0.84)",
+    shadowFocus: "0 1px 0 rgba(92, 92, 84, 0.20), 0 50px 120px -52px rgba(92, 92, 84, 0.82)",
+  },
+  blur: "24px",
 } as const;
 
 /**
@@ -203,6 +257,14 @@ export const MOTION = {
   iris: "220ms",
   easeOut: "ease-out",
   irisEase: "cubic-bezier(0.4, 0, 0.2, 1)",
+  /** Framer Motion: calm enterprise micro-motion, in seconds. */
+  framerQuick: 0.16,
+  framerView: 0.36,
+  framerStagger: 0.075,
+  framerEnterY: 18,
+  framerHoverY: -7,
+  framerTapScale: 0.975,
+  framerEase: [0.16, 1, 0.3, 1] as const,
   /**
    * Skeleton opacity pulse. REPORTED COLLISION: a literal fade-quick loop
    * (140ms/leg ≈ 3.6 flashes/sec) sits at the photosensitive-flash

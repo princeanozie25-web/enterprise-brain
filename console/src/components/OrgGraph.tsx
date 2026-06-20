@@ -3,35 +3,55 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { select } from "d3-selection";
 import { zoom as d3zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
-import type { GraphEdge, GraphPerson, GraphResponse } from "@/lib/api";
+import type { GraphEdge, GraphPerson, GraphProject, GraphResponse } from "@/lib/api";
 import { DEPARTMENT_TINT, DERIVED, FONT, GEOMETRY, TYPE } from "@/lib/tokens";
 import { PersonAvatar } from "./PersonAvatar";
 
-/**
- * THE ORG BRAIN — a dense, scope-honest CONCENTRIC-RING map of the company.
- * Deterministic polar layout (no force-scatter): the org core at the still
- * point; the department hubs on ring 1; the agents on ring 2; the systems of
- * record (sources) on ring 3; and ALL 120 people on one continuous outer
- * circle, ordered so each department owns an unbroken arc whose width is
- * proportional to its headcount. Every node is a real Bryremead entity — no
- * decorative padding. HONEST DARK: it draws exactly the data; a small world is
- * a small graph. Colours come from theme CSS variables (dark by default), the
- * department hues from the reserved sensitivity palette.
- */
 type Pos = { x: number; y: number };
-export type GraphNodeKind = "org" | "department" | "human" | "agent" | "source";
+export type GraphNodeKind = "org" | "department" | "human" | "agent" | "source" | "project";
 export type SelectedNode = { id: string; kind: GraphNodeKind; label: string };
 
+type DeptArc = { start: number; end: number; center: number; count: number };
 type Layout = {
   pos: Map<string, Pos>;
-  /** Per-person angle on the outer ring (for radial label placement). */
   ang: Map<string, number>;
-  /** Department hub centre angle, for framing focus mode. */
   hubAngle: Map<string, number>;
+  deptArcs: Map<string, DeptArc>;
+};
+
+const STAGE = {
+  width: 1400,
+  height: 980,
+  cx: 700,
+  cy: 520,
+  ringDept: 205,
+  ringAgents: 258,
+  ringProjects: 334,
+  ringSources: 444,
+  ringPeople: 575,
+  ringAccess: 521,
+  hubRadius: 23,
+  coreRadius: 32,
+  sourceRadius: 8,
+  agentSize: 7,
+  projectSize: 9,
+  personMember: 8,
+  personMemberActive: 18,
+  personAnchor: 30,
+} as const;
+
+const C = {
+  ink: "var(--ink)",
+  paper: "var(--paper)",
+  inkSoft: "var(--ink-soft)",
+  affordance: "var(--affordance)",
+  warm: "var(--accent-warm)",
+  hairline: "var(--hairline)",
+  wash: "var(--wash)",
 };
 
 /** LOD rule for a person's name: anchors always; a member's name on hover,
- * selection, a search hit, or once zoomed past the reveal scale. Pure —
+ * selection, a search hit, or once zoomed past the reveal scale. Pure -
  * exported for the LOD test. */
 export function nameVisible(
   ring: "anchor" | "member",
@@ -42,84 +62,125 @@ export function nameVisible(
   return ring === "anchor" || active || scaleK >= lodReveal;
 }
 
-function polar(cx: number, cy: number, r: number, a: number): Pos {
-  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+function polar(angle: number, radius: number, cx = STAGE.cx, cy = STAGE.cy): Pos {
+  return {
+    x: cx + radius * Math.cos(angle),
+    y: cy + radius * Math.sin(angle),
+  };
 }
 
-function computeLayout(graph: GraphResponse): Layout {
-  const v = GEOMETRY.graphViewport;
-  const cx = v / 2;
-  const cy = v / 2;
-  const coreY = cy + GEOMETRY.graphCenterOffsetY;
-  const pos = new Map<string, Pos>();
-  const ang = new Map<string, number>();
-  const hubAngle = new Map<string, number>();
-  pos.set(graph.center.id, { x: cx, y: coreY });
-
-  const peopleByDept = new Map<string, GraphPerson[]>();
-  for (const p of graph.people) {
-    const list = peopleByDept.get(p.department_id) ?? [];
-    list.push(p);
-    peopleByDept.set(p.department_id, list);
-  }
-  const total = Math.max(graph.people.length, 1);
-  const gap = GEOMETRY.graphArcGap;
-  const usable = 2 * Math.PI - graph.departments.length * gap;
-
-  // Walk the departments in declared order, each owning an arc ∝ its headcount.
-  let cursor = -Math.PI / 2;
-  for (const dept of graph.departments) {
-    const list = [...(peopleByDept.get(dept.id) ?? [])].sort((a, b) =>
-      a.ring === b.ring ? a.id.localeCompare(b.id) : a.ring === "anchor" ? -1 : 1,
-    );
-    const span = usable * (list.length / total);
-    const arcStart = cursor + gap / 2;
-    const arcCenter = arcStart + span / 2;
-    hubAngle.set(dept.id, arcCenter);
-    pos.set(dept.id, polar(cx, cy, GEOMETRY.graphRingDept, arcCenter));
-    list.forEach((person, i) => {
-      const frac = list.length <= 1 ? 0.5 : i / (list.length - 1);
-      const a = arcStart + frac * span;
-      pos.set(person.id, polar(cx, cy, GEOMETRY.graphRingPeople, a));
-      ang.set(person.id, a);
-    });
-    cursor = arcStart + span + gap / 2;
-  }
-
-  // Agents on ring 2, radially inward from their owner's department arc.
-  const agentsSeen = new Map<string, number>();
-  for (const tool of graph.tools) {
-    const base = tool.department_id ? hubAngle.get(tool.department_id) : undefined;
-    const k = tool.department_id ? agentsSeen.get(tool.department_id) ?? 0 : 0;
-    if (tool.department_id) agentsSeen.set(tool.department_id, k + 1);
-    const a =
-      base !== undefined
-        ? base + (k % 2 === 0 ? 1 : -1) * 0.06 * Math.ceil(k / 2)
-        : -Math.PI / 2 + (graph.tools.indexOf(tool) / Math.max(graph.tools.length, 1)) * 2 * Math.PI;
-    pos.set(tool.id, polar(cx, cy, GEOMETRY.graphRingAgents, a));
-  }
-
-  // Sources on ring 3, evenly spaced (org-wide systems, no department tie).
-  graph.sources.forEach((source, i) => {
-    const a = -Math.PI / 2 + (i / Math.max(graph.sources.length, 1)) * 2 * Math.PI;
-    pos.set(source.id, polar(cx, cy, GEOMETRY.graphRingSources, a));
-  });
-
-  return { pos, ang, hubAngle };
+function jitter(index: number, amplitude: number, seed = 1): number {
+  const value = Math.sin((index + 1) * 12.9898 + seed * 78.233) * 43758.5453;
+  return (value - Math.floor(value) - 0.5) * amplitude;
 }
 
 function tintOf(label: string): { background: string; border: string } {
   return DEPARTMENT_TINT[label] ?? { background: DERIVED.wash, border: DERIVED.hairline };
 }
 
-/** Per-kind edge ranking. Reporting is the spine; membership the recessive web;
- * agent ownership a dashed warm affordance; a source's tie to the core dotted. */
+function shortMark(label: string): string {
+  const words = label
+    .replace(/&/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
+function monogram(name: string): string {
+  return shortMark(name).slice(0, 2);
+}
+
+function compactProjectLabel(label: string): string {
+  const clean = label.replace(/^Capability:\s*/i, "");
+  return clean.length > 34 ? `${clean.slice(0, 31)}...` : clean;
+}
+
+function computeLayout(graph: GraphResponse): Layout {
+  const pos = new Map<string, Pos>();
+  const ang = new Map<string, number>();
+  const hubAngle = new Map<string, number>();
+  const deptArcs = new Map<string, DeptArc>();
+  pos.set(graph.center.id, { x: STAGE.cx, y: STAGE.cy });
+
+  const peopleByDept = new Map<string, GraphPerson[]>();
+  for (const person of graph.people) {
+    const list = peopleByDept.get(person.department_id) ?? [];
+    list.push(person);
+    peopleByDept.set(person.department_id, list);
+  }
+
+  const total = Math.max(graph.people.length, 1);
+  const gap = GEOMETRY.graphArcGap;
+  const usable = 2 * Math.PI - graph.departments.length * gap;
+  let cursor = -Math.PI * 0.94;
+
+  for (const dept of graph.departments) {
+    const list = [...(peopleByDept.get(dept.id) ?? [])].sort((a, b) =>
+      a.ring === b.ring ? a.id.localeCompare(b.id) : a.ring === "anchor" ? -1 : 1,
+    );
+    const span = usable * (Math.max(list.length, 1) / total);
+    const start = cursor + gap / 2;
+    const center = start + span / 2;
+    const end = start + span;
+    hubAngle.set(dept.id, center);
+    deptArcs.set(dept.id, { start, center, end, count: list.length });
+    pos.set(dept.id, polar(center, STAGE.ringDept + jitter(graph.departments.indexOf(dept), 9, 2)));
+
+    list.forEach((person, index) => {
+      const frac = list.length <= 1 ? 0.5 : index / (list.length - 1);
+      const angle = start + frac * span;
+      const radius = STAGE.ringPeople + jitter(index, person.ring === "anchor" ? 12 : 20, dept.id.length);
+      pos.set(person.id, polar(angle, radius));
+      ang.set(person.id, angle);
+    });
+    cursor = end + gap / 2;
+  }
+
+  const agentsSeen = new Map<string, number>();
+  graph.tools.forEach((tool, index) => {
+    const base = tool.department_id ? hubAngle.get(tool.department_id) : undefined;
+    const seen = tool.department_id ? agentsSeen.get(tool.department_id) ?? 0 : index;
+    if (tool.department_id) agentsSeen.set(tool.department_id, seen + 1);
+    const angle =
+      base !== undefined
+        ? base + (seen % 2 === 0 ? 1 : -1) * 0.11 * Math.ceil((seen + 1) / 2)
+        : -Math.PI / 2 + (index / Math.max(graph.tools.length, 1)) * 2 * Math.PI;
+    pos.set(tool.id, polar(angle, STAGE.ringAgents + jitter(index, 8, 5)));
+    ang.set(tool.id, angle);
+  });
+
+  const projectsSeen = new Map<string, number>();
+  graph.projects.forEach((project, index) => {
+    const base = hubAngle.get(project.primary_department_id);
+    const seen = projectsSeen.get(project.primary_department_id) ?? 0;
+    projectsSeen.set(project.primary_department_id, seen + 1);
+    const angle =
+      base !== undefined
+        ? base + (seen % 2 === 0 ? 1 : -1) * 0.066 * Math.ceil((seen + 1) / 2)
+        : -Math.PI / 2 + (index / Math.max(graph.projects.length, 1)) * 2 * Math.PI;
+    pos.set(project.id, polar(angle, STAGE.ringProjects + jitter(index, 7, 11)));
+    ang.set(project.id, angle);
+  });
+
+  graph.sources.forEach((source, index) => {
+    const angle = -Math.PI / 2 + (index / Math.max(graph.sources.length, 1)) * 2 * Math.PI;
+    pos.set(source.id, polar(angle + jitter(index, 0.05, 7), STAGE.ringSources + jitter(index, 8, 8)));
+    ang.set(source.id, angle);
+  });
+
+  return { pos, ang, hubAngle, deptArcs };
+}
+
 const EDGE_STYLE: Record<string, { width: number; opacity: number; dash?: string; warm?: boolean }> = {
-  reports_to: { width: 1.4, opacity: 0.42 },
-  member_of: { width: 0.7, opacity: 0.12 },
-  owns_agent: { width: 1.0, opacity: 0.4, dash: "3 4", warm: true },
-  system_of: { width: 0.9, opacity: 0.22, dash: "1 4" },
-  uses: { width: 1.0, opacity: 0.3, dash: "1 4" },
+  reports_to: { width: 0.9, opacity: 0.16 },
+  member_of: { width: 0.75, opacity: 0.12 },
+  owns_agent: { width: 1.0, opacity: 0.38, dash: "2 5", warm: true },
+  system_of: { width: 0.9, opacity: 0.2, dash: "1 8" },
+  works_on: { width: 0.85, opacity: 0.18, dash: "1 7" },
+  involves_department: { width: 0.9, opacity: 0.24, dash: "2 7", warm: true },
+  uses: { width: 0.9, opacity: 0.2, dash: "1 8" },
 };
 
 function edgePath(from: Pos, to: Pos, curve: number): string {
@@ -131,14 +192,12 @@ function edgePath(from: Pos, to: Pos, curve: number): string {
   return `M${from.x},${from.y}Q${mx + (-dy / len) * curve},${my + (dx / len) * curve} ${to.x},${to.y}`;
 }
 
-const C = {
-  ink: "var(--ink)",
-  paper: "var(--paper)",
-  inkSoft: "var(--ink-soft)",
-  affordance: "var(--affordance)",
-  warm: "var(--accent-warm)",
-  hairline: "var(--hairline)",
-};
+function arcPath(radius: number, start: number, end: number): string {
+  const a0 = polar(start, radius);
+  const a1 = polar(end, radius);
+  const large = end - start > Math.PI ? 1 : 0;
+  return `M${a0.x},${a0.y}A${radius},${radius} 0 ${large} 1 ${a1.x},${a1.y}`;
+}
 
 export function OrgGraph({
   graph,
@@ -159,11 +218,27 @@ export function OrgGraph({
   hiddenKinds?: string[];
   reducedMotion?: boolean;
 }) {
-  const { pos, ang, hubAngle } = useMemo(() => computeLayout(graph), [graph]);
+  const { pos, ang, hubAngle, deptArcs } = useMemo(() => computeLayout(graph), [graph]);
   const [hover, setHover] = useState<string | null>(null);
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+
+  const peopleById = useMemo(() => new Map(graph.people.map((p) => [p.id, p])), [graph.people]);
+  const toolsById = useMemo(() => new Map(graph.tools.map((t) => [t.id, t])), [graph.tools]);
+  const sourcesById = useMemo(() => new Map(graph.sources.map((s) => [s.id, s])), [graph.sources]);
+  const projectsById = useMemo(() => new Map(graph.projects.map((p) => [p.id, p])), [graph.projects]);
+  const deptById = useMemo(() => new Map(graph.departments.map((d) => [d.id, d])), [graph.departments]);
+  const primaryAnchorIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const dept of graph.departments) {
+      const anchor = graph.people
+        .filter((person) => person.department_id === dept.id && person.ring === "anchor")
+        .sort((a, b) => a.id.localeCompare(b.id))[0];
+      if (anchor) ids.add(anchor.id);
+    }
+    return ids;
+  }, [graph.departments, graph.people]);
 
   const neighbors = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -171,21 +246,10 @@ export function OrgGraph({
       (map.get(a) ?? map.set(a, new Set()).get(a)!).add(b);
       (map.get(b) ?? map.set(b, new Set()).get(b)!).add(a);
     };
-    for (const e of graph.edges) link(e.from, e.to);
+    for (const edge of graph.edges) link(edge.from, edge.to);
     return map;
   }, [graph.edges]);
 
-  const peopleById = useMemo(() => new Map(graph.people.map((p) => [p.id, p])), [graph.people]);
-  const toolsById = useMemo(() => new Map(graph.tools.map((t) => [t.id, t])), [graph.tools]);
-
-  const v = GEOMETRY.graphViewport;
-  const m = GEOMETRY.graphMargin;
-  const k = transform.k || 1;
-  const at = (id: string): Pos => pos.get(id) ?? { x: v / 2, y: v / 2 };
-  const lab = (px: number) => px / k;
-
-  // d3-zoom: pan/zoom the whole scene; the behavior instance is kept so reset
-  // and focus framing drive it (never a throwaway instance).
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -205,20 +269,18 @@ export function OrgGraph({
     }
   }, []);
 
-  // FOCUS MODE framing: when a department is focused, fly the view to its arc;
-  // clearing it returns to fit. A visual transform, not a navigation.
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg || !zoomRef.current) return;
     try {
       if (focusDept !== null) {
-        const a = hubAngle.get(focusDept);
-        if (a === undefined) return;
-        const focusK = 1.85;
-        // Frame a point partway out the department's arc (between hub and ring).
-        const fx = v / 2 + GEOMETRY.graphRingPeople * 0.78 * Math.cos(a);
-        const fy = v / 2 + GEOMETRY.graphRingPeople * 0.78 * Math.sin(a);
-        const t = zoomIdentity.translate(v / 2 - focusK * fx, v / 2 - focusK * fy).scale(focusK);
+        const angle = hubAngle.get(focusDept);
+        if (angle === undefined) return;
+        const focusK = 1.9;
+        const frame = polar(angle, STAGE.ringPeople * 0.76);
+        const t = zoomIdentity
+          .translate(STAGE.width / 2 - focusK * frame.x, STAGE.height / 2 - focusK * frame.y)
+          .scale(focusK);
         select(svg).call(zoomRef.current.transform, t);
       } else {
         select(svg).call(zoomRef.current.transform, zoomIdentity);
@@ -226,36 +288,61 @@ export function OrgGraph({
     } catch {
       /* framing is an enhancement */
     }
-  }, [focusDept, hubAngle, v]);
+  }, [focusDept, hubAngle]);
 
   const hidden = useMemo(() => new Set(hiddenKinds), [hiddenKinds]);
   const q = query.trim().toLowerCase();
+  const k = transform.k || 1;
+  const lab = (px: number) => px / k;
+  const at = (id: string): Pos => pos.get(id) ?? { x: STAGE.cx, y: STAGE.cy };
 
   const matches = (id: string): boolean => {
     if (q.length === 0) return false;
     const person = peopleById.get(id);
-    if (person)
+    if (person) {
       return (
         person.display_name.toLowerCase().includes(q) ||
         person.title.toLowerCase().includes(q) ||
         person.department_id.toLowerCase().includes(q) ||
         person.id.toLowerCase().includes(q)
       );
+    }
     const tool = toolsById.get(id);
     if (tool) return tool.label.toLowerCase().includes(q) || tool.id.toLowerCase().includes(q);
+    const source = sourcesById.get(id);
+    if (source) return source.label.toLowerCase().includes(q) || source.id.toLowerCase().includes(q);
+    const project = projectsById.get(id);
+    if (project) {
+      return [
+        project.id,
+        project.label,
+        project.workflow_name,
+        project.initiative_name,
+        project.strategy_name,
+        ...project.departments,
+        ...Object.keys(project.status_counts),
+      ].some((value) => value.toLowerCase().includes(q));
+    }
+    const dept = deptById.get(id);
+    if (dept) return dept.label.toLowerCase().includes(q) || dept.id.toLowerCase().includes(q);
     return id.toLowerCase().includes(q);
   };
 
   const inDept = (id: string): boolean =>
     id === focusDept ||
     peopleById.get(id)?.department_id === focusDept ||
-    toolsById.get(id)?.department_id === focusDept;
+    toolsById.get(id)?.department_id === focusDept ||
+    (focusDept !== null && (projectsById.get(id)?.departments.includes(focusDept) ?? false));
 
-  // Emphasis: focus mode > hover > search > none.
-  const dimming = focusDept !== null || hover !== null || q.length > 0;
+  const selectedIsCenter = selectedId === graph.center.id;
+  const selectedNeighbors = selectedId !== null ? neighbors.get(selectedId) : undefined;
+  const traceRelated = (id: string): boolean =>
+    selectedId !== null && !selectedIsCenter && (selectedNeighbors?.has(id) ?? false);
+  const dimming = focusDept !== null || hover !== null || (selectedId !== null && !selectedIsCenter) || q.length > 0;
   const emphasized = (id: string): boolean => {
     if (focusDept !== null) return inDept(id) || id === graph.center.id;
     if (hover !== null) return id === hover || (neighbors.get(hover)?.has(id) ?? false);
+    if (selectedId !== null) return selectedIsCenter || id === selectedId || traceRelated(id);
     if (q.length > 0) return matches(id);
     return true;
   };
@@ -264,9 +351,17 @@ export function OrgGraph({
     return focusDept !== null ? GEOMETRY.graphGhostOpacity : GEOMETRY.graphDimOpacity;
   };
 
-  const edgeTouchesFocus = (e: GraphEdge): boolean => {
-    if (focusDept !== null) return inDept(e.from) || inDept(e.to);
-    if (hover !== null) return e.from === hover || e.to === hover;
+  const projectVisible = (project: GraphProject): boolean => {
+    if (hidden.has("projects")) return false;
+    if (selectedId === project.id || hover === project.id || matches(project.id) || traceRelated(project.id)) return true;
+    if (hover !== null && (neighbors.get(hover)?.has(project.id) ?? false)) return true;
+    return focusDept !== null && project.departments.includes(focusDept);
+  };
+
+  const edgeTouchesFocus = (edge: GraphEdge): boolean => {
+    if (focusDept !== null) return inDept(edge.from) || inDept(edge.to);
+    if (hover !== null) return edge.from === hover || edge.to === hover;
+    if (selectedId !== null && !selectedIsCenter) return edge.from === selectedId || edge.to === selectedId;
     return false;
   };
 
@@ -285,227 +380,402 @@ export function OrgGraph({
     }
   };
 
+  const edgeHidden = (edge: GraphEdge): boolean =>
+    (hidden.has("people") && (peopleById.has(edge.from) || peopleById.has(edge.to))) ||
+    (hidden.has("agents") && (toolsById.has(edge.from) || toolsById.has(edge.to))) ||
+    (hidden.has("sources") && (sourcesById.has(edge.from) || sourcesById.has(edge.to))) ||
+    (projectsById.has(edge.from) && !projectVisible(projectsById.get(edge.from)!)) ||
+    (projectsById.has(edge.to) && !projectVisible(projectsById.get(edge.to)!));
+
   return (
-    <div className="relative h-full" data-testid="org-graph">
-      <div className="absolute right-2 top-2 z-10">
-        <button
-          type="button"
-          onClick={reset}
-          className="ap-card ap-washable ap-register-chrome rounded px-2 py-1"
-          style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
-          data-testid="graph-reset"
-        >
-          Fit / reset
-        </button>
-      </div>
+    <div className="relative h-full min-h-0" data-testid="org-graph">
+      <button
+        type="button"
+        onClick={reset}
+        className="ap-card ap-washable absolute right-3 top-3 z-10 grid rounded-full"
+        style={{ width: 34, height: 34, placeItems: "center" }}
+        data-testid="graph-reset"
+        aria-label="Fit graph"
+        title="Fit graph"
+      >
+        <svg width={15} height={15} viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
+            fill="none"
+            stroke={C.ink}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+
       <svg
         ref={svgRef}
-        viewBox={`${-m} ${-m} ${v + 2 * m} ${v + 2 * m}`}
-        className={`block w-full${reducedMotion ? "" : " ap-fade-view"}`}
-        style={{ maxHeight: "82vh", touchAction: "none", cursor: "grab" }}
+        viewBox={`0 0 ${STAGE.width} ${STAGE.height}`}
+        className={`block h-full w-full${reducedMotion ? "" : " ap-fade-view"}`}
+        style={{ touchAction: "none", cursor: "grab" }}
         role="img"
         aria-label="Organization graph"
       >
+        <defs>
+          <filter id="graph-soft-glow" x="-35%" y="-35%" width="170%" height="170%">
+            <feGaussianBlur stdDeviation="8" />
+          </filter>
+        </defs>
         <g transform={transform.toString()} data-testid="graph-scene">
-          {/* Faint ring guides — the concentric scaffold. */}
-          <g data-testid="graph-rings" opacity={focusDept !== null ? GEOMETRY.graphGhostOpacity : 1}>
-            {[
-              GEOMETRY.graphRingDept,
-              GEOMETRY.graphRingAgents,
-              GEOMETRY.graphRingSources,
-              GEOMETRY.graphRingPeople,
-            ].map((r) => (
-              <circle
-                key={r}
-                cx={v / 2}
-                cy={v / 2}
-                r={r}
-                fill="none"
-                stroke={C.hairline}
-                strokeWidth={1}
-                strokeOpacity={0.5}
-              />
-            ))}
-          </g>
-
-          {/* Edges, curved and ranked by kind. */}
           <g data-testid="graph-edges">
-            {graph.edges.map((e, i) => {
-              if (hidden.has("people") && (peopleById.has(e.from) || peopleById.has(e.to))) return null;
-              if (hidden.has("agents") && (toolsById.has(e.from) || toolsById.has(e.to))) return null;
-              if (hidden.has("sources") && e.kind === "system_of") return null;
-              const from = at(e.from);
-              const to = at(e.to);
-              const style = EDGE_STYLE[e.kind] ?? EDGE_STYLE.member_of;
-              const lit = edgeTouchesFocus(e);
+            {graph.edges.map((edge, index) => {
+              if (edgeHidden(edge)) return null;
+              const from = at(edge.from);
+              const to = at(edge.to);
+              const style = EDGE_STYLE[edge.kind] ?? EDGE_STYLE.member_of;
+              const lit = edgeTouchesFocus(edge);
               const faded = dimming && !lit;
               const dx = to.x - from.x;
               const dy = to.y - from.y;
-              const curve = (e.from < e.to ? 1 : -1) * Math.min(Math.hypot(dx, dy) * 0.1, 46);
-              const stroke = lit || style.warm ? C.warm : C.inkSoft;
+              const curve = (edge.from < edge.to ? 1 : -1) * Math.min(Math.hypot(dx, dy) * 0.08, 44);
               return (
                 <path
-                  key={`${e.from}-${e.kind}-${e.to}-${i}`}
+                  key={`${edge.from}-${edge.kind}-${edge.to}-${index}`}
                   d={edgePath(from, to, curve)}
                   fill="none"
-                  stroke={stroke}
+                  stroke={lit || style.warm ? C.warm : C.inkSoft}
                   strokeWidth={lit ? Math.max(style.width, 1.5) : style.width}
-                  strokeOpacity={faded ? 0.04 : lit ? 0.7 : style.opacity}
+                  strokeOpacity={faded ? 0.035 : lit ? 0.72 : style.opacity}
                   strokeDasharray={style.dash}
                   strokeLinecap="round"
                   data-testid="graph-edge"
-                  data-kind={e.kind}
+                  data-kind={edge.kind}
                 />
               );
             })}
           </g>
 
-          {/* Department hubs. */}
-          {graph.departments.map((d) => {
-            const p = at(d.id);
-            const tint = tintOf(d.tint_key);
+          <g data-testid="graph-rings" opacity={focusDept !== null ? 0.42 : 1}>
+            {[STAGE.ringPeople, STAGE.ringSources, STAGE.ringProjects, STAGE.ringAgents].map((radius) => (
+              <circle
+                key={radius}
+                cx={STAGE.cx}
+                cy={STAGE.cy}
+                r={radius}
+                fill="none"
+                stroke={C.hairline}
+                strokeWidth={1}
+                strokeDasharray="1 10"
+                strokeLinecap="round"
+                strokeOpacity={0.72}
+              />
+            ))}
+          </g>
+
+          <g data-testid="graph-dept-arcs">
+            {graph.departments.map((dept) => {
+              const arc = deptArcs.get(dept.id);
+              if (!arc) return null;
+              const tint = tintOf(dept.tint_key);
+              return (
+                <path
+                  key={dept.id}
+                  d={arcPath(STAGE.ringAccess, arc.start, arc.end)}
+                  fill="none"
+                  stroke={tint.border}
+                  strokeWidth={7}
+                  strokeLinecap="round"
+                  strokeOpacity={focusDept === null || focusDept === dept.id ? 0.48 : 0.07}
+                  data-testid="graph-access-arc"
+                  data-dept={dept.id}
+                />
+              );
+            })}
+          </g>
+
+          {graph.departments.map((dept) => {
+            const point = at(dept.id);
+            const tint = tintOf(dept.tint_key);
+            const active =
+              focusDept === dept.id || selectedId === dept.id || traceRelated(dept.id) || hover === dept.id || matches(dept.id);
             return (
               <g
-                key={d.id}
-                transform={`translate(${p.x},${p.y})`}
-                opacity={op(d.id)}
+                key={dept.id}
+                transform={`translate(${point.x},${point.y})`}
+                opacity={op(dept.id)}
                 style={{ cursor: "pointer" }}
+                onMouseEnter={() => setHover(dept.id)}
+                onMouseLeave={() => setHover(null)}
                 onClick={() => {
-                  onFocusDept(focusDept === d.id ? null : d.id);
-                  onSelectNode({ id: d.id, kind: "department", label: d.label });
+                  onFocusDept(focusDept === dept.id ? null : dept.id);
+                  onSelectNode({ id: dept.id, kind: "department", label: dept.label });
                 }}
                 data-testid="graph-dept"
-                data-dept={d.id}
+                data-dept={dept.id}
               >
-                <circle r={GEOMETRY.graphHubRadius} fill={tint.background} stroke={tint.border} strokeWidth={1.5} />
+                <title>{`${dept.label} department`}</title>
+                <circle r={STAGE.hubRadius + 10} fill={tint.border} opacity={0.2} filter="url(#graph-soft-glow)" />
+                <circle r={STAGE.hubRadius} fill={tint.background} stroke={tint.border} strokeWidth={1.6} />
+                <path
+                  d="M-7 4h14M-4 4v-7h8v7M-10 8h20v5h-20z"
+                  fill="none"
+                  stroke={C.ink}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.86}
+                />
+                <circle
+                  r={STAGE.hubRadius + 7}
+                  fill="none"
+                  stroke={active ? C.warm : C.hairline}
+                  strokeWidth={active ? 2 : 1}
+                  strokeOpacity={active ? 0.9 : 0}
+                />
                 <text
-                  y={-GEOMETRY.graphHubRadius - lab(6)}
+                  y={STAGE.hubRadius + lab(18)}
                   textAnchor="middle"
                   fill={C.ink}
                   paintOrder="stroke"
                   stroke={C.paper}
                   strokeWidth={GEOMETRY.graphLabelHalo}
-                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), fontWeight: 600 }}
+                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), fontWeight: 700 }}
                   data-testid="graph-dept-label"
                 >
-                  {d.label}
+                  {dept.label}
+                </text>
+                <text
+                  y={STAGE.hubRadius + lab(31)}
+                  textAnchor="middle"
+                  fill={C.inkSoft}
+                  paintOrder="stroke"
+                  stroke={C.paper}
+                  strokeWidth={GEOMETRY.graphLabelHalo}
+                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3), fontWeight: 500 }}
+                >
+                  {`${deptArcs.get(dept.id)?.count ?? 0} people`}
                 </text>
               </g>
             );
           })}
 
-          {/* Agents — distinct dashed rounded squares, always labelled small. */}
           {!hidden.has("agents") &&
-            graph.tools.map((t) => {
-              const p = at(t.id);
-              const tint = t.department_id ? tintOf(t.department_id) : tintOf("");
-              const s = GEOMETRY.graphAgentSize;
+            graph.tools.map((tool) => {
+              const point = at(tool.id);
+              const tint = tool.department_id ? tintOf(tool.department_id) : tintOf("");
+              const active = selectedId === tool.id || traceRelated(tool.id) || hover === tool.id || matches(tool.id);
+              const size = active || focusDept === tool.department_id ? STAGE.agentSize + 2 : STAGE.agentSize;
               return (
                 <g
-                  key={t.id}
-                  transform={`translate(${p.x},${p.y})`}
-                  opacity={op(t.id)}
+                  key={tool.id}
+                  transform={`translate(${point.x},${point.y})`}
+                  opacity={op(tool.id)}
                   style={{ cursor: "pointer" }}
-                  onMouseEnter={() => setHover(t.id)}
+                  onMouseEnter={() => setHover(tool.id)}
                   onMouseLeave={() => setHover(null)}
-                  onClick={() => onSelectNode({ id: t.id, kind: "agent", label: t.label })}
+                  onClick={() => onSelectNode({ id: tool.id, kind: "agent", label: tool.label })}
                   data-testid="graph-tool"
-                  data-id={t.id}
+                  data-id={tool.id}
+                  data-kind={tool.kind}
                 >
+                  <title>{tool.label}</title>
                   <rect
-                    x={-s}
-                    y={-s}
-                    width={s * 2}
-                    height={s * 2}
+                    x={-size}
+                    y={-size}
+                    width={size * 2}
+                    height={size * 2}
                     rx={3}
-                    fill={tint.background}
-                    stroke={tint.border}
+                    fill={tint.border}
+                    stroke={C.paper}
                     strokeWidth={1}
-                    strokeDasharray="3 2"
+                    strokeOpacity={0.42}
                   />
                   <text
-                    y={s + lab(11)}
                     textAnchor="middle"
-                    fill={C.inkSoft}
-                    paintOrder="stroke"
-                    stroke={C.paper}
-                    strokeWidth={GEOMETRY.graphLabelHalo}
-                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs) }}
+                    dominantBaseline="central"
+                    fill={C.paper}
+                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3), fontWeight: 800 }}
                   >
-                    {t.label}
+                    A
                   </text>
+                  <circle
+                    r={size + 5}
+                    fill="none"
+                    stroke={C.warm}
+                    strokeWidth={active ? 2 : 0}
+                    strokeOpacity={active ? 0.86 : 0}
+                  />
                 </g>
               );
             })}
 
-          {/* Sources — the org's real systems of record (ring 3). */}
           {!hidden.has("sources") &&
-            graph.sources.map((s) => {
-              const p = at(s.id);
-              const sz = GEOMETRY.graphSourceSize;
+            graph.sources.map((source) => {
+              const point = at(source.id);
+              const active = selectedId === source.id || traceRelated(source.id) || hover === source.id || matches(source.id);
               return (
                 <g
-                  key={s.id}
-                  transform={`translate(${p.x},${p.y})`}
-                  opacity={op(s.id)}
+                  key={source.id}
+                  transform={`translate(${point.x},${point.y})`}
+                  opacity={op(source.id)}
                   style={{ cursor: "pointer" }}
-                  onMouseEnter={() => setHover(s.id)}
+                  onMouseEnter={() => setHover(source.id)}
                   onMouseLeave={() => setHover(null)}
-                  onClick={() => onSelectNode({ id: s.id, kind: "source", label: s.label })}
+                  onClick={() => onSelectNode({ id: source.id, kind: "source", label: source.label })}
                   data-testid="graph-source"
-                  data-id={s.id}
+                  data-id={source.id}
+                  aria-label={source.label}
                 >
-                  <rect
-                    x={-sz}
-                    y={-sz}
-                    width={sz * 2}
-                    height={sz * 2}
-                    transform="rotate(45)"
+                  <circle
+                    r={STAGE.sourceRadius + 5}
                     fill={C.paper}
-                    stroke={C.affordance}
-                    strokeWidth={1.5}
+                    stroke={active ? C.warm : C.hairline}
+                    strokeWidth={active ? 2 : 1}
+                    strokeOpacity={active ? 0.88 : 0.75}
                   />
+                  <circle r={STAGE.sourceRadius} fill={C.affordance} stroke={C.paper} strokeWidth={1} strokeOpacity={0.3} />
                   <text
-                    y={sz + lab(12)}
+                    y={0.5}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill={C.paper}
+                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 5), fontWeight: 800 }}
+                  >
+                    {shortMark(source.label)}
+                  </text>
+                  <text
+                    y={STAGE.sourceRadius + lab(13)}
                     textAnchor="middle"
                     fill={C.inkSoft}
                     paintOrder="stroke"
                     stroke={C.paper}
                     strokeWidth={GEOMETRY.graphLabelHalo}
-                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs) }}
+                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 2) }}
                   >
-                    {s.label}
+                    {source.label}
                   </text>
                 </g>
               );
             })}
 
-          {/* People — the outer ring; members first so anchors paint on top. */}
+          {graph.projects.filter(projectVisible).map((project) => {
+            const point = at(project.id);
+            const angle = ang.get(project.id) ?? 0;
+            const tint = tintOf(project.primary_department_id);
+            const active =
+              selectedId === project.id || traceRelated(project.id) || hover === project.id || matches(project.id);
+            const size = active ? STAGE.projectSize + 2 : STAGE.projectSize;
+            const labelVisible = active || k >= GEOMETRY.graphLodReveal + 0.4;
+            const labelRadius = size + lab(12);
+            const lx = labelRadius * Math.cos(angle);
+            const ly = labelRadius * Math.sin(angle);
+            const anchorFor = Math.cos(angle) > 0.34 ? "start" : Math.cos(angle) < -0.34 ? "end" : "middle";
+            return (
+              <g
+                key={project.id}
+                transform={`translate(${point.x},${point.y})`}
+                opacity={op(project.id)}
+                style={{ cursor: "pointer" }}
+                onMouseEnter={() => setHover(project.id)}
+                onMouseLeave={() => setHover(null)}
+                onClick={() => onSelectNode({ id: project.id, kind: "project", label: project.label })}
+                data-testid="graph-project"
+                data-id={project.id}
+              >
+                <title>{`${project.label} - ${project.people} people - ${project.workflow_name}`}</title>
+                <path
+                  d={`M0 ${-size}L${size} 0L0 ${size}L${-size} 0Z`}
+                  fill={tint.background}
+                  stroke={active ? C.warm : tint.border}
+                  strokeWidth={active ? 2 : 1.1}
+                  strokeOpacity={active ? 0.94 : 0.74}
+                />
+                <text
+                  y={0.5}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fill={C.ink}
+                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 4), fontWeight: 800 }}
+                >
+                  {project.people}
+                </text>
+                <circle
+                  r={size + 6}
+                  fill="none"
+                  stroke={C.warm}
+                  strokeWidth={active ? 2 : 0}
+                  strokeOpacity={active ? 0.84 : 0}
+                />
+                {labelVisible ? (
+                  <g transform={`translate(${lx},${ly})`}>
+                    <text
+                      textAnchor={anchorFor}
+                      dominantBaseline="middle"
+                      fill={C.ink}
+                      paintOrder="stroke"
+                      stroke={C.paper}
+                      strokeWidth={GEOMETRY.graphLabelHalo}
+                      style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 1), fontWeight: 700 }}
+                      data-testid="graph-project-label"
+                    >
+                      {compactProjectLabel(project.label)}
+                    </text>
+                    <text
+                      y={lab(12)}
+                      textAnchor={anchorFor}
+                      dominantBaseline="middle"
+                      fill={C.inkSoft}
+                      paintOrder="stroke"
+                      stroke={C.paper}
+                      strokeWidth={GEOMETRY.graphLabelHalo}
+                      style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3) }}
+                      data-testid="graph-project-workflow"
+                    >
+                      {compactProjectLabel(project.workflow_name.replace(/^Workflow:\s*/i, ""))}
+                    </text>
+                  </g>
+                ) : null}
+              </g>
+            );
+          })}
+
           {!hidden.has("people") &&
             [...graph.people]
               .sort((a, b) => (a.ring === b.ring ? 0 : a.ring === "anchor" ? 1 : -1))
               .map((person) => {
-                const p = at(person.id);
-                const a = ang.get(person.id) ?? 0;
-                const size =
-                  person.ring === "anchor" ? GEOMETRY.graphAnchorAvatar : GEOMETRY.graphMemberAvatar;
-                const tint = tintOf(person.department_id);
+                const point = at(person.id);
+                const angle = ang.get(person.id) ?? 0;
                 const active =
                   hover === person.id ||
                   selectedId === person.id ||
+                  traceRelated(person.id) ||
                   matches(person.id) ||
                   (focusDept !== null && person.department_id === focusDept);
-                const show = nameVisible(person.ring, active, k);
-                const ringPad = person.ring === "anchor" ? 3 : 2;
-                // Labels sit radially OUTWARD (their own collision avoidance).
-                const lr = size / 2 + ringPad + lab(9);
-                const lx = lr * Math.cos(a);
-                const ly = lr * Math.sin(a);
-                const anchorFor = Math.cos(a) > 0.34 ? "start" : Math.cos(a) < -0.34 ? "end" : "middle";
+                const expanded = person.ring === "anchor" || active || k >= GEOMETRY.graphLodReveal;
+                const size =
+                  person.ring === "anchor"
+                    ? STAGE.personAnchor
+                    : expanded
+                      ? STAGE.personMemberActive
+                      : STAGE.personMember;
+                const ringPad = person.ring === "anchor" ? 3 : expanded ? 2 : 1.5;
+                const labelFrameSafe =
+                  point.x > 90 &&
+                  point.x < STAGE.width - 90 &&
+                  point.y > 110 &&
+                  point.y < STAGE.height - 110;
+                const anchorLabelAllowed =
+                  person.ring !== "anchor" ||
+                  (primaryAnchorIds.has(person.id) && labelFrameSafe) ||
+                  active ||
+                  k >= GEOMETRY.graphLodReveal;
+                const showName = nameVisible(person.ring, active, k) && anchorLabelAllowed;
+                const labelRadius = size / 2 + ringPad + lab(person.ring === "anchor" ? 11 : 8);
+                const lx = labelRadius * Math.cos(angle);
+                const ly = labelRadius * Math.sin(angle);
+                const anchorFor = Math.cos(angle) > 0.34 ? "start" : Math.cos(angle) < -0.34 ? "end" : "middle";
+                const tint = tintOf(person.department_id);
                 return (
                   <g
                     key={person.id}
-                    transform={`translate(${p.x},${p.y})`}
+                    transform={`translate(${point.x},${point.y})`}
                     opacity={op(person.id)}
                     style={{ cursor: "pointer" }}
                     onMouseEnter={() => setHover(person.id)}
@@ -516,16 +786,11 @@ export function OrgGraph({
                     data-ring={person.ring}
                     data-self={person.is_self ? "true" : "false"}
                   >
-                    <circle r={size / 2 + ringPad} fill={C.paper} />
-                    <circle
-                      r={size / 2 + ringPad}
-                      fill="none"
-                      stroke={selectedId === person.id ? C.warm : tint.border}
-                      strokeWidth={person.ring === "anchor" || selectedId === person.id ? 2 : 1}
-                    />
+                    <title>{`${person.display_name}, ${person.title}`}</title>
+                    <circle r={size / 2 + ringPad + 1} fill={C.paper} stroke={tint.border} strokeWidth={person.ring === "anchor" ? 1.3 : 0.8} />
                     {person.is_self ? (
                       <circle
-                        r={size / 2 + ringPad + 4}
+                        r={size / 2 + ringPad + 5}
                         fill="none"
                         stroke={C.affordance}
                         strokeWidth={2}
@@ -540,7 +805,14 @@ export function OrgGraph({
                         size={size}
                       />
                     </foreignObject>
-                    {show ? (
+                    <circle
+                      r={size / 2 + ringPad + 5}
+                      fill="none"
+                      stroke={selectedId === person.id || active ? C.warm : C.hairline}
+                      strokeWidth={selectedId === person.id || active ? 2 : 0}
+                      strokeOpacity={selectedId === person.id || active ? 0.9 : 0}
+                    />
+                    {showName ? (
                       <g transform={`translate(${lx},${ly})`}>
                         <text
                           textAnchor={anchorFor}
@@ -552,7 +824,7 @@ export function OrgGraph({
                           style={{
                             fontFamily: FONT.chrome,
                             fontSize: lab(TYPE.scale.xs),
-                            fontWeight: person.ring === "anchor" ? 600 : 500,
+                            fontWeight: person.ring === "anchor" ? 700 : 500,
                           }}
                           data-testid="graph-person-name"
                         >
@@ -567,7 +839,7 @@ export function OrgGraph({
                             paintOrder="stroke"
                             stroke={C.paper}
                             strokeWidth={GEOMETRY.graphLabelHalo}
-                            style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs) }}
+                            style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 2) }}
                             data-testid="graph-person-title"
                           >
                             {person.title}
@@ -579,28 +851,56 @@ export function OrgGraph({
                 );
               })}
 
-          {/* Center: the org core, given presence — warm glow, weight, monogram. */}
           {(() => {
-            const c = at(graph.center.id);
-            const r = GEOMETRY.graphCoreRadius;
+            const point = at(graph.center.id);
+            const active = selectedId === graph.center.id || traceRelated(graph.center.id) || hover === graph.center.id;
             return (
               <g
                 data-testid="graph-center"
                 style={{ cursor: "pointer" }}
+                onMouseEnter={() => setHover(graph.center.id)}
+                onMouseLeave={() => setHover(null)}
                 onClick={() => onSelectNode({ id: graph.center.id, kind: "org", label: graph.center.label })}
               >
-                <circle cx={c.x} cy={c.y} r={r + 10} fill="none" stroke={C.warm} strokeWidth={1.5} opacity={0.45} />
-                <circle cx={c.x} cy={c.y} r={r} fill={C.ink} />
-                <circle cx={c.x} cy={c.y} r={r} fill="none" stroke={C.warm} strokeWidth={1.5} />
-                <text
-                  x={c.x}
-                  y={c.y + r * 0.34}
-                  textAnchor="middle"
+                <title>{graph.center.label}</title>
+                <rect
+                  x={point.x - STAGE.coreRadius}
+                  y={point.y - STAGE.coreRadius}
+                  width={STAGE.coreRadius * 2}
+                  height={STAGE.coreRadius * 2}
+                  rx={8}
                   fill={C.paper}
-                  style={{ fontFamily: FONT.chrome, fontSize: r * 0.78, fontWeight: 700 }}
+                  stroke={active ? C.warm : C.hairline}
+                  strokeWidth={active ? 2 : 1.4}
+                />
+                <text
+                  x={point.x}
+                  y={point.y + STAGE.coreRadius * 0.34}
+                  textAnchor="middle"
+                  fill={C.ink}
+                  style={{ fontFamily: FONT.chrome, fontSize: STAGE.coreRadius * 0.78, fontWeight: 800 }}
                   data-testid="graph-center-mark"
                 >
                   {monogram(graph.center.label)}
+                </text>
+                <path
+                  d={`M${point.x - 16} ${point.y + 19}H${point.x + 16}`}
+                  stroke={C.inkSoft}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  opacity={0.58}
+                />
+                <text
+                  x={point.x}
+                  y={point.y + STAGE.coreRadius + lab(20)}
+                  textAnchor="middle"
+                  fill={C.ink}
+                  paintOrder="stroke"
+                  stroke={C.paper}
+                  strokeWidth={GEOMETRY.graphLabelHalo}
+                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), fontWeight: 700 }}
+                >
+                  {graph.center.label}
                 </text>
               </g>
             );
@@ -609,11 +909,4 @@ export function OrgGraph({
       </svg>
     </div>
   );
-}
-
-function monogram(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }

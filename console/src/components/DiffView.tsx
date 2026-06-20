@@ -92,7 +92,7 @@ export function DiffView({
           className="ap-register-chrome"
           style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
         >
-          Lens diff
+          Knowledge diff
         </h1>
         <span className="ml-auto">
           <ExportButton
@@ -113,7 +113,7 @@ export function DiffView({
           style={{ fontSize: TYPE.scale.xs }}
           data-testid="diff-close"
         >
-          Back to lens
+          Back to Knowledge View
         </button>
       </div>
 

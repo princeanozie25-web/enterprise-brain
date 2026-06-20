@@ -201,7 +201,7 @@ export function LaneRoom({ actor }: { actor: string | null }) {
   if (actor === null) {
     return (
       <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="lane-room-empty">
-        Select a lens to begin.
+        Choose a Work Identity to begin.
       </p>
     );
   }
@@ -213,7 +213,7 @@ export function LaneRoom({ actor }: { actor: string | null }) {
           className="ap-register-chrome"
           style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
         >
-          Lane
+          Review Queue
         </h1>
         {/* Permanent, same register as the demo caption — furniture. */}
         <span
@@ -355,7 +355,7 @@ export function LaneRoom({ actor }: { actor: string | null }) {
 
       {!loading && lane && ordered.length === 0 && (
         <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="lane-empty">
-          Nothing is assigned through this lens.
+          Nothing is assigned for this Work Identity.
         </p>
       )}
 

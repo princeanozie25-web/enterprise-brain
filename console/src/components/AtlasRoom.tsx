@@ -121,7 +121,7 @@ export function AtlasRoom({
   if (actor === null) {
     return (
       <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="atlas-room-empty">
-        Select a lens to begin.
+        Choose a Work Identity to begin.
       </p>
     );
   }
@@ -133,10 +133,10 @@ export function AtlasRoom({
           className="ap-register-chrome"
           style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
         >
-          Atlas
+          Capability Map
         </h1>
         <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
-          The capability surface — structure whole, evidence through your lens.
+          The capability surface: work structure first, evidence filtered by the selected Work Identity.
         </p>
       </header>
 
@@ -157,7 +157,7 @@ export function AtlasRoom({
 
       {!loading && atlas && atlas.strategies.length === 0 && (
         <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="atlas-empty">
-          Nothing is visible through this lens.
+          Nothing is visible for this Work Identity.
         </p>
       )}
 

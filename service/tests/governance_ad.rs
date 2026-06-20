@@ -696,6 +696,7 @@ fn check_diff_shape(body: &Value) {
         body,
         &[
             "actor_id",
+            "demo_identity_mode",
             "left",
             "left_only",
             "right",
@@ -705,6 +706,7 @@ fn check_diff_shape(body: &Value) {
         ],
         &[
             "actor_id",
+            "demo_identity_mode",
             "left",
             "left_only",
             "right",

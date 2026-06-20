@@ -1,20 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "@/lib/api";
-import type { AnswerEnvelope, DocCard, ScopeStatement } from "@/lib/api";
+import type {
+  AccessGrantRecord,
+  AnswerEnvelope,
+  DocCard,
+  GrantedContextSummary,
+  ScopeStatement,
+} from "@/lib/api";
 import { DERIVED, TYPE } from "@/lib/tokens";
+import { AdminPreviewGate } from "./AdminPreviewGate";
 import { AnswerCard } from "./AnswerCard";
 import { AtlasRoom } from "./AtlasRoom";
+import { BursarSurface } from "./BursarSurface";
 import { DocInspector } from "./DocInspector";
+import { EmployeeDashboard } from "./EmployeeDashboard";
 import { ExportButton } from "./ExportButton";
 import { GraphRoom } from "./GraphRoom";
+import { GuidedJourney } from "./GuidedJourney";
 import { IdentityRail } from "./IdentityRail";
 import { LaneRoom } from "./LaneRoom";
 import { LensBar } from "./LensBar";
 import { LensRoom } from "./LensRoom";
+import { MotionPanel, MotionSection } from "./MotionPrimitives";
+import { ProjectSurface } from "./ProjectSurface";
 import { ResultsList } from "./ResultsList";
 import { Skeleton } from "./Skeleton";
+import { DemoIdentityNotice } from "./TrustPosture";
 import iris from "./LensBar.module.css";
 
 /**
@@ -49,11 +62,17 @@ function entryDoorActor(search: string): string | null {
 export function Console({
   view = "ask",
 }: {
-  view?: "graph" | "ask" | "lens" | "atlas" | "lane";
+  view?: "adminBursar" | "adminGraph" | "ask" | "lens" | "atlas" | "lane" | "project" | "me";
 }) {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
   const [query, setQuery] = useState("");
+  // Ask request modes. Both stay OFF: the toggles that set them are rendered
+  // DISABLED (see BROAD_SEARCH_AVAILABLE / VERIFIED_ANSWERS_AVAILABLE) because
+  // the engine 500s on hybrid (AR-1b regen dropped the vector index) and on
+  // judge (no judge model running). With the toggles disabled, /ask only ever
+  // runs the working lexical-only path. Re-enabling is a one-line flag flip
+  // once the engine supports each mode.
   const [hybrid, setHybrid] = useState(false);
   const [judge, setJudge] = useState(false);
   const [envelope, setEnvelope] = useState<AnswerEnvelope | null>(null);
@@ -67,6 +86,10 @@ export function Console({
   } | null>(null);
   const [entryCapability, setEntryCapability] = useState<string | null>(null);
   const [entryDiff, setEntryDiff] = useState<string | null>(null);
+  const [entryGrantId, setEntryGrantId] = useState<string | null>(null);
+  const [grantContext, setGrantContext] = useState<AccessGrantRecord | null>(null);
+  const [grantContextUnavailable, setGrantContextUnavailable] = useState(false);
+  const [reduced, setReduced] = useState(true);
   /** AR-2: ?subject=… — the click-to-lens door from the Org Graph; opens the
    * subject's lens (cross-lens, audited) once on the /lens page. */
   const [entrySubject, setEntrySubject] = useState<string | null>(null);
@@ -75,8 +98,14 @@ export function Console({
     loading: boolean;
     card: DocCard | null;
   }>({ open: false, loading: false, card: null });
+  const lastEntrySearch = useRef<string | null>(null);
 
   const switchPrincipal = useCallback((next: string) => {
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname || "/";
+      const search = `?as=${encodeURIComponent(next)}`;
+      window.history.replaceState(null, "", `${path}${search}`);
+    }
     setPrincipal(next);
     // Clear EVERYTHING the previous lens saw, before any fetch: the iris
     // reveals a clean world.
@@ -88,6 +117,9 @@ export function Console({
     // never re-enters a diff or a graph-borne subject (the residue rule).
     setEntryCapability(null);
     setEntryDiff(null);
+    setEntryGrantId(null);
+    setGrantContext(null);
+    setGrantContextUnavailable(false);
     setEntrySubject(null);
   }, []);
 
@@ -95,27 +127,74 @@ export function Console({
   // the atlas loads; /lens?diff=… opens the diff view against the room's
   // subject; ?as=… carries the lens across a room change — and ONLY through
   // entryDoorActor above, the one function a real deployment swaps out.
-  // Read once on mount; absent in tests and direct visits.
+  // Read when the browser URL changes; client navigation can keep this shell
+  // mounted, so the demo entry door must be idempotent rather than one-shot.
   useEffect(() => {
     const search = window.location.search;
+    if (lastEntrySearch.current === search) return;
+    lastEntrySearch.current = search;
     const as = entryDoorActor(search);
     if (as !== null) {
       setPrincipal(as);
     }
     const params = new URLSearchParams(search);
     const cap = (params.get("cap") ?? "").trim();
-    if (cap.length > 0) {
-      setEntryCapability(cap);
-    }
+    setEntryCapability(cap.length > 0 ? cap : null);
+    const grant = (params.get("grant") ?? "").trim();
+    setEntryGrantId(grant.length > 0 ? grant : null);
     const diff = (params.get("diff") ?? "").trim();
-    if (diff.length > 0) {
-      setEntryDiff(diff);
-    }
+    setEntryDiff(diff.length > 0 ? diff : null);
     const subject = (params.get("subject") ?? "").trim();
-    if (subject.length > 0) {
-      setEntrySubject(subject);
-    }
+    setEntrySubject(subject.length > 0 ? subject : null);
+  });
+
+  useEffect(() => {
+    setReduced(prefersReducedMotion());
   }, []);
+
+  useEffect(() => {
+    if (
+      view !== "ask" ||
+      principal === null ||
+      entryGrantId === null ||
+      entryCapability === null
+    ) {
+      setGrantContext(null);
+      setGrantContextUnavailable(false);
+      return;
+    }
+    let cancelled = false;
+    setGrantContext(null);
+    setGrantContextUnavailable(false);
+    api
+      .getAccessGrant(principal, entryGrantId)
+      .then((response) => {
+        if (cancelled) return;
+        const grant = response?.grant ?? null;
+        if (
+          grant &&
+          grant.status === "active" &&
+          grant.permission === "read" &&
+          grant.grantee_id === principal &&
+          grant.target.capability_id === entryCapability
+        ) {
+          setGrantContext(grant);
+          setGrantContextUnavailable(false);
+        } else {
+          setGrantContext(null);
+          setGrantContextUnavailable(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGrantContext(null);
+          setGrantContextUnavailable(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entryCapability, entryGrantId, principal, view]);
 
   useEffect(() => {
     if (principal === null) {
@@ -140,14 +219,26 @@ export function Console({
   }, [principal]);
 
   const submitAsk = useCallback(async () => {
-    if (principal === null || query.trim().length === 0 || asking) {
+    const grantOptions =
+      grantContext === null
+        ? {}
+        : {
+            capabilityId: grantContext.target.capability_id,
+            grantId: grantContext.grant_id,
+          };
+    if (
+      principal === null ||
+      query.trim().length === 0 ||
+      asking ||
+      (entryGrantId !== null && entryCapability !== null && grantContext === null)
+    ) {
       return;
     }
     setAsking(true);
     setEnvelope(null);
     setSubmitted(null);
     try {
-      const response = await api.ask(principal, query, { hybrid, judge });
+      const response = await api.ask(principal, query, { hybrid, judge, ...grantOptions });
       setEnvelope(response);
       setSubmitted({ query, hybrid, judge });
     } catch {
@@ -157,7 +248,7 @@ export function Console({
     } finally {
       setAsking(false);
     }
-  }, [principal, query, hybrid, judge, asking]);
+  }, [asking, entryCapability, entryGrantId, grantContext, hybrid, judge, principal, query]);
 
   const openDoc = useCallback(
     async (docId: string) => {
@@ -175,43 +266,100 @@ export function Console({
     [principal],
   );
 
-  const reduced = prefersReducedMotion();
   const irisClass = reduced ? iris.fadeIn : iris.irisIn;
+  const journeySurface =
+    view === "me"
+      ? "me"
+      : view === "project"
+        ? "project"
+        : view === "ask"
+          ? "ask"
+          : view === "adminBursar"
+            ? "bursar"
+            : null;
+  const showGuidedJourney = journeySurface !== null && view !== "me";
+  const showShellDemoIdentity = view !== "adminGraph" && view !== "me";
+  const showAdminPreviewBadge = view === "adminGraph" || view === "adminBursar";
 
   return (
     <div className="min-h-screen">
       <LensBar principal={principal} onSwitch={switchPrincipal} />
 
-      <nav className="ap-card border-x-0 border-t-0" aria-label="Rooms" data-testid="view-switcher">
-        <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-1.5">
-          <ViewDoor label="Graph" href="/" active={view === "graph"} principal={principal} />
+      <nav className="ap-glass-nav border-x-0 border-t-0" aria-label="Product surfaces" data-testid="view-switcher">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-1.5">
+          <ViewDoor label="Work Identity" href="/me" active={view === "me"} principal={principal} testId="view-door-me" />
+          <ViewDoor
+            label="Workflow Command"
+            href="/project"
+            active={view === "project"}
+            principal={principal}
+            testId="view-door-project"
+          />
           <ViewDoor label="Ask" href="/ask" active={view === "ask"} principal={principal} />
-          <ViewDoor label="Lens" href="/lens" active={view === "lens"} principal={principal} />
-          <ViewDoor label="Atlas" href="/atlas" active={view === "atlas"} principal={principal} />
-          <ViewDoor label="Lane" href="/lane" active={view === "lane"} principal={principal} />
-          {/* THE RESERVED DOOR — flagged in the AP-3 closeout: "Ledger —
-              reserved" is placeholder copy for a room that does not exist
-              yet. Disabled, not hidden: the shell states its own shape. */}
-          <span
-            className="ap-soft ml-2 cursor-default"
-            style={{ fontSize: TYPE.scale.xs }}
-            aria-disabled="true"
-            data-testid="ledger-door"
-          >
-            Ledger — reserved
-          </span>
+          <ViewDoor
+            label="Operating Map"
+            href="/admin/graph"
+            active={view === "adminGraph"}
+            principal={principal}
+            testId="view-door-admin-graph"
+          />
+          {(view === "adminBursar" || view === "adminGraph") && (
+            <ViewDoor
+              label="Bursar Ledger Room"
+              href="/admin/bursar"
+              active={view === "adminBursar"}
+              principal={principal}
+              testId="view-door-bursar"
+            />
+          )}
+          {showAdminPreviewBadge && (
+            <span
+              className="ap-register-evidence ap-soft rounded px-1.5 py-0.5"
+              style={{ fontSize: TYPE.scale.xs }}
+              data-testid="admin-preview-badge"
+            >
+              Demo Identity Mode: admin and spend rooms are previews; production authority binding is not connected
+            </span>
+          )}
+          <ViewDoor label="Knowledge View" href="/lens" active={view === "lens"} principal={principal} testId="view-door-lens" />
+          <ViewDoor label="Capability Map" href="/atlas" active={view === "atlas"} principal={principal} testId="view-door-atlas" />
+          <ViewDoor label="Review Queue" href="/lane" active={view === "lane"} principal={principal} testId="view-door-lane" />
         </div>
       </nav>
 
+      {showGuidedJourney && (
+        <div className="mx-auto max-w-6xl px-4 pt-4">
+          <GuidedJourney adminLinks={view === "adminBursar"} current={journeySurface} principal={principal} />
+        </div>
+      )}
+
+      {showShellDemoIdentity && (
+        <div className="mx-auto max-w-6xl px-4 pt-4">
+          <DemoIdentityNotice
+            compact
+            context={view === "adminBursar" ? "bursar" : "standard"}
+            testId="shell-demo-identity-mode"
+          />
+        </div>
+      )}
+
       <div
-        key={principal ?? "no-lens"}
-        className={`mx-auto flex max-w-6xl gap-6 p-4 ${irisClass}`}
+        key={principal ?? "no-work-identity"}
+        className={`mx-auto flex ${view === "me" ? "max-w-7xl gap-3 px-4 py-3" : "max-w-6xl gap-6 p-4"} flex-col md:flex-row ${irisClass}`}
         data-testid="iris-stage"
       >
-        {view === "graph" ? (
-          <main className="min-w-0 flex-1">
-            <GraphRoom actor={principal} reducedMotion={reduced} />
-          </main>
+        {view === "adminGraph" ? (
+          <AdminPreviewGate actor={principal} surface="admin">
+            <main className="min-w-0 flex-1">
+              <GraphRoom actor={principal} reducedMotion={reduced} adminPreview />
+            </main>
+          </AdminPreviewGate>
+        ) : view === "adminBursar" ? (
+          <AdminPreviewGate actor={principal} surface="bursar">
+            <BursarSurface />
+          </AdminPreviewGate>
+        ) : view === "me" ? (
+          <EmployeeDashboard actor={principal} />
         ) : view === "lens" ? (
           <main className="min-w-0 flex-1">
             <LensRoom actor={principal} entryDiff={entryDiff} entrySubject={entrySubject} />
@@ -224,14 +372,16 @@ export function Console({
           <main className="min-w-0 flex-1">
             <LaneRoom actor={principal} />
           </main>
+        ) : view === "project" ? (
+          <ProjectSurface actor={principal} capabilityId={entryCapability} />
         ) : (
           <>
-            <aside className="w-72 shrink-0">
+            <aside className="w-full md:w-72 md:shrink-0">
               <IdentityRail principal={principal} scope={scope} />
             </aside>
 
             <main className="min-w-0 flex-1">
-          <header className="mb-3">
+          <MotionPanel className="mb-3">
             <h1
               className="ap-register-chrome"
               style={{
@@ -243,66 +393,77 @@ export function Console({
               Ask
             </h1>
             <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
-              Scope, provenance, and honest degradation, at a glance.
+              Permission-aware Ask with Work Identity scope, provenance, and fail-closed grant checks.
             </p>
-          </header>
+          </MotionPanel>
 
-          <div className="ap-card rounded p-3">
+          <MotionPanel className="ap-glass-elevated rounded-2xl p-4" delayIndex={1}>
+            {(entryGrantId !== null || grantContext !== null || grantContextUnavailable) && (
+              <GrantedAskContextPanel
+                capabilityId={entryCapability}
+                grant={grantContext}
+                grantId={entryGrantId}
+                serverContext={envelope?.granted_context}
+                unavailable={grantContextUnavailable}
+              />
+            )}
             <textarea
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={
-                principal === null ? "Select a lens first" : "Ask within your scope…"
+                principal === null
+                  ? "Choose a Work Identity first"
+                  : grantContext
+                    ? "Ask within this granted capability context..."
+                    : "Ask within your scope..."
               }
               disabled={principal === null}
               rows={2}
-              className="w-full resize-none rounded px-2 py-1.5"
+              className="w-full resize-none rounded px-3 py-2"
               style={{ fontSize: TYPE.scale.sm }}
               data-testid="query-input"
             />
-            <div className="mt-2 flex items-center gap-4">
-              <label
-                className="ap-soft flex items-center gap-1.5"
-                style={{ fontSize: TYPE.scale.xs }}
-              >
-                <input
-                  type="checkbox"
-                  checked={hybrid}
-                  onChange={(e) => setHybrid(e.target.checked)}
-                  data-testid="toggle-hybrid"
-                />
-                hybrid
-              </label>
-              <label
-                className="ap-soft flex items-center gap-1.5"
-                style={{ fontSize: TYPE.scale.xs }}
-              >
-                <input
-                  type="checkbox"
-                  checked={judge}
-                  onChange={(e) => setJudge(e.target.checked)}
-                  data-testid="toggle-judge"
-                />
-                judge
-              </label>
+            <div className="mt-3 flex flex-wrap items-start gap-x-6 gap-y-3">
+              <AskToggle
+                checked={hybrid}
+                onChange={setHybrid}
+                label="Broad search"
+                helper="Finds documents by meaning, not only exact keywords."
+                testId="toggle-hybrid"
+                available={BROAD_SEARCH_AVAILABLE}
+                reason={BROAD_SEARCH_UNAVAILABLE_REASON}
+              />
+              <AskToggle
+                checked={judge}
+                onChange={setJudge}
+                label="Verified answers"
+                helper="Only shows answers it can check against your documents; unverifiable claims are left out."
+                testId="toggle-judge"
+                available={VERIFIED_ANSWERS_AVAILABLE}
+                reason={VERIFIED_ANSWERS_UNAVAILABLE_REASON}
+              />
               <button
                 type="button"
                 onClick={submitAsk}
-                disabled={principal === null || asking}
-                className="ap-affordance-button ml-auto rounded px-3 py-1"
+                disabled={
+                  principal === null ||
+                  asking ||
+                  (entryGrantId !== null && entryCapability !== null && grantContext === null)
+                }
+                className="ap-affordance-button ml-auto min-h-10 self-center rounded px-3 py-2"
                 style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
                 data-testid="ask-button"
               >
                 Ask
               </button>
             </div>
-          </div>
+          </MotionPanel>
 
           <div className="mt-4 space-y-4">
             {asking && (
-              <div className="ap-card rounded p-4">
+              <MotionPanel className="ap-glass-panel rounded-2xl p-4">
                 <Skeleton lines={3} />
-              </div>
+              </MotionPanel>
             )}
             {envelope && (
               <>
@@ -321,7 +482,7 @@ export function Console({
                   />
                 </div>
                 <AnswerCard envelope={envelope} onOpenDoc={openDoc} />
-                <section className="ap-card rounded p-2">
+                <MotionSection className="ap-glass-panel rounded-2xl p-3" delayIndex={1}>
                   <h2
                     className="ap-soft px-2 pb-1 pt-1 uppercase tracking-wide"
                     style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -329,7 +490,7 @@ export function Console({
                     Results
                   </h2>
                   <ResultsList results={envelope.results} onOpenDoc={openDoc} />
-                </section>
+                </MotionSection>
               </>
             )}
           </div>
@@ -350,22 +511,184 @@ export function Console({
 }
 
 /**
+ * Ask control availability. A toggle is only offered if its engine path can
+ * actually run; flipping it otherwise 500s (a no-affordance / fail-closed
+ * violation). Flip a flag back to true once the engine supports that mode:
+ *   Broad search     -> needs the semantic/vector index rebuilt (dropped in the
+ *                       AR-1b corpus regen)
+ *   Verified answers -> needs a judge / verification model running
+ * While a flag is false the toggle renders disabled with an honest reason and
+ * only lexical-only Ask (both off) runs.
+ */
+const BROAD_SEARCH_AVAILABLE = false;
+const VERIFIED_ANSWERS_AVAILABLE = false;
+const BROAD_SEARCH_UNAVAILABLE_REASON = "Unavailable in this build — semantic index not loaded";
+const VERIFIED_ANSWERS_UNAVAILABLE_REASON = "Unavailable in this build — verification model not loaded";
+
+/**
+ * A labelled toggle switch for the Ask controls. Keyboard-accessible
+ * (role="switch", native button Enter/Space), visible focus via the global
+ * :focus-visible ring, motion honours prefers-reduced-motion. When `available`
+ * is false the switch is disabled (removed from the focus order, not flippable,
+ * cursor-not-allowed, greyed) and shows an always-visible `reason`; the
+ * plain-language helper stays. Colours come only from tokens (U-6).
+ */
+function AskToggle({
+  checked,
+  onChange,
+  label,
+  helper,
+  testId,
+  available = true,
+  reason,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  helper: string;
+  testId: string;
+  available?: boolean;
+  reason?: string;
+}) {
+  const disabled = !available;
+  return (
+    <div
+      className="flex items-start gap-2.5"
+      data-testid={`${testId}-control`}
+      data-available={available ? "true" : "false"}
+    >
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        aria-disabled={disabled || undefined}
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) onChange(!checked);
+        }}
+        data-testid={testId}
+        className={`inline-flex min-h-11 shrink-0 items-center rounded-full ${
+          disabled ? "cursor-not-allowed opacity-50" : "ap-washable"
+        }`}
+      >
+        <span
+          className="flex h-6 w-11 items-center rounded-full p-0.5"
+          style={{ background: checked ? "var(--affordance)" : "var(--surface-3)" }}
+        >
+          <span
+            className="block h-5 w-5 rounded-full border motion-safe:transition-transform"
+            style={{
+              background: "var(--paper)",
+              borderColor: "var(--hairline-strong)",
+              transform: checked ? "translateX(20px)" : "translateX(0)",
+            }}
+          />
+        </span>
+      </button>
+      <div className="min-w-0">
+        <span className="ap-register-chrome block" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+          {label}
+        </span>
+        <span className="ap-soft block" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+          {helper}
+        </span>
+        {disabled && reason ? (
+          <span
+            className="ap-register-evidence ap-soft mt-1 block"
+            style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
+            data-testid={`${testId}-reason`}
+          >
+            {reason}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function GrantedAskContextPanel({
+  capabilityId,
+  grant,
+  grantId,
+  serverContext,
+  unavailable,
+}: {
+  capabilityId: string | null;
+  grant: AccessGrantRecord | null;
+  grantId: string | null;
+  serverContext?: GrantedContextSummary;
+  unavailable: boolean;
+}) {
+  const status = unavailable ? "unavailable" : grant?.status ?? "validating";
+  const title = serverContext?.capability.name ?? capabilityId ?? "Granted capability";
+  return (
+    <MotionSection
+      className="ap-glass-panel mb-3 rounded-2xl p-3"
+      data-testid="ask-granted-context"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            Granted Knowledge
+          </p>
+          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+            {title}
+          </h2>
+        </div>
+        <span
+          className="ap-chip ap-register-chrome rounded px-2 py-1"
+          style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+        >
+          {status}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {grantId && <GrantChip>grant {grantId}</GrantChip>}
+        {capabilityId && <GrantChip>capability {capabilityId}</GrantChip>}
+        {serverContext?.request_id && <GrantChip>request {serverContext.request_id}</GrantChip>}
+        {serverContext?.approver_id && <GrantChip>approver {serverContext.approver_id}</GrantChip>}
+      </div>
+      <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+        {unavailable
+          ? "This grant cannot be used for Ask context. Revoked, expired, mismatched, and unrelated grants are refused by the server."
+          : grant
+            ? "Ask will send this grant and capability to the server for validation. Results are constrained to the granted capability context."
+            : "Checking the grant ledger before Ask can use this context."}
+      </p>
+    </MotionSection>
+  );
+}
+
+function GrantChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="ap-chip ap-register-evidence rounded px-1.5 py-0.5"
+      style={{ fontSize: TYPE.scale.xs }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
  * One door in the shell's view switcher. The active door is a quiet fact,
- * not a link; the others carry the current lens through `?as=` so a room
- * change keeps the same eyes.
+ * not a link; the others carry the current Work Identity through `?as=`.
  */
 function ViewDoor({
   label,
   href,
   active,
   principal,
+  testId,
 }: {
   label: string;
   href: string;
   active: boolean;
   principal: string | null;
+  testId?: string;
 }) {
-  const testid = `view-door-${label.toLowerCase()}`;
+  const testid = testId ?? `view-door-${label.toLowerCase().replace(/\s+/g, "-")}`;
   if (active) {
     return (
       <span

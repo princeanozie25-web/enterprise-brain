@@ -157,7 +157,10 @@ async fn gr1_people_set_matches_roster_and_edges_match_company() {
         .iter()
         .map(|d| d["label"].as_str().unwrap())
         .collect();
-    assert_eq!(graph_depts, expected_depts, "department hubs match company.json");
+    assert_eq!(
+        graph_depts, expected_depts,
+        "department hubs match company.json"
+    );
 
     // Reporting edges match company.json manager_id, and every person with a
     // manager has exactly one reports_to edge.
@@ -175,10 +178,18 @@ async fn gr1_people_set_matches_roster_and_edges_match_company() {
     for e in graph["edges"].as_array().unwrap() {
         if e["kind"] == "reports_to" {
             let from = e["from"].as_str().unwrap();
-            assert!(reports_edges.insert(from, e["to"].as_str().unwrap()).is_none(), "one reports_to per person");
+            assert!(
+                reports_edges
+                    .insert(from, e["to"].as_str().unwrap())
+                    .is_none(),
+                "one reports_to per person"
+            );
         }
     }
-    assert_eq!(reports_edges, manager_of, "reports_to edges == company manager_id");
+    assert_eq!(
+        reports_edges, manager_of,
+        "reports_to edges == company manager_id"
+    );
     println!(
         "GR-1: graph people == roster (120); {} departments; {} reporting edges match company.json",
         graph_depts.len(),
@@ -242,10 +253,23 @@ async fn gr3_graph_carries_no_holding_or_document_id() {
     // The shape is structurally incapable of expressing holdings/counts.
     let mut keys = BTreeSet::new();
     collect_keys(&graph, &mut keys);
-    for forbidden in ["sensitivity", "document_id", "documents", "holdings", "count", "docs"] {
-        assert!(!keys.contains(forbidden), "no {forbidden:?} field in /graph");
+    for forbidden in [
+        "sensitivity",
+        "document_id",
+        "documents",
+        "holdings",
+        "count",
+        "docs",
+    ] {
+        assert!(
+            !keys.contains(forbidden),
+            "no {forbidden:?} field in /graph"
+        );
     }
-    println!("GR-3: /graph has zero document ids and no holding/count fields ({} keys)", keys.len());
+    println!(
+        "GR-3: /graph has zero document ids and no holding/count fields ({} keys)",
+        keys.len()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -284,7 +308,15 @@ async fn gr5_every_person_carries_a_real_humanized_name_no_placeholder() {
     // real name + title for EVERY node. Guards against a regression to the
     // "anonymous team member" graph the rebuild replaced.
     let placeholders = [
-        "", "member", "anchor", "team member", "teammate", "unknown", "person", "n/a", "tbd",
+        "",
+        "member",
+        "anchor",
+        "team member",
+        "teammate",
+        "unknown",
+        "person",
+        "n/a",
+        "tbd",
     ];
 
     let mut checked = 0usize;
@@ -304,13 +336,19 @@ async fn gr5_every_person_carries_a_real_humanized_name_no_placeholder() {
             !placeholders.contains(&trimmed.to_ascii_lowercase().as_str()),
             "{id}: display_name {name:?} is a placeholder"
         );
-        assert_ne!(trimmed, id, "{id}: display_name must not be the principal id");
+        assert_ne!(
+            trimmed, id,
+            "{id}: display_name must not be the principal id"
+        );
         assert!(!title.trim().is_empty(), "{id}: title is empty");
 
         // Baked at source: the graph's name + title equal the humanization
         // layer exactly (no fabrication in the endpoint).
         let (exp_name, exp_title) = expected.get(id).expect("graph id exists in people.json");
-        assert_eq!(name, exp_name, "{id}: graph name == people.json display_name");
+        assert_eq!(
+            name, exp_name,
+            "{id}: graph name == people.json display_name"
+        );
         assert_eq!(title, exp_title, "{id}: graph title == people.json title");
         checked += 1;
     }
@@ -366,13 +404,22 @@ async fn gr6_graph_carries_the_real_sources_and_still_no_leak() {
         .iter()
         .map(|s| s["id"].as_str().unwrap())
         .collect();
-    let expected: BTreeSet<&str> = ["docstore", "wiki", "mail_lite", "hr_system", "quality_system"]
-        .into_iter()
-        .collect();
+    let expected: BTreeSet<&str> = [
+        "docstore",
+        "wiki",
+        "mail_lite",
+        "hr_system",
+        "quality_system",
+    ]
+    .into_iter()
+    .collect();
     assert_eq!(sources, expected, "graph sources == company.json sources");
     for s in graph["sources"].as_array().unwrap() {
         assert_eq!(s["kind"], "source", "a source declares its kind");
-        assert!(!s["label"].as_str().unwrap().is_empty(), "a source is labelled");
+        assert!(
+            !s["label"].as_str().unwrap().is_empty(),
+            "a source is labelled"
+        );
     }
 
     // One system_of edge per source, to the org core — never to a person.
@@ -385,18 +432,34 @@ async fn gr6_graph_carries_the_real_sources_and_still_no_leak() {
     assert_eq!(system_edges.len(), 5, "one system_of edge per source");
     for e in system_edges {
         assert_eq!(e["to"], "org", "a source is a system of the org");
-        assert!(expected.contains(e["from"].as_str().unwrap()), "edge from a real source");
+        assert!(
+            expected.contains(e["from"].as_str().unwrap()),
+            "edge from a real source"
+        );
     }
 
     // Adding sources introduced NO holding: still zero document ids, still no
     // forbidden key anywhere in the payload (GR-3's law, re-proven).
     let mut strings = Vec::new();
     collect_strings(&graph, &mut strings);
-    assert!(!strings.iter().any(|s| is_doc_id(s)), "sources carry no document id");
+    assert!(
+        !strings.iter().any(|s| is_doc_id(s)),
+        "sources carry no document id"
+    );
     let mut keys = BTreeSet::new();
     collect_keys(&graph, &mut keys);
-    for forbidden in ["sensitivity", "document_id", "documents", "holdings", "count", "docs"] {
-        assert!(!keys.contains(forbidden), "no {forbidden:?} field after sources");
+    for forbidden in [
+        "sensitivity",
+        "document_id",
+        "documents",
+        "holdings",
+        "count",
+        "docs",
+    ] {
+        assert!(
+            !keys.contains(forbidden),
+            "no {forbidden:?} field after sources"
+        );
     }
     println!("GR-6: 5 real sources + 5 system_of edges; zero leak preserved");
 }
@@ -407,7 +470,13 @@ async fn gr6_graph_carries_the_real_sources_and_still_no_leak() {
 
 fn index_entry_count(id: &str) -> usize {
     let v: Value = serde_json::from_slice(
-        &fs::read(repo_root().join("compiler").join("artifacts").join("index.json")).unwrap(),
+        &fs::read(
+            repo_root()
+                .join("compiler")
+                .join("artifacts")
+                .join("index.json"),
+        )
+        .unwrap(),
     )
     .unwrap();
     v["principals"]
@@ -428,7 +497,14 @@ fn assert_metadata_only(summary: &Value, who: &str) {
     );
     let mut keys = BTreeSet::new();
     collect_keys(summary, &mut keys);
-    for forbidden in ["sensitivity", "document_id", "documents", "holdings", "count", "docs"] {
+    for forbidden in [
+        "sensitivity",
+        "document_id",
+        "documents",
+        "holdings",
+        "count",
+        "docs",
+    ] {
         assert!(!keys.contains(forbidden), "{who}: no {forbidden:?} field");
     }
 }
@@ -464,18 +540,33 @@ async fn gr7_node_summary_is_real_scoped_and_metadata_only() {
     assert_eq!(person["kind"], "human");
     assert_eq!(person["corpus_documents"], 600);
     let visible = person["visible_documents"].as_u64().unwrap() as usize;
-    assert_eq!(visible, index_entry_count("p060"), "visible == compiled allowlist");
+    assert_eq!(
+        visible,
+        index_entry_count("p060"),
+        "visible == compiled allowlist"
+    );
     let reason_sum: usize = person["access_by_reason"]
         .as_array()
         .unwrap()
         .iter()
         .map(|g| g["granted"].as_u64().unwrap() as usize)
         .sum();
-    assert_eq!(reason_sum, visible, "every visible doc is grouped under exactly one reason");
-    assert!(person["access_by_reason"].as_array().unwrap().iter().all(|g| {
-        !g["sentence"].as_str().unwrap().is_empty()
-    }), "each reason carries its human sentence");
-    assert!(person["groups"].as_array().unwrap().len() > 0, "person carries scope groups");
+    assert_eq!(
+        reason_sum, visible,
+        "every visible doc is grouped under exactly one reason"
+    );
+    assert!(
+        person["access_by_reason"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|g| { !g["sentence"].as_str().unwrap().is_empty() }),
+        "each reason carries its human sentence"
+    );
+    assert!(
+        person["groups"].as_array().unwrap().len() > 0,
+        "person carries scope groups"
+    );
     assert_metadata_only(&person, "p060");
 
     // AGENT: the M4 authority, stated from real fixtures.
@@ -488,19 +579,49 @@ async fn gr7_node_summary_is_real_scoped_and_metadata_only() {
         agent["visible_documents"].as_u64().unwrap() as usize,
         index_entry_count("agent_finance_analyst")
     );
-    let permitted: Vec<&str> = agent["permitted_actions"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect();
-    let blocked: Vec<&str> = agent["blocked_actions"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect();
-    assert!(permitted.iter().any(|a| a.contains("retrieve")), "agent may retrieve");
-    assert!(permitted.iter().any(|a| a.contains("propose")), "agent may propose");
-    assert!(blocked.iter().any(|a| a.contains("approve")), "agent cannot approve/reject");
-    assert!(blocked.iter().any(|a| a.contains("mutate")), "agent cannot mutate");
+    let permitted: Vec<&str> = agent["permitted_actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a.as_str().unwrap())
+        .collect();
+    let blocked: Vec<&str> = agent["blocked_actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a.as_str().unwrap())
+        .collect();
+    assert!(
+        permitted.iter().any(|a| a.contains("retrieve")),
+        "agent may retrieve"
+    );
+    assert!(
+        permitted.iter().any(|a| a.contains("propose")),
+        "agent may propose"
+    );
+    assert!(
+        blocked.iter().any(|a| a.contains("approve")),
+        "agent cannot approve/reject"
+    );
+    assert!(
+        blocked.iter().any(|a| a.contains("mutate")),
+        "agent cannot mutate"
+    );
     assert_metadata_only(&agent, "agent");
 
     // A person who owns an agent surfaces it (real ownership edge).
     let (_s, bytes) = get(&router, "/node/p061/summary", "p061").await;
     let owner: Value = serde_json::from_slice(&bytes).unwrap();
-    let owned: Vec<&str> = owner["agents_owned"].as_array().unwrap().iter().map(|a| a["id"].as_str().unwrap()).collect();
-    assert!(owned.contains(&"agent_finance_analyst"), "p061 owns the finance agent");
+    let owned: Vec<&str> = owner["agents_owned"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["id"].as_str().unwrap())
+        .collect();
+    assert!(
+        owned.contains(&"agent_finance_analyst"),
+        "p061 owns the finance agent"
+    );
 
     // NON-PRINCIPALS are summarised on the client, never here: a department, a
     // source, and an unknown id each get the one 404.
