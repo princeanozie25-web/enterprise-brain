@@ -10,15 +10,16 @@
 // not invent one-off color, shadow, blur, or elevation values.
 
 export const COLOR = {
-  /** App background. */
-  paper: "#FAFAF7",
-  /** Primary text. */
-  ink: "#16160F",
+  /** App background — a faint cool-tinted off-white (not flat white), calm. */
+  paper: "#F4F7FC",
+  /** Primary text — deep navy-charcoal, never pure black. */
+  ink: "#1A2233",
   /** Secondary text, rules; borders at 24% where hairline. */
-  inkSoft: "#5C5C54",
-  /** Interactive elements ONLY — links, buttons, focus rings. Never
-   * decorative. */
-  affordance: "#3D5A80",
+  inkSoft: "#5A6478",
+  /** Interactive elements ONLY — links, buttons, focus rings. The signature
+   * blue-violet (periwinkle/indigo), deep enough to carry paper-white text at
+   * AA. Never decorative. */
+  affordance: "#4954C9",
 } as const;
 
 /** Derived washes of permitted colors (alpha only — no new hues). */
@@ -31,20 +32,23 @@ export const DERIVED = {
 
 /**
  * DARK THEME (the org-graph command surface defaults to it). A designed dark
- * palette — NOT an inversion: a warm near-black paper, warm off-white ink, a
- * lifted affordance blue legible on dark, and SOLID hairline/wash (dark can't
- * reuse the ink-soft alphas — they vanish on near-black). The five labeled
- * sensitivity hues are shared across themes (they read as luminous chips on
- * dark, soft tints on light). Selected via [data-theme="dark"] in layout.tsx;
- * U-6 still sees every literal HERE and nowhere else.
+ * palette — NOT an inversion: a rich, desaturated deep navy-charcoal paper
+ * (never pure black — murkiness comes from flat near-black, fixed here with a
+ * cool blue undertone and layered elevation), an off-white ink that kills
+ * glare, a luminous periwinkle affordance legible on navy, and SOLID
+ * hairline/wash tinted toward the navy (dark can't reuse the ink-soft alphas —
+ * they vanish on the base). The five labeled sensitivity hues are shared
+ * across themes (they read as luminous chips on dark, soft tints on light).
+ * Selected via [data-theme="dark"] in layout.tsx; U-6 still sees every literal
+ * HERE and nowhere else.
  */
 export const DARK = {
-  paper: "#14130E",
-  ink: "#F4F3EE",
-  inkSoft: "#9A9A90",
-  affordance: "#7AA0CE",
-  hairline: "#33322C",
-  wash: "#222019",
+  paper: "#0F1422",
+  ink: "#E6EBF5",
+  inkSoft: "#AEB8CC",
+  affordance: "#93A7F2",
+  hairline: "#2A3142",
+  wash: "#1A2030",
 } as const;
 
 /**
@@ -54,6 +58,19 @@ export const DARK = {
  */
 export const ACCENT = {
   warm: "#C77F3A",
+} as const;
+
+/**
+ * ATMOSPHERE — the cinematic ambient wash (the colour the surface was missing).
+ * A desaturated blue->violet depth haze, applied ONLY to the backdrop and a
+ * few hero surfaces (never painted on every panel), always at low opacity via
+ * color-mix so it reads as volumetric light, not paint. Deliberately OUTSIDE
+ * amber's hue range so the reserved governance signal (ACCENT.warm) stays
+ * semantically distinct. Declared here so U-6 sees these two hues centrally.
+ */
+export const ATMOSPHERE = {
+  blue: "#2D4A7C",
+  violet: "#4A3A8C",
 } as const;
 
 /**

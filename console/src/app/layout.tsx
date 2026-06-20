@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ACCENT, COLOR, DARK, DERIVED, FONT, MATERIAL, MOTION, TYPE } from "@/lib/tokens";
+import { ACCENT, ATMOSPHERE, COLOR, DARK, DERIVED, FONT, MATERIAL, MOTION, TYPE } from "@/lib/tokens";
 import "@/fonts/fonts.css";
 import "./globals.css";
 
@@ -77,16 +77,31 @@ const apertureBase = `
   --ease-iris: ${MOTION.irisEase};
   --dur-skeleton: ${MOTION.skeletonPulse};
   --material-blur: ${MATERIAL.blur};
+  --atmos-blue: ${ATMOSPHERE.blue};
+  --atmos-violet: ${ATMOSPHERE.violet};
   --glass-fill: color-mix(in srgb, var(--surface-glass) 82%, transparent);
   --glass-border: color-mix(in srgb, var(--hairline-strong) 86%, var(--edge-highlight) 14%);
   --glass-highlight: color-mix(in srgb, var(--edge-highlight) 72%, transparent);
   --glass-scrim: color-mix(in srgb, var(--paper) 52%, transparent);
+  /* The atmospheric depth wash: a desaturated blue->violet aurora behind all
+     content. Strong but low-opacity glow on dark; a faint tint on light. The
+     opacity vars are the ONE knob (dark reads richer than light). */
+  --atmos-strength-a: 22%;
+  --atmos-strength-b: 16%;
+  --atmos-strength-c: 12%;
+}
+:root[data-theme="light"] {
+  --atmos-strength-a: 9%;
+  --atmos-strength-b: 7%;
+  --atmos-strength-c: 5%;
 }
 body {
   background:
-    radial-gradient(circle at 12% 4%, color-mix(in srgb, var(--affordance) 16%, transparent), transparent 26rem),
-    radial-gradient(circle at 92% 10%, color-mix(in srgb, var(--accent-warm) 10%, transparent), transparent 24rem),
-    linear-gradient(180deg, var(--surface-0), color-mix(in srgb, var(--surface-0) 84%, var(--surface-1) 16%));
+    radial-gradient(120% 90% at 8% -8%, color-mix(in srgb, var(--atmos-blue) var(--atmos-strength-a), transparent), transparent 60%),
+    radial-gradient(110% 80% at 100% 0%, color-mix(in srgb, var(--atmos-violet) var(--atmos-strength-b), transparent), transparent 55%),
+    radial-gradient(140% 120% at 50% 120%, color-mix(in srgb, var(--atmos-blue) var(--atmos-strength-c), transparent), transparent 60%),
+    linear-gradient(180deg, var(--surface-0), color-mix(in srgb, var(--surface-0) 82%, var(--surface-1) 18%));
+  background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font-chrome);
   font-size: var(--text-sm);
@@ -138,7 +153,8 @@ body {
 }
 .ap-glass-elevated {
   background:
-    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--affordance) 13%, transparent), transparent 18rem),
+    radial-gradient(circle at 8% -10%, color-mix(in srgb, var(--atmos-violet) 16%, transparent), transparent 20rem),
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--atmos-blue) 12%, transparent), transparent 18rem),
     linear-gradient(145deg, color-mix(in srgb, var(--surface-glass) 96%, transparent), color-mix(in srgb, var(--surface-glass) 68%, transparent));
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(calc(var(--material-blur) * 1.25)) saturate(1.22);

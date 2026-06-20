@@ -66,11 +66,12 @@ describe("U-6: color discipline", () => {
     );
     const expected = new Set(
       [
-        // The reserved neutrals + affordance.
-        "#FAFAF7",
-        "#16160F",
-        "#5C5C54",
-        "#3D5A80",
+        // The reserved neutrals + affordance (light): cool-tinted off-white
+        // paper, navy-charcoal ink/ink-soft, periwinkle-indigo affordance.
+        "#F4F7FC",
+        "#1A2233",
+        "#5A6478",
+        "#4954C9",
         // The five sensitivity hues (background + border), unchanged.
         "#E8F1F8",
         "#0072B2",
@@ -83,15 +84,19 @@ describe("U-6: color discipline", () => {
         "#F6EAF1",
         "#CC79A7",
         // The dark theme (Org Brain surface): a designed palette, not an
-        // inversion — paper, ink, ink-soft, affordance, hairline, wash.
-        "#14130E",
-        "#F4F3EE",
-        "#9A9A90",
-        "#7AA0CE",
-        "#33322C",
-        "#222019",
-        // The one reserved warm accent — lit path + core glow.
+        // inversion — deep navy-charcoal paper, off-white ink, cool ink-soft,
+        // luminous periwinkle affordance, navy-tinted hairline + wash.
+        "#0F1422",
+        "#E6EBF5",
+        "#AEB8CC",
+        "#93A7F2",
+        "#2A3142",
+        "#1A2030",
+        // The one reserved warm accent — lit path + core glow (governance).
         "#C77F3A",
+        // The atmospheric wash — desaturated blue + violet, backdrop only.
+        "#2D4A7C",
+        "#4A3A8C",
       ].map((h) => h.toUpperCase()),
     );
     expect([...hexes].sort()).toEqual([...expected].sort());
