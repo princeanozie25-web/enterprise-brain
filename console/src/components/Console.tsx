@@ -10,6 +10,7 @@ import type {
   ScopeStatement,
 } from "@/lib/api";
 import { DERIVED, TYPE } from "@/lib/tokens";
+import { AdminPreviewGate } from "./AdminPreviewGate";
 import { AnswerCard } from "./AnswerCard";
 import { AtlasRoom } from "./AtlasRoom";
 import { BursarSurface } from "./BursarSurface";
@@ -342,11 +343,15 @@ export function Console({
         data-testid="iris-stage"
       >
         {view === "adminGraph" ? (
-          <main className="min-w-0 flex-1">
-            <GraphRoom actor={principal} reducedMotion={reduced} adminPreview />
-          </main>
+          <AdminPreviewGate actor={principal} surface="admin">
+            <main className="min-w-0 flex-1">
+              <GraphRoom actor={principal} reducedMotion={reduced} adminPreview />
+            </main>
+          </AdminPreviewGate>
         ) : view === "adminBursar" ? (
-          <BursarSurface />
+          <AdminPreviewGate actor={principal} surface="bursar">
+            <BursarSurface />
+          </AdminPreviewGate>
         ) : view === "me" ? (
           <EmployeeDashboard actor={principal} />
         ) : view === "lens" ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as api from "@/lib/api";
 import type {
@@ -1901,6 +1901,65 @@ function DashboardPanelDrawer({
 }) {
   const shouldReduce = useReducedMotion() ?? false;
   const title = mode === "workspace" ? "Workspace" : mode === "profile" ? "Profile" : "Settings";
+  const asideRef = useRef<HTMLElement | null>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+  const prevModeRef = useRef<DashboardPanelMode | null>(null);
+
+  // Focus management for the modal drawer: on open, remember the opener and
+  // move focus into the dialog; on a panel switch keep focus inside; on close,
+  // restore focus to whatever opened it. (Closes the P0 WCAG 2.4.3 gap.)
+  useEffect(() => {
+    const prev = prevModeRef.current;
+    if (mode !== null && prev === null) {
+      restoreRef.current = (document.activeElement as HTMLElement | null) ?? null;
+    }
+    if (mode !== null) {
+      asideRef.current?.focus();
+    }
+    if (mode === null && prev !== null) {
+      restoreRef.current?.focus?.();
+      restoreRef.current = null;
+    }
+    prevModeRef.current = mode;
+  }, [mode]);
+
+  // Trap Tab within the drawer and let Escape close it — a self-contained
+  // focus trap (no third-party dependency).
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const root = asideRef.current;
+      if (root === null) return;
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusables.length === 0) {
+        event.preventDefault();
+        root.focus();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey) {
+        if (active === first || active === root) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    },
+    [onClose],
+  );
 
   return (
     <AnimatePresence>
@@ -1910,6 +1969,7 @@ function DashboardPanelDrawer({
             type="button"
             className="ap-glass-scrim fixed inset-0 z-40 cursor-default"
             aria-label={`Close ${title}`}
+            tabIndex={-1}
             data-testid="dashboard-drawer-scrim"
             onClick={onClose}
             initial={{ opacity: 0 }}
@@ -1918,9 +1978,12 @@ function DashboardPanelDrawer({
             transition={{ duration: shouldReduce ? 0 : 0.18 }}
           />
           <motion.aside
+            ref={asideRef}
             role="dialog"
-            aria-modal="false"
+            aria-modal="true"
             aria-label={`${title} panel`}
+            tabIndex={-1}
+            onKeyDown={onKeyDown}
             className="ap-glass-popover fixed bottom-3 right-3 top-3 z-50 w-[min(456px,calc(100vw-24px))] overflow-y-auto rounded-2xl p-3"
             data-testid="dashboard-active-drawer"
             initial={{ opacity: 0, x: shouldReduce ? 0 : 42 }}

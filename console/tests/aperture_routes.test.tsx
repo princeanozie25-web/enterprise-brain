@@ -191,6 +191,12 @@ describe("route separation", () => {
   it("renders Bursar as an honest Ledger-room placeholder without fake spend data", () => {
     render(<Console view="adminBursar" />);
 
+    // Fail-closed: the admin-domain surface is gated behind an explicit,
+    // labelled preview opt-in and is never rendered by default.
+    expect(screen.getByTestId("admin-preview-gate")).toBeTruthy();
+    expect(screen.queryByTestId("bursar-surface")).toBeNull();
+    fireEvent.click(screen.getByTestId("admin-preview-gate-reveal"));
+
     const surface = screen.getByTestId("bursar-surface");
     const text = surface.textContent ?? "";
     expect(text).toContain("Bursar Ledger Room");
@@ -222,6 +228,12 @@ describe("route separation", () => {
     window.history.pushState({}, "", "/admin/graph?as=p060");
 
     render(<Console view="adminGraph" />);
+
+    // Fail-closed gate: the Operating Map is not rendered until the viewer
+    // explicitly opens the labelled demo preview.
+    expect(await screen.findByTestId("admin-preview-gate")).toBeTruthy();
+    expect(screen.queryByTestId("graph-room")).toBeNull();
+    fireEvent.click(screen.getByTestId("admin-preview-gate-reveal"));
 
     await waitFor(() => expect(screen.getByTestId("graph-room")).toBeTruthy());
     await waitFor(() => {
