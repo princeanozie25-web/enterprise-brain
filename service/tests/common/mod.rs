@@ -7,7 +7,11 @@
 
 use std::path::{Path, PathBuf};
 
+use axum::body::{to_bytes, Body};
+use axum::http::{Request, StatusCode};
+use axum::Router;
 use sha2::{Digest, Sha256};
+use tower::ServiceExt;
 
 /// Must match the M2b retrieval fixtures exactly, so the service docs file
 /// and the retrieval queries file merge into one `FileEmbeddings`.
@@ -104,4 +108,48 @@ impl Lcg {
     pub fn pick<'a, T>(&mut self, items: &'a [T]) -> &'a T {
         &items[(self.next() as usize) % items.len()]
     }
+}
+
+// ---------------------------------------------------------------------------
+// FC-A1: session auth for the harness. Identity is now bound from a
+// server-minted session, not the retired `x-demo-principal` header — so tests
+// authenticate first and send `Authorization: Bearer <token>`. The demo login
+// mints a session for the selected principal; every decision assertion stays
+// identical, only the auth mechanism moved.
+// ---------------------------------------------------------------------------
+
+/// Authenticate as `principal` against the in-memory router; return the minted
+/// session token.
+pub async fn login_as(router: &Router, principal: &str) -> String {
+    let body = serde_json::json!({ "principal_id": principal }).to_string();
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .expect("login request"),
+        )
+        .await
+        .expect("login response");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "demo login should mint a session for {principal}"
+    );
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("login body");
+    let value: serde_json::Value = serde_json::from_slice(&bytes).expect("login json");
+    value["session_token"]
+        .as_str()
+        .expect("session_token in login response")
+        .to_string()
+}
+
+/// The `Authorization` header value for a freshly minted session as `principal`.
+pub async fn bearer(router: &Router, principal: &str) -> String {
+    format!("Bearer {}", login_as(router, principal).await)
 }

@@ -113,7 +113,7 @@ async fn get_lens(
             Request::builder()
                 .method("GET")
                 .uri(format!("/lens/{subject}"))
-                .header("x-demo-principal", actor)
+                .header("authorization", common::bearer(router, actor).await)
                 .body(Body::empty())
                 .expect("request"),
         )

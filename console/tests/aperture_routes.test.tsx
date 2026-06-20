@@ -86,6 +86,12 @@ function stubRouteFetch() {
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.endsWith("/auth/login")) {
+        return new Response(
+          JSON.stringify({ principal_id: "demo", session_token: "test-session", expires_at: 9_999_999_999 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
       if (url.endsWith("/me/scope")) {
         return new Response(JSON.stringify(ROLE_SCOPE), { status: 200 });
       }

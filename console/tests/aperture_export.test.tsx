@@ -31,6 +31,12 @@ afterEach(() => {
 function stubFetch() {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.endsWith("/auth/login")) {
+      return new Response(
+        JSON.stringify({ principal_id: "demo", session_token: "test-session", expires_at: 9_999_999_999 }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
     if (url.endsWith("/export")) {
       return new Response(new Uint8Array([0x25, 0x50, 0x44, 0x46]), {
         status: 200,

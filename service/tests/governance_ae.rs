@@ -90,7 +90,7 @@ async fn post_export(router: &axum::Router, actor: &str, body: &str) -> (StatusC
             Request::builder()
                 .method("POST")
                 .uri("/export")
-                .header("x-demo-principal", actor)
+                .header("authorization", common::bearer(router, actor).await)
                 .header("content-type", "application/json")
                 .body(Body::from(body.to_string()))
                 .expect("request"),
@@ -111,7 +111,7 @@ async fn get_raw(router: &axum::Router, actor: &str, uri: &str) -> (StatusCode, 
             Request::builder()
                 .method("GET")
                 .uri(uri)
-                .header("x-demo-principal", actor)
+                .header("authorization", common::bearer(router, actor).await)
                 .body(Body::empty())
                 .expect("request"),
         )

@@ -104,7 +104,7 @@ async fn get_path(router: &axum::Router, actor: &str, path: &str) -> (StatusCode
             Request::builder()
                 .method("GET")
                 .uri(path)
-                .header("x-demo-principal", actor)
+                .header("authorization", common::bearer(router, actor).await)
                 .body(Body::empty())
                 .expect("request"),
         )

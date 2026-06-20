@@ -122,7 +122,7 @@ async fn get_raw(router: &axum::Router, actor: &str, uri: &str) -> (StatusCode, 
             Request::builder()
                 .method("GET")
                 .uri(uri)
-                .header("x-demo-principal", actor)
+                .header("authorization", common::bearer(router, actor).await)
                 .body(Body::empty())
                 .expect("request"),
         )

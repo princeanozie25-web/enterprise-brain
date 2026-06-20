@@ -10,6 +10,7 @@
 // rule held at the type layer (U-3 proves it at compile time).
 
 import { SERVICE_URL } from "./constants";
+import { authHeader } from "./session";
 
 export type Sensitivity =
   | "public"
@@ -138,10 +139,12 @@ export interface RoleScopeSummary {
 /** 401: the request carried no principal. */
 export class Unauthenticated extends Error {}
 
-function headers(principal: string): HeadersInit {
+// FC-A1: identity rides the session bearer (Authorization), never a header the
+// caller asserts. The engine resolves the principal from the validated session.
+function headers(): HeadersInit {
   return {
     "content-type": "application/json",
-    "x-demo-principal": principal,
+    ...authHeader(),
   };
 }
 
@@ -173,7 +176,7 @@ export async function ask(
   }
   const response = await fetch(`${SERVICE_URL}/ask`, {
     method: "POST",
-    headers: headers(principal),
+    headers: headers(),
     body: JSON.stringify(body),
   });
   return parse<AnswerEnvelope>(response);
@@ -181,7 +184,7 @@ export async function ask(
 
 export async function getScope(principal: string): Promise<ScopeResponse> {
   const response = await fetch(`${SERVICE_URL}/scope`, {
-    headers: headers(principal),
+    headers: headers(),
   });
   return parse<ScopeResponse>(response);
 }
@@ -189,7 +192,7 @@ export async function getScope(principal: string): Promise<ScopeResponse> {
 /** GET /me/scope. Read-only role posture, not an access grant. 404 -> null. */
 export async function getRoleScope(principal: string): Promise<RoleScopeSummary | null> {
   const response = await fetch(`${SERVICE_URL}/me/scope`, {
-    headers: headers(principal),
+    headers: headers(),
   });
   if (response.status === 404) {
     return null;
@@ -204,7 +207,7 @@ export async function getRoleScope(principal: string): Promise<RoleScopeSummary 
  */
 export async function getDoc(principal: string, docId: string): Promise<DocCard | null> {
   const response = await fetch(`${SERVICE_URL}/doc/${encodeURIComponent(docId)}`, {
-    headers: headers(principal),
+    headers: headers(),
   });
   if (response.status === 404) {
     return null;
@@ -267,7 +270,7 @@ export interface PeopleResponse {
  * when this world has no humanization layer.
  */
 export async function getPeople(actor: string): Promise<PersonCard[]> {
-  const response = await fetch(`${SERVICE_URL}/people`, { headers: headers(actor) });
+  const response = await fetch(`${SERVICE_URL}/people`, { headers: headers() });
   const data = await parse<PeopleResponse>(response);
   return data.people ?? [];
 }
@@ -346,7 +349,7 @@ export interface GraphResponse {
 
 /** GET /graph. 404 (unknown actor / no humanization layer) -> null. */
 export async function getGraph(actor: string): Promise<GraphResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/graph`, { headers: headers(actor) });
+  const response = await fetch(`${SERVICE_URL}/graph`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
@@ -430,7 +433,7 @@ export interface AccessGrantResponse {
 }
 
 export async function getAccessRequests(actor: string): Promise<AccessRequestsResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/access-requests`, { headers: headers(actor) });
+  const response = await fetch(`${SERVICE_URL}/access-requests`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
@@ -438,7 +441,7 @@ export async function getAccessRequests(actor: string): Promise<AccessRequestsRe
 }
 
 export async function getAccessRequestInbox(actor: string): Promise<AccessRequestsResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/access-requests/inbox`, { headers: headers(actor) });
+  const response = await fetch(`${SERVICE_URL}/access-requests/inbox`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
@@ -452,7 +455,7 @@ export async function postAccessRequest(
 ): Promise<AccessRequestMutationResponse> {
   const response = await fetch(`${SERVICE_URL}/access-requests`, {
     method: "POST",
-    headers: headers(actor),
+    headers: headers(),
     body: JSON.stringify({ target, justification }),
   });
   return parse<AccessRequestMutationResponse>(response);
@@ -468,7 +471,7 @@ export async function postAccessRequestDecision(
     `${SERVICE_URL}/access-requests/${encodeURIComponent(requestId)}/${decision}`,
     {
       method: "POST",
-      headers: headers(actor),
+      headers: headers(),
       body: reasonCode ? JSON.stringify({ reason_code: reasonCode }) : undefined,
     },
   );
@@ -476,7 +479,7 @@ export async function postAccessRequestDecision(
 }
 
 export async function getAccessGrants(actor: string): Promise<AccessGrantsResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/access-grants`, { headers: headers(actor) });
+  const response = await fetch(`${SERVICE_URL}/access-grants`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
@@ -488,7 +491,7 @@ export async function getAccessGrant(
   grantId: string,
 ): Promise<AccessGrantResponse | null> {
   const response = await fetch(`${SERVICE_URL}/access-grants/${encodeURIComponent(grantId)}`, {
-    headers: headers(actor),
+    headers: headers(),
   });
   if (response.status === 404) {
     return null;
@@ -505,7 +508,7 @@ export async function postAccessGrantRevoke(
     `${SERVICE_URL}/access-grants/${encodeURIComponent(grantId)}/revoke`,
     {
       method: "POST",
-      headers: headers(actor),
+      headers: headers(),
       body: reasonCode ? JSON.stringify({ reason_code: reasonCode }) : undefined,
     },
   );
@@ -562,7 +565,7 @@ export async function getProjectWorkflow(
 ): Promise<ProjectWorkflowResponse | null> {
   const response = await fetch(
     `${SERVICE_URL}/workflow/project/${encodeURIComponent(capabilityId)}`,
-    { headers: headers(actor) },
+    { headers: headers() },
   );
   if (response.status === 404) {
     return null;
@@ -630,7 +633,7 @@ export interface NodeSummary {
 /** GET /node/{id}/summary. 404 (dept/source/unknown) -> null. */
 export async function getNodeSummary(actor: string, id: string): Promise<NodeSummary | null> {
   const response = await fetch(`${SERVICE_URL}/node/${encodeURIComponent(id)}/summary`, {
-    headers: headers(actor),
+    headers: headers(),
   });
   if (response.status === 404) {
     return null;
@@ -697,7 +700,7 @@ export async function getLens(
   subjectId: string,
 ): Promise<LensResponse | null> {
   const response = await fetch(`${SERVICE_URL}/lens/${encodeURIComponent(subjectId)}`, {
-    headers: headers(actor),
+    headers: headers(),
   });
   if (response.status === 404) {
     return null;
@@ -760,7 +763,7 @@ export interface AtlasResponse {
 /** GET /atlas. 404 (this world has no BRM) -> null. */
 export async function getAtlas(actor: string): Promise<AtlasResponse | null> {
   const response = await fetch(`${SERVICE_URL}/atlas`, {
-    headers: headers(actor),
+    headers: headers(),
   });
   if (response.status === 404) {
     return null;
@@ -828,7 +831,7 @@ export async function getLensDiff(
 ): Promise<DiffResponse | null> {
   const response = await fetch(
     `${SERVICE_URL}/lens/diff?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`,
-    { headers: headers(actor) },
+    { headers: headers() },
   );
   if (response.status === 404) {
     return null;
@@ -854,7 +857,7 @@ export interface ExportRequest {
 export async function exportEvidence(actor: string, request: ExportRequest): Promise<Blob> {
   const response = await fetch(`${SERVICE_URL}/export`, {
     method: "POST",
-    headers: headers(actor),
+    headers: headers(),
     body: JSON.stringify(request),
   });
   if (!response.ok) {
@@ -939,7 +942,7 @@ export interface RollupResponse {
 
 /** GET /lane — SELF-ONLY: the actor header is the only input. */
 export async function getLane(actor: string): Promise<LaneResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/lane`, { headers: headers(actor) });
+  const response = await fetch(`${SERVICE_URL}/lane`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
@@ -953,7 +956,7 @@ export async function postBoxStatus(
 ): Promise<void> {
   const response = await fetch(
     `${SERVICE_URL}/lane/box/${encodeURIComponent(boxId)}/status`,
-    { method: "POST", headers: headers(actor), body: JSON.stringify({ to }) },
+    { method: "POST", headers: headers(), body: JSON.stringify({ to }) },
   );
   if (!response.ok) {
     throw new Error(`service error ${response.status}`);
@@ -961,7 +964,7 @@ export async function postBoxStatus(
 }
 
 export async function getInbox(actor: string): Promise<InboxResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/lane/inbox`, { headers: headers(actor) });
+  const response = await fetch(`${SERVICE_URL}/lane/inbox`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
@@ -975,7 +978,7 @@ export async function postInboxDecision(
 ): Promise<void> {
   const response = await fetch(
     `${SERVICE_URL}/lane/inbox/${encodeURIComponent(proposalId)}/${decision}`,
-    { method: "POST", headers: headers(actor) },
+    { method: "POST", headers: headers() },
   );
   if (!response.ok) {
     throw new Error(`service error ${response.status}`);
@@ -983,7 +986,7 @@ export async function postInboxDecision(
 }
 
 export async function getRollup(actor: string): Promise<RollupResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/lane/rollup`, { headers: headers(actor) });
+  const response = await fetch(`${SERVICE_URL}/lane/rollup`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }

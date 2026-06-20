@@ -594,21 +594,24 @@ async fn a5_identity_fails_closed_and_unknown_is_indistinguishable() {
     let body: Value = serde_json::from_slice(&bytes).expect("json");
     assert_eq!(body["demo_identity_mode"], Value::Bool(true));
 
-    // Unknown principal -> 200 with the empty envelope.
-    let ask_request = |principal: &str, query: &str| {
+    // Unknown principal -> 200 with the empty envelope. Identity is now bound
+    // from a server session; an unknown principal can still authenticate in the
+    // demo, then sees the empty envelope (deny by default downstream).
+    let ask_request = |authz: &str, query: &str| {
         Request::builder()
             .method("POST")
             .uri("/ask")
             .header("content-type", "application/json")
-            .header("x-demo-principal", principal)
+            .header("authorization", authz)
             .body(Body::from(
                 serde_json::to_vec(&json!({ "query": query })).expect("body"),
             ))
             .expect("request")
     };
+    let ghost_auth = common::bearer(&router, "p_ghost_404").await;
     let response = router
         .clone()
-        .oneshot(ask_request("p_ghost_404", "payroll salary review"))
+        .oneshot(ask_request(&ghost_auth, "payroll salary review"))
         .await
         .expect("response");
     assert_eq!(response.status(), StatusCode::OK);
@@ -638,9 +641,10 @@ async fn a5_identity_fails_closed_and_unknown_is_indistinguishable() {
     // The unknown-principal envelope has EXACTLY the same key set as a known
     // principal whose query matches nothing: the response shape cannot
     // distinguish "unknown" from "ungranted".
+    let void_auth = common::bearer(&router, "p_void").await;
     let response = router
         .clone()
-        .oneshot(ask_request("p_void", "zzqqxx wwyyvv unmatched tokens"))
+        .oneshot(ask_request(&void_auth, "zzqqxx wwyyvv unmatched tokens"))
         .await
         .expect("response");
     assert_eq!(response.status(), StatusCode::OK);
@@ -665,7 +669,7 @@ async fn a5_identity_fails_closed_and_unknown_is_indistinguishable() {
             Request::builder()
                 .method("GET")
                 .uri("/scope")
-                .header("x-demo-principal", "p_ghost_404")
+                .header("authorization", common::bearer(&router, "p_ghost_404").await)
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -994,10 +998,24 @@ async fn a10_doc_serves_allowlisted_cards_and_identical_404s() {
     let router = app(Arc::new(state_with(None, None, None)));
     let docs = corpus_docs();
 
+    // FC-A1: pre-authenticate every principal once; the sync request-builder
+    // closure then attaches the session bearer (identity is no longer a header
+    // the caller can assert). `None` -> no auth -> 401.
+    let mut auth: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for principal in &world.principal_ids {
+        auth.insert(principal.clone(), common::bearer(&router, principal).await);
+    }
+    auth.insert(
+        "p_ghost_404".to_string(),
+        common::bearer(&router, "p_ghost_404").await,
+    );
     let get_doc = |principal: Option<&str>, id: &str| {
         let mut builder = Request::builder().method("GET").uri(format!("/doc/{id}"));
         if let Some(principal) = principal {
-            builder = builder.header("x-demo-principal", principal);
+            builder = builder.header(
+                "authorization",
+                auth.get(principal).expect("principal pre-authenticated").clone(),
+            );
         }
         builder.body(Body::empty()).expect("request")
     };
@@ -1197,7 +1215,7 @@ async fn a9x_cors_allows_only_loopback_origins() {
         .expect("preflight allows headers")
         .to_str()
         .expect("ascii");
-    assert!(allow_headers.contains("x-demo-principal"));
+    assert!(allow_headers.contains("authorization"));
 }
 
 // ---------------------------------------------------------------------------

@@ -87,7 +87,7 @@ pub async fn apply(cors: CorsConfig, request: Request<Body>, next: Next) -> Resp
                     ),
                     (
                         header::ACCESS_CONTROL_ALLOW_HEADERS,
-                        HeaderValue::from_static("content-type, x-demo-principal"),
+                        HeaderValue::from_static("content-type, authorization"),
                     ),
                     (header::VARY, HeaderValue::from_static("Origin")),
                 ],

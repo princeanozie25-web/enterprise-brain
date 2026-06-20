@@ -336,7 +336,7 @@ async fn post_as(router: &axum::Router, principal: &str, uri: &str) -> (StatusCo
             Request::builder()
                 .method("POST")
                 .uri(uri)
-                .header("x-demo-principal", principal)
+                .header("authorization", common::bearer(router, principal).await)
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -601,7 +601,7 @@ async fn ag6_snapshot_flip_withholds_findings_and_refuses_decisions() {
             Request::builder()
                 .method("GET")
                 .uri("/proposals")
-                .header("x-demo-principal", OWNER_ID)
+                .header("authorization", common::bearer(&router_b, OWNER_ID).await)
                 .body(Body::empty())
                 .expect("request"),
         )

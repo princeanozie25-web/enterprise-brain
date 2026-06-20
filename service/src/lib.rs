@@ -28,6 +28,7 @@ pub mod lens;
 pub mod node_summary;
 pub mod role_scope;
 pub mod scope;
+pub mod session;
 pub mod sidecar;
 pub mod workflow;
 
@@ -37,8 +38,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
-use axum::extract::State;
-use axum::http::{header, StatusCode};
+use axum::extract::{Request, State};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -54,6 +56,7 @@ use crate::cache::AnswerCache;
 use crate::generate::{Generator, OllamaGenerator};
 use crate::identity::DemoPrincipal;
 use crate::scope::IdentityModel;
+use crate::session::SessionPrincipal;
 
 /// The only address this service will ever bind.
 pub const BIND_ADDR: &str = "127.0.0.1:8787";
@@ -211,6 +214,10 @@ pub struct AppState {
     /// frozen company.json names and carry no human cards. It never sources
     /// an authorization fact.
     pub people: Option<Arc<humanize::PeopleLayer>>,
+    /// FC-A1: server-minted session store. Identity is bound from a validated
+    /// session, never from a caller-set header. In-memory per process; tokens
+    /// are held only as sha256 hashes.
+    pub sessions: Arc<session::SessionStore>,
 }
 
 impl AppState {
@@ -367,6 +374,7 @@ impl AppState {
             lane_seeds,
             lane_boxes: None,
             people: None,
+            sessions: Arc::new(session::SessionStore::new()),
         })
     }
 
@@ -570,6 +578,8 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/scope", get(handle_scope))
         .route("/me/scope", get(handle_me_scope))
         .route("/healthz", get(handle_healthz))
+        .route("/auth/login", post(handle_login))
+        .route("/auth/logout", post(handle_logout))
         .route("/agent/{id}/run", post(handle_agent_run))
         .route("/lens/diff", get(handle_lens_diff))
         .route("/lens/{id}", get(handle_lens))
@@ -608,6 +618,14 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/proposals", get(handle_proposals_list))
         .route("/proposals/{id}/approve", post(handle_proposal_approve))
         .route("/proposals/{id}/reject", post(handle_proposal_reject))
+        // Inner: every route except /healthz and /auth/login requires a valid
+        // server session; the principal is resolved from it (FC-A1).
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_session,
+        ))
+        // Outer: CORS wraps everything so it answers preflights and stamps
+        // headers onto all responses — including the 401 from require_session.
         .layer(axum::middleware::from_fn(move |request, next| {
             cors::apply(cors.clone(), request, next)
         }))
@@ -1310,6 +1328,135 @@ async fn handle_me_scope(
 /// configuration — a constant body, no identity required.
 async fn handle_healthz() -> Response {
     json_bytes_response(StatusCode::OK, b"{\"status\":\"ok\"}\n".to_vec())
+}
+
+// ---------------------------------------------------------------------------
+// FC-A1: authentication — server-minted sessions. Identity is bound from a
+// validated session, NEVER a caller-asserted header.
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct LoginRequest {
+    principal_id: String,
+    /// The real-deployment path verifies this against the principal's stored
+    /// hashed credential. The demo path (demo_identity_mode) accepts selection
+    /// without one — the session is still server-minted, so identity stays
+    /// unforgeable.
+    #[serde(default)]
+    #[allow(dead_code)]
+    credential: Option<String>,
+}
+
+/// POST /auth/login — authenticate and mint a session. Public (no session
+/// required). Demo path: any non-empty principal selection is accepted without
+/// a credential, preserving "see as X"; downstream deny-by-default still
+/// governs what the resulting principal can see. Sets an httpOnly, SameSite=Lax
+/// session cookie AND returns the bearer token (the console is cross-origin and
+/// uses the bearer; the cookie covers same-origin/direct use).
+async fn handle_login(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<LoginRequest>,
+) -> Response {
+    let principal = req.principal_id.trim();
+    if principal.is_empty() {
+        return json_bytes_response(
+            StatusCode::BAD_REQUEST,
+            b"{\"demo_identity_mode\":true,\"error\":\"principal_id is required\"}\n".to_vec(),
+        );
+    }
+    let minted = state.sessions.mint(principal);
+    let body = format!(
+        "{{\"demo_identity_mode\":true,\"principal_id\":{},\"session_token\":{},\"expires_at\":{}}}\n",
+        serde_json::Value::from(minted.principal_id.as_str()),
+        serde_json::Value::from(minted.token.as_str()),
+        minted.expires_at
+    );
+    let cookie = format!(
+        "{}={}; HttpOnly; SameSite=Lax; Path=/; Max-Age={}",
+        session::SESSION_COOKIE,
+        minted.token,
+        session::SESSION_TTL_SECS
+    );
+    let mut response = json_bytes_response(StatusCode::OK, body.into_bytes());
+    if let Ok(value) = HeaderValue::from_str(&cookie) {
+        response.headers_mut().insert(header::SET_COOKIE, value);
+    }
+    response
+}
+
+/// POST /auth/logout — revoke the current session (protected: the middleware
+/// already required a valid one). Clears the cookie.
+async fn handle_logout(State(state): State<Arc<AppState>>, request: Request) -> Response {
+    if let Some(token) = bearer_token(request.headers()).or_else(|| cookie_token(request.headers()))
+    {
+        state.sessions.revoke(&token);
+    }
+    let cleared = format!(
+        "{}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
+        session::SESSION_COOKIE
+    );
+    let mut response = json_bytes_response(
+        StatusCode::OK,
+        b"{\"demo_identity_mode\":true,\"status\":\"logged_out\"}\n".to_vec(),
+    );
+    if let Ok(value) = HeaderValue::from_str(&cleared) {
+        response.headers_mut().insert(header::SET_COOKIE, value);
+    }
+    response
+}
+
+/// Session-validation middleware. Every route EXCEPT `/healthz` and
+/// `/auth/login` requires a valid session; the resolved principal is placed in
+/// the request extensions for `DemoPrincipal`. No / expired / invalid / revoked
+/// session -> 401. OPTIONS preflights carry no auth (the CORS layer answers
+/// them) and pass through.
+async fn require_session(
+    State(state): State<Arc<AppState>>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let path = request.uri().path();
+    if request.method() == Method::OPTIONS || path == "/healthz" || path == "/auth/login" {
+        return next.run(request).await;
+    }
+    match session_principal(request.headers(), &state) {
+        Some(principal) => {
+            request.extensions_mut().insert(SessionPrincipal(principal));
+            next.run(request).await
+        }
+        None => identity::unauthorized(),
+    }
+}
+
+/// Resolve the principal from the request's bearer token or session cookie via
+/// the authoritative store. Fail-closed: no token / unknown / expired -> None.
+fn session_principal(headers: &HeaderMap, state: &AppState) -> Option<String> {
+    let token = bearer_token(headers).or_else(|| cookie_token(headers))?;
+    state.sessions.resolve(&token)
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<String> {
+    let raw = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+    let token = raw
+        .strip_prefix("Bearer ")
+        .or_else(|| raw.strip_prefix("bearer "))?
+        .trim();
+    (!token.is_empty()).then(|| token.to_string())
+}
+
+fn cookie_token(headers: &HeaderMap) -> Option<String> {
+    let cookies = headers.get(header::COOKIE)?.to_str().ok()?;
+    let prefix = format!("{}=", session::SESSION_COOKIE);
+    for part in cookies.split(';') {
+        let part = part.trim();
+        if let Some(value) = part.strip_prefix(&prefix) {
+            let value = value.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------

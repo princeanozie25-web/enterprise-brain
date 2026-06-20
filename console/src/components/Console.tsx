@@ -29,6 +29,7 @@ import { ResultsList } from "./ResultsList";
 import { Skeleton } from "./Skeleton";
 import { DemoIdentityNotice } from "./TrustPosture";
 import iris from "./LensBar.module.css";
+import * as session from "@/lib/session";
 
 /**
  * The Aperture shell: lens bar on top (the navigation primitive), the Ask
@@ -65,6 +66,9 @@ export function Console({
   view?: "adminBursar" | "adminGraph" | "ask" | "lens" | "atlas" | "lane" | "project" | "me";
 }) {
   const [principal, setPrincipal] = useState<string | null>(null);
+  // FC-A1: the principal we currently hold a valid server session for. Data
+  // loads gate on this so nothing fetches before the session bearer exists.
+  const [sessionFor, setSessionFor] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
   const [query, setQuery] = useState("");
   // Ask request modes. Both stay OFF: the toggles that set them are rendered
@@ -156,6 +160,7 @@ export function Console({
     if (
       view !== "ask" ||
       principal === null ||
+      sessionFor !== principal ||
       entryGrantId === null ||
       entryCapability === null
     ) {
@@ -194,10 +199,33 @@ export function Console({
     return () => {
       cancelled = true;
     };
-  }, [entryCapability, entryGrantId, principal, view]);
+  }, [entryCapability, entryGrantId, principal, sessionFor, view]);
 
+  // FC-A1: when the chosen Work Identity changes, mint a server session for it
+  // BEFORE any room fetches. sessionFor flips to `principal` only once login
+  // resolves, gating the data-loading effects + rooms below (no 401 mid-login).
   useEffect(() => {
     if (principal === null) {
+      setSessionFor(null);
+      return;
+    }
+    let cancelled = false;
+    setSessionFor(null);
+    session
+      .loginAs(principal)
+      .then(() => {
+        if (!cancelled) setSessionFor(principal);
+      })
+      .catch(() => {
+        if (!cancelled) setSessionFor(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [principal]);
+
+  useEffect(() => {
+    if (principal === null || sessionFor !== principal) {
       return;
     }
     let cancelled = false;
@@ -216,7 +244,7 @@ export function Console({
     return () => {
       cancelled = true;
     };
-  }, [principal]);
+  }, [principal, sessionFor]);
 
   const submitAsk = useCallback(async () => {
     const grantOptions =
@@ -280,6 +308,12 @@ export function Console({
   const showGuidedJourney = journeySurface !== null && view !== "me";
   const showShellDemoIdentity = view !== "adminGraph" && view !== "me";
   const showAdminPreviewBadge = view === "adminGraph" || view === "adminBursar";
+  // FC-A1: the principal the rooms may fetch as — only once its server session
+  // is minted. Until then it is null, so child rooms (whose effects run BEFORE
+  // this shell's login effect) never fetch un-authenticated and 401. The Ask
+  // shell still renders immediately against `principal`; its data effects gate
+  // on sessionFor separately.
+  const activePrincipal = sessionFor === principal ? principal : null;
 
   return (
     <div className="min-h-screen">
@@ -344,14 +378,17 @@ export function Console({
       )}
 
       <div
-        key={principal ?? "no-work-identity"}
+        key={
+          (view === "adminGraph" || view === "adminBursar" ? principal : activePrincipal) ??
+          "no-work-identity"
+        }
         className={`mx-auto flex ${view === "me" ? "max-w-7xl gap-3 px-4 py-3" : "max-w-6xl gap-6 p-4"} flex-col md:flex-row ${irisClass}`}
         data-testid="iris-stage"
       >
         {view === "adminGraph" ? (
           <AdminPreviewGate actor={principal} surface="admin">
             <main className="min-w-0 flex-1">
-              <GraphRoom actor={principal} reducedMotion={reduced} adminPreview />
+              <GraphRoom actor={activePrincipal} reducedMotion={reduced} adminPreview />
             </main>
           </AdminPreviewGate>
         ) : view === "adminBursar" ? (
@@ -359,21 +396,21 @@ export function Console({
             <BursarSurface />
           </AdminPreviewGate>
         ) : view === "me" ? (
-          <EmployeeDashboard actor={principal} />
+          <EmployeeDashboard actor={activePrincipal} />
         ) : view === "lens" ? (
           <main className="min-w-0 flex-1">
-            <LensRoom actor={principal} entryDiff={entryDiff} entrySubject={entrySubject} />
+            <LensRoom actor={activePrincipal} entryDiff={entryDiff} entrySubject={entrySubject} />
           </main>
         ) : view === "atlas" ? (
           <main className="min-w-0 flex-1">
-            <AtlasRoom actor={principal} entryCapability={entryCapability} />
+            <AtlasRoom actor={activePrincipal} entryCapability={entryCapability} />
           </main>
         ) : view === "lane" ? (
           <main className="min-w-0 flex-1">
-            <LaneRoom actor={principal} />
+            <LaneRoom actor={activePrincipal} />
           </main>
         ) : view === "project" ? (
-          <ProjectSurface actor={principal} capabilityId={entryCapability} />
+          <ProjectSurface actor={activePrincipal} capabilityId={entryCapability} />
         ) : (
           <>
             <aside className="w-full md:w-72 md:shrink-0">

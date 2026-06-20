@@ -154,7 +154,7 @@ async fn get(router: &axum::Router, principal: &str, uri: &str) -> (StatusCode, 
             Request::builder()
                 .method("GET")
                 .uri(uri)
-                .header("x-demo-principal", principal)
+                .header("authorization", common::bearer(router, principal).await)
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -181,7 +181,7 @@ async fn post_json(
             Request::builder()
                 .method("POST")
                 .uri(uri)
-                .header("x-demo-principal", principal)
+                .header("authorization", common::bearer(router, principal).await)
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&body).expect("json body")))
                 .expect("request"),
