@@ -80,10 +80,10 @@ Five layers, each fail-closed, each refusing rather than guessing:
    session — never from a header the caller can set — so a request can't simply
    *claim* to be someone. No valid session, no answer (HTTP 401).
 
-2. **Your permissions are compiled.** Each identity's access is compiled ahead of
-   time into an explicit allowlist (an "M1 artifact" in the code) — a frozen,
-   hash-pinned statement of exactly which documents that identity may read,
-   derived from groups, role, site, and employment band.
+2. **Your permissions are compiled.** Each identity's access is worked out ahead
+   of time into an explicit allowlist — a fixed, tamper-checked statement of
+   exactly which documents that identity may read, derived from their team, role,
+   site, and seniority.
 
 3. **The allowlist is part of the search, not a filter on the results.** When you
    ask a question, your allowlist is injected into the retrieval query as a
