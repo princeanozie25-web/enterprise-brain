@@ -229,19 +229,21 @@ describe("route separation", () => {
     expect(screen.getByTestId("view-door-bursar").getAttribute("aria-current")).toBe("page");
   });
 
-  it("renders the admin graph shell as a Demo Identity Mode preview, not a security claim", async () => {
+  it("renders the admin graph as honestly scoped to the viewer's access (AUTH-2 enforced)", async () => {
     stubRouteFetch();
     window.history.pushState({}, "", "/admin/graph?as=p060");
 
     render(<Console view="adminGraph" />);
 
-    // Honest preview interstitial (NOT an authorization claim): the Operating
-    // Map opens on an explicit opt-in, and the copy states what is/isn't enforced.
+    // AUTH-2: the Operating Map IS now per-identity access-enforced (server-side),
+    // so the gate copy says so honestly — scoped to the viewer's access — while
+    // still avoiding the old over-claims and the now-false "pending" framing.
     const gate = await screen.findByTestId("admin-preview-gate");
-    expect(gate.textContent).toContain("not access-enforced");
-    expect(gate.textContent).toMatch(/pending the authorization build/i);
+    expect(gate.textContent).toMatch(/scoped to your access/i);
+    expect(gate.textContent).toMatch(/enforced now/i);
     expect(gate.textContent).not.toContain("Authorization gate");
     expect(gate.textContent).not.toContain("not granted");
+    expect(gate.textContent).not.toMatch(/pending the authorization build/i);
     expect(screen.queryByTestId("graph-room")).toBeNull();
     fireEvent.click(screen.getByTestId("admin-preview-gate-reveal"));
 
@@ -249,8 +251,8 @@ describe("route separation", () => {
     await waitFor(() => {
       expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("Demo Identity Mode");
     });
-    expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("production admin authority not connected");
-    expect(screen.getByTestId("admin-graph-preview-banner").textContent).toContain("not per-identity access-enforced");
+    expect(screen.getByTestId("admin-graph-preview-banner").textContent).toMatch(/scoped to your Work Identity/i);
+    expect(screen.getByTestId("admin-graph-preview-banner").textContent).not.toMatch(/not per-identity access-enforced/i);
     await waitFor(() => expect(screen.getByTestId("graph-audited-line").textContent).toContain("This view is audited"));
     expect(screen.getByTestId("graph-acting-context").textContent).toContain("Acting as p060");
     expect(screen.getByTestId("graph-relationship-summary").textContent).toContain("Keyboard-readable rows");
