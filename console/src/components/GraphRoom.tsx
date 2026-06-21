@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import * as api from "@/lib/api";
-import type { AccessRequestRecord, AccessTarget, GraphResponse, NodeSummary, OrgStats, RoleScopeSummary } from "@/lib/api";
+import type { AccessRequestRecord, AccessTarget, GraphResponse, NodeSummary, OrgStats } from "@/lib/api";
 import { COLOR, DERIVED, FONT, TYPE } from "@/lib/tokens";
 import { OrgGraph, type SelectedNode } from "./OrgGraph";
 import { GraphSidebar } from "./GraphSidebar";
@@ -37,17 +37,21 @@ const hiddenRailStyle = {
 export function GraphRoom({
   adminPreview = false,
   actor,
+  authPending = false,
   reducedMotion = false,
 }: {
   adminPreview?: boolean;
   actor: string | null;
+  /** FC-A1/A2: a Work Identity is chosen but its session is still being minted,
+   * so `actor` (the authenticated principal) is briefly null. During this window
+   * the room shows a neutral loading state — never a scope outcome. */
+  authPending?: boolean;
   reducedMotion?: boolean;
 }) {
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
   const [stats, setStats] = useState<OrgStats | null>(null);
-  const [roleScope, setRoleScope] = useState<RoleScopeSummary | null>(null);
 
   const [selected, setSelected] = useState<SelectedNode | null>(null);
   const [summary, setSummary] = useState<NodeSummary | null>(null);
@@ -86,25 +90,6 @@ export function GraphRoom({
       setAccessLoading(false);
     }
   }, [actor]);
-
-  useEffect(() => {
-    if (!adminPreview || actor === null) {
-      setRoleScope(null);
-      return;
-    }
-    let cancelled = false;
-    api
-      .getRoleScope(actor)
-      .then((response) => {
-        if (!cancelled) setRoleScope(response);
-      })
-      .catch(() => {
-        if (!cancelled) setRoleScope(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [actor, adminPreview]);
 
   useEffect(() => {
     if (actor === null) {
@@ -242,10 +227,7 @@ export function GraphRoom({
           </span>
           {adminPreview && (
             <span className="block truncate" data-testid="admin-graph-preview-banner">
-              Demo Identity Mode: Operating Map preview, production admin authority not connected.{" "}
-              {roleScope?.admin_surface_allowed
-                ? "Role model flags admin (a derived signal, not enforced on this map)."
-                : "Org structure is not per-identity access-enforced in this build (authorization build pending)."}
+              Demo Identity Mode: this Operating Map is scoped to your Work Identity — only your slice of the company is shown (structural visibility, enforced server-side).
             </span>
           )}
         </div>
@@ -305,7 +287,13 @@ export function GraphRoom({
         </div>
       </header>
 
-      {actor === null ? (
+      {authPending ? (
+        <div className="grid h-full place-items-center px-6 pt-16" data-testid="graph-authenticating">
+          <div className="ap-card w-full max-w-xl rounded p-4">
+            <Skeleton lines={6} />
+          </div>
+        </div>
+      ) : actor === null ? (
         <div className="grid h-full place-items-center px-6 pt-16">
           <GraphEmpty
             testid="graph-room-empty"

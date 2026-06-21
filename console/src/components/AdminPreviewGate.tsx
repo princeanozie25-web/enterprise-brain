@@ -30,22 +30,26 @@ type GatedSurface = "admin" | "bursar";
 
 const SURFACE_COPY: Record<
   GatedSurface,
-  { context: "admin" | "bursar"; heading: string; lead: string; note: string }
+  { context: "admin" | "bursar"; eyebrow: string; heading: string; lead: string; note: string; cta: string }
 > = {
   admin: {
     context: "admin",
-    heading: "Operating Map — preview (not access-enforced)",
+    eyebrow: "Scoped to your access",
+    heading: "Operating Map — scoped to your access",
     lead:
-      "The Operating Map shows the company org structure. It is a preview, not an access-enforced surface in this build.",
+      "The Operating Map shows the part of the company org structure your Work Identity is permitted to see — not the whole company.",
     note:
-      "Enforced today: your document access (Ask, documents, granted knowledge) is permission-scoped on the server. Not enforced yet: this org-structure map and its node metadata are visible to any signed-in Work Identity. Per-identity enforcement of this surface is pending the authorization build.",
+      "Enforced now, server-side: this map and its node metadata are scoped per Work Identity. You see your own department, your reporting lines, and the agents you own; an identity with no standing sees an empty map. Structural visibility is enforced today; visibility that flows from one-off access grants is still being added.",
+    cta: "Read-only. You see only your slice of the company.",
   },
   bursar: {
     context: "bursar",
+    eyebrow: "Preview — not connected",
     heading: "Bursar Ledger Room — preview (not connected)",
     lead: "The Bursar Ledger Room is a placeholder for the future governed-spend room.",
     note:
-      "No ledger data and no finance authority are connected in this build. Per-identity enforcement of this surface is pending the authorization build; your document access is separately permission-scoped on the server.",
+      "No ledger data and no finance authority are connected in this build; your document access is separately permission-scoped on the server.",
+    cta: "Read-only preview. Not connected in this build.",
   },
 };
 
@@ -100,7 +104,7 @@ export function AdminPreviewGate({
         data-testid="admin-preview-gate"
       >
         <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-          Preview — not access-enforced
+          {copy.eyebrow}
         </p>
         <h1
           className="ap-register-chrome mt-2"
@@ -137,7 +141,7 @@ export function AdminPreviewGate({
             Open preview
           </button>
           <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-            Read-only preview. Not per-identity access-enforced in this build.
+            {copy.cta}
           </p>
         </div>
       </MotionPanel>

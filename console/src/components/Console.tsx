@@ -388,7 +388,12 @@ export function Console({
         {view === "adminGraph" ? (
           <AdminPreviewGate actor={principal} surface="admin">
             <main className="min-w-0 flex-1">
-              <GraphRoom actor={activePrincipal} reducedMotion={reduced} adminPreview />
+              <GraphRoom
+                actor={activePrincipal}
+                authPending={principal !== null && activePrincipal === null}
+                reducedMotion={reduced}
+                adminPreview
+              />
             </main>
           </AdminPreviewGate>
         ) : view === "adminBursar" ? (
