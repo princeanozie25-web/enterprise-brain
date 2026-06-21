@@ -11,13 +11,20 @@
 //! Exhaustive, deterministic, total: all principals × all summarisable nodes.
 //!
 //! Independence is the point: the expected set is derived here from the fixture
-//! (groups, department, manager) and the published rule, so a bug in the
-//! service's projection is caught — exactly as the document oracle is computed
-//! from first principles, not from the system under test.
+//! (department, manager, AND group membership) and the published rule, so a bug
+//! in the service's projection is caught — exactly as the document oracle is
+//! computed from first principles, not from the system under test.
+//!
+//! AUTH-2b completes the rule to the FULL DD-2: expected = structural core ∪
+//! grant/capability reachability (the co-members of every group the principal
+//! holds). The grant-reachable set is computed HERE directly from the raw
+//! company.json group membership (people via groups[].member_ids, agents via
+//! grant.groups) — never via service::visibility — so the 15,500/0/0 number now
+//! proves structural AND grant-based metadata authorisation, not structural only.
 
 mod common;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -74,6 +81,7 @@ struct Grant {
 }
 #[derive(Deserialize)]
 struct Group {
+    id: String,
     member_ids: Vec<String>,
 }
 
@@ -83,6 +91,11 @@ struct Org {
     person_groups: BTreeMap<String, usize>, // count of group memberships per person
     agent_owner: BTreeMap<String, String>,
     agent_group_count: BTreeMap<String, usize>,
+    /// AUTH-2b grant reachability: principal -> the person ids it reaches as a
+    /// co-member of a group it holds. Computed from RAW company.json membership
+    /// (people via groups[].member_ids, agents via grant.groups), independent of
+    /// service::visibility.
+    grant_reachable: BTreeMap<String, BTreeSet<String>>,
     people_ids: Vec<String>,
     agent_ids: Vec<String>,
 }
@@ -96,6 +109,37 @@ fn load_org() -> Org {
             *person_groups.entry(m.clone()).or_default() += 1;
         }
     }
+
+    // AUTH-2b grant reachability, computed independently from raw membership.
+    // A principal reaches the CO-MEMBERS of every group it holds:
+    //   * a PERSON holds group G iff its id is in G.member_ids -> for every group,
+    //     each member reaches all of that group's members (co-membership closure);
+    //   * an AGENT holds the groups named in its grant.groups -> it reaches those
+    //     groups' members.
+    // The relation is non-transitive (holding G grants the co-members of G, not
+    // what those co-members can each individually see) and includes self/own-dept
+    // members harmlessly (the final expectation unions this with the structural
+    // set). group id -> member list, for resolving agent grant.groups:
+    let group_members: BTreeMap<String, Vec<String>> =
+        c.groups.iter().map(|g| (g.id.clone(), g.member_ids.clone())).collect();
+    let mut grant_reachable: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for g in &c.groups {
+        for m in &g.member_ids {
+            grant_reachable
+                .entry(m.clone())
+                .or_default()
+                .extend(g.member_ids.iter().cloned());
+        }
+    }
+    for a in &c.agents {
+        let reach = grant_reachable.entry(a.id.clone()).or_default();
+        for gid in &a.grant.groups {
+            if let Some(members) = group_members.get(gid) {
+                reach.extend(members.iter().cloned());
+            }
+        }
+    }
+
     Org {
         dept_of: c
             .people
@@ -118,6 +162,7 @@ fn load_org() -> Org {
             .iter()
             .map(|a| (a.id.clone(), a.grant.groups.len()))
             .collect(),
+        grant_reachable,
         people_ids: c.people.iter().map(|p| p.id.clone()).collect(),
         agent_ids: c.agents.iter().map(|a| a.id.clone()).collect(),
     }
@@ -134,7 +179,8 @@ impl Org {
         self.person_groups.get(actor).copied().unwrap_or(0) > 0
     }
 
-    /// The DD-2 structural-core rule, computed from first principles.
+    /// The FULL DD-2 rule, computed from first principles: structural core ∪
+    /// grant/capability reachability.
     fn expected_visible(&self, actor: &str, node: &str) -> bool {
         if !self.has_standing(actor) {
             return false;
@@ -142,15 +188,24 @@ impl Org {
         if node == "org" {
             return true;
         }
-        // Person node?
+        // Person node? structural (self / same-dept / manager / direct report)
+        // OR grant-reachable (a co-member of a group the actor holds).
         if let Some(node_dept) = self.dept_of.get(node) {
             let actor_dept = self.dept_of.get(actor); // None if the actor is an agent
             let same_department = actor_dept == Some(node_dept);
             let is_actor_manager = self.manager_of.get(actor).map(|m| m.as_str()) == Some(node);
             let reports_to_actor = self.manager_of.get(node).map(|m| m.as_str()) == Some(actor);
-            return node == actor || same_department || is_actor_manager || reports_to_actor;
+            let grant_reachable = self
+                .grant_reachable
+                .get(actor)
+                .is_some_and(|reach| reach.contains(node));
+            return node == actor
+                || same_department
+                || is_actor_manager
+                || reports_to_actor
+                || grant_reachable;
         }
-        // Agent node?
+        // Agent node? owner-only (an agent is not granted via group membership).
         if let Some(owner) = self.agent_owner.get(node) {
             return owner == actor;
         }

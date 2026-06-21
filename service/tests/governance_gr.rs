@@ -112,23 +112,28 @@ fn people_seniority() -> BTreeMap<String, String> {
         .collect()
 }
 
-/// AUTH-2: the structural-core PEOPLE projection for `actor`, computed
-/// independently from company.json (mirrors service::visibility / DD-2). Empty
+/// The FULL DD-2 PEOPLE projection for a PERSON `actor` (the only kind this
+/// helper is called with), computed independently from company.json (mirrors
+/// service::visibility): structural core ∪ grant/capability reachability. Empty
 /// when the actor has no group standing (p_void). Used to prove /graph is the
 /// actor's scope projection — not the whole org.
 fn projection_people(company: &Value, actor: &str) -> BTreeSet<String> {
     let people = company["people"].as_array().unwrap();
     let groups = company["groups"].as_array().unwrap();
-    let standing = groups.iter().any(|g| {
-        g["member_ids"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|m| m.as_str() == Some(actor))
-    });
+    // The groups this person holds (membership inversion of groups[].member_ids).
+    let held: Vec<&Value> = groups
+        .iter()
+        .filter(|g| {
+            g["member_ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|m| m.as_str() == Some(actor))
+        })
+        .collect();
     let mut out = BTreeSet::new();
-    if !standing {
-        return out;
+    if held.is_empty() {
+        return out; // no standing -> sees nothing
     }
     let dept_of = |id: &str| {
         people
@@ -141,6 +146,7 @@ fn projection_people(company: &Value, actor: &str) -> BTreeSet<String> {
         .iter()
         .find(|p| p["id"].as_str() == Some(actor))
         .and_then(|p| p["manager_id"].as_str().map(|s| s.to_string()));
+    // Structural core: self + own dept + manager + direct reports.
     for p in people {
         let id = p["id"].as_str().unwrap();
         let same_dept = actor_dept.is_some() && p["department"].as_str() == actor_dept.as_deref();
@@ -148,6 +154,12 @@ fn projection_people(company: &Value, actor: &str) -> BTreeSet<String> {
         let reports_to_actor = p["manager_id"].as_str() == Some(actor);
         if id == actor || same_dept || is_actor_manager || reports_to_actor {
             out.insert(id.to_string());
+        }
+    }
+    // AUTH-2b grant reachability: the co-members of every group the actor holds.
+    for g in &held {
+        for m in g["member_ids"].as_array().unwrap() {
+            out.insert(m.as_str().unwrap().to_string());
         }
     }
     out
@@ -180,10 +192,13 @@ async fn gr1_graph_is_the_actor_scope_projection() {
     );
     assert!(graph_ids.contains("p060"), "p060 sees itself");
     assert!(graph_ids.len() < 120, "p060 does NOT see the whole org");
-    // No out-of-scope leak ANYWHERE (nodes or edges): p088 (HR) never appears.
+    // No out-of-scope leak ANYWHERE (nodes or edges): p088 (HR) is an HR principal
+    // p060 holds NO grant for (not a co-member of any group p060 holds), so it
+    // never appears — even though p060 DOES legitimately reach p087 (HR) via the
+    // grp_board grant. The discriminator is the grant, not the department.
     assert!(
         !String::from_utf8_lossy(&gb).contains("p088"),
-        "p060 (Finance) graph leaks no HR principal (p088)"
+        "p060 (Finance) graph leaks no un-granted HR principal (p088)"
     );
 
     // p_void (no group standing): the EMPTY graph (200), never padded.
