@@ -167,3 +167,21 @@ pub fn role_scope_summary(state: &AppState, actor: &str) -> Result<Option<Vec<u8
         .map(Some)
         .map_err(AskError::Internal)
 }
+
+/// AUTH-3 (FC-A3): is `actor` an admin for the purpose of view-as? THE admin
+/// signal — the same `admin_surface_allowed` posture `/me/scope` reports. The
+/// corpus carries no super-admin primitive, so this is `false` for every
+/// principal today (honest framing). When a real admin capability is added,
+/// this is the single place it turns on — and nothing else in the gate moves.
+pub fn is_admin(_state: &AppState, _actor: &str) -> bool {
+    false
+}
+
+/// AUTH-3: may `actor` perform a cross-principal view-as (`/lens/{other}`,
+/// `/diff`)? Free under `demo_identity_mode` (Aperture charter §6.3); otherwise
+/// admin-only. There is NO non-admin view-as outside demo mode. Every ALLOWED
+/// view-as is still audited before render (see `lens::authorize_cross_lens` /
+/// `diff::authorize_lens_diff`), and an unauditable view-as is forbidden.
+pub fn view_as_allowed(state: &AppState, actor: &str) -> bool {
+    state.demo_identity_mode || is_admin(state, actor)
+}

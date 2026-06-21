@@ -207,8 +207,25 @@ async fn ae2_the_look_and_the_export_are_two_rows_and_refusals_are_none() {
     let store_dir = scratch("ae2_store");
     let router = app(Arc::new(export_state(Some(&store_dir), Some(FIXED_DATE))));
 
-    // Self-lens export: evidence_export ONLY (a self view is not an audited
-    // look). One act, one row.
+    // Exported diff: the look (lens_diff) then the export, adjacent ordinals.
+    let (status, _) = post_export(
+        &router,
+        "p061",
+        r#"{"view":"diff","diff":{"left":"p060","right":"agent_finance_analyst"}}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let audit = read_audit(&store_dir);
+    assert_eq!(audit.len(), 2, "one act, two rows: the look and the export");
+    assert_eq!(audit[0].action, "lens_diff");
+    assert_eq!(audit[0].ordinal, 0);
+    assert_eq!(audit[1].action, "evidence_export");
+    assert_eq!(audit[1].ordinal, 1);
+    assert_eq!(audit[1].actor_principal, "p061");
+    assert_eq!(audit[1].target, "diff:p060|agent_finance_analyst");
+    assert_eq!(audit[1].outcome, "allowed_demo");
+
+    // Exported self-lens: evidence_export ONLY (a self view is not audited).
     let (status, _) = post_export(
         &router,
         "p060",
@@ -217,33 +234,36 @@ async fn ae2_the_look_and_the_export_are_two_rows_and_refusals_are_none() {
     .await;
     assert_eq!(status, StatusCode::OK);
     let audit = read_audit(&store_dir);
-    assert_eq!(audit.len(), 1, "self-lens export: one evidence_export row");
-    assert_eq!(audit[0].action, "evidence_export");
-    assert_eq!(audit[0].ordinal, 0);
-    assert_eq!(audit[0].actor_principal, "p060");
-    assert_eq!(audit[0].target, "lens:p060");
-    assert_eq!(audit[0].outcome, "allowed_demo");
+    assert_eq!(audit.len(), 3);
+    assert_eq!(audit[2].action, "evidence_export");
+    assert_eq!(audit[2].target, "lens:p060");
 
-    // AUTH-2 (FC-A2): the export can only attest what the caller may SEE, so
-    // exporting a CROSS-principal view is denied (the AUTH-3 boundary). Every
-    // denial is rowless — a denied export is not an act.
-    // Cross-lens:
+    // Exported CROSS lens: the look then the export.
     let (status, _) = post_export(
         &router,
         "p061",
         r#"{"view":"lens","lens":{"subject_id":"p060"}}"#,
     )
     .await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "cross-lens export -> 404 (denied)");
-    // Diff (cross-principal by nature):
-    let (status, _) = post_export(
+    assert_eq!(status, StatusCode::OK);
+    let audit = read_audit(&store_dir);
+    assert_eq!(audit.len(), 5);
+    assert_eq!(audit[3].action, "lens_view");
+    assert_eq!(audit[4].action, "evidence_export");
+    assert_eq!((audit[3].ordinal, audit[4].ordinal), (3, 4));
+
+    // Refusals: rowless, with the live endpoints' own bytes.
+    let (status, bytes) = post_export(
         &router,
         "p061",
-        r#"{"view":"diff","diff":{"left":"p060","right":"agent_finance_analyst"}}"#,
+        r#"{"view":"diff","diff":{"left":"p060","right":"p060"}}"#,
     )
     .await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "diff export -> 404 (denied)");
-    // Unknown subject: THE one 404, byte-identical to the live lens 404.
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        bytes,
+        b"{\"demo_identity_mode\":true,\"error\":\"a diff of a lens against itself is a category error\"}\n"
+    );
     let (status, bytes) = post_export(
         &router,
         "p061",
@@ -253,7 +273,6 @@ async fn ae2_the_look_and_the_export_are_two_rows_and_refusals_are_none() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     let lens_404 = get_raw(&router, "p061", "/lens/p_ghost_404").await;
     assert_eq!(bytes, lens_404.1, "the export refuses with THE one 404");
-    // Unknown atlas capability:
     let (status, _) = post_export(
         &router,
         "p060",
@@ -263,8 +282,8 @@ async fn ae2_the_look_and_the_export_are_two_rows_and_refusals_are_none() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(
         read_audit(&store_dir).len(),
-        1,
-        "every denied export left zero rows (only the self-lens export stands)"
+        5,
+        "every refusal left zero rows"
     );
 
     // No audit sink: the export cannot be recorded, so it cannot happen.
@@ -276,7 +295,7 @@ async fn ae2_the_look_and_the_export_are_two_rows_and_refusals_are_none() {
     )
     .await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-    println!("AE-2 summary: self-lens export=1 row; cross-lens/diff/unknown denied (404) rowless; no-store=500");
+    println!("AE-2 summary: diff=2 rows, self-lens=1, cross-lens=2, refusals=0 rows, no-store=500");
 }
 
 // ---------------------------------------------------------------------------
@@ -329,17 +348,63 @@ async fn ae3_the_pdf_carries_the_derived_body_and_attests_the_live_bytes() {
     );
     assert_in(&text, "page 1/", "the page n/N footer line");
 
-    // AUTH-2 (FC-A2): diff export is a cross-principal view -> denied (the
-    // AUTH-3 boundary). The self-lens fidelity above is the export's proof in
-    // this slice; diff-export fidelity returns with AUTH-3.
-    let (status, _) = post_export(
+    // DIFF: all three columns and the divergent chips survive to print.
+    let (status, pdf) = post_export(
         &router,
         "p016",
         r#"{"view":"diff","diff":{"left":"p016","right":"p087"}}"#,
     )
     .await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "diff export denied in this slice");
-    println!("AE-3 summary: lens ids={ids}; sentences + doc ids + content hash all in print");
+    assert_eq!(status, StatusCode::OK);
+    let text = squash(&pdf_text(&pdf));
+    let (live_status, live) = get_raw(&router, "p016", "/lens/diff?left=p016&right=p087").await;
+    assert_eq!(live_status, StatusCode::OK);
+    let body: Value = serde_json::from_slice(&live).expect("diff parses");
+    let mut diff_ids = 0usize;
+    for column in ["left_only", "right_only"] {
+        for section in body[column].as_array().expect(column) {
+            assert_in(
+                &text,
+                section["sentence"].as_str().expect("sentence"),
+                "diff sentence",
+            );
+            assert_in(
+                &text,
+                &format!("[{}]", section["reason"].as_str().expect("reason")),
+                "diff rule chip",
+            );
+            for doc in section["docs"].as_array().expect("docs") {
+                assert_in(
+                    &text,
+                    doc["document_id"].as_str().expect("id"),
+                    "diff doc id",
+                );
+                diff_ids += 1;
+            }
+        }
+    }
+    for row in body["shared"].as_array().expect("shared") {
+        assert_in(
+            &text,
+            row["doc"]["document_id"].as_str().expect("id"),
+            "shared doc id",
+        );
+        diff_ids += 1;
+    }
+    // The divergent chips (page-break tolerant: a row may legally wrap
+    // across pages, with the next page's footer between the fragments in
+    // extraction order; AE-4's single-page render asserts the joined pair).
+    assert_in(&text, "[SUBJECT:self", "the divergent left chip");
+    assert_in(&text, "REBAC:grp_hr]", "the divergent right chip");
+    assert_in(
+        &text,
+        &format!("content sha256: {}", sha256_hex(&live)),
+        "diff attestation",
+    );
+    assert_in(&text, "page 1/", "the page n/N footer line");
+    println!(
+        "AE-3 summary: lens ids={ids} diff ids={diff_ids} sentences+chips+hashes all in print"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -507,10 +572,12 @@ async fn ae5_fixed_date_exports_are_byte_identical_and_the_date_is_unattested() 
 async fn ae6_the_demo_watermark_is_verbatim_on_every_export() {
     let store_dir = scratch("ae6_store");
     let router = app(Arc::new(export_state(Some(&store_dir), Some(FIXED_DATE))));
-    // AUTH-2: diff is a cross-principal view (denied -> AUTH-3); the watermark
-    // is proven on the self-lens, atlas-capability, and ask exports.
     let exports = [
         ("p060", r#"{"view":"lens","lens":{"subject_id":"p060"}}"#),
+        (
+            "p016",
+            r#"{"view":"diff","diff":{"left":"p016","right":"p087"}}"#,
+        ),
         (
             "p060",
             r#"{"view":"atlas_capability","atlas_capability":{"capability_id":"cap01"}}"#,

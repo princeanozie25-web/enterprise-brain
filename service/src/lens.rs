@@ -361,11 +361,12 @@ pub fn lens_view(
     actor: &str,
     subject_id: &str,
 ) -> Result<LensViewOutcome, AskError> {
-    // AUTH-2 (FC-A2): a lens is SELF-ONLY. Viewing another principal's lens is
-    // cross-principal access — the AUTH-3 boundary (admin view-as) — and is
-    // DENIED here with the one 404 (no existence leak), decided before anything
-    // is assembled. You can always see your own lens.
-    if actor != subject_id {
+    // AUTH-3 (FC-A3): a lens of ANOTHER principal is an admin-classed, AUDITED
+    // view-as. Permitted iff demo_identity_mode OR the viewer is admin; otherwise
+    // the one 404 (the AUTH-2 boundary for everyone else). Self is always allowed.
+    // The audit (authorize_cross_lens, below) runs BEFORE the view is assembled
+    // and fails closed if it cannot be written.
+    if actor != subject_id && !crate::role_scope::view_as_allowed(state, actor) {
         return Ok(None);
     }
     let entries = load_subject_artifact(state, subject_id).map_err(AskError::Internal)?;

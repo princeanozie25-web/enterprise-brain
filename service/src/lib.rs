@@ -219,6 +219,10 @@ pub struct AppState {
     /// session, never from a caller-set header. In-memory per process; tokens
     /// are held only as sha256 hashes.
     pub sessions: Arc<session::SessionStore>,
+    /// AUTH-3 (FC-A3): when true, cross-principal view-as (/lens/{other}, /diff)
+    /// is free (still audited before render); when false (real deployment), it is
+    /// admin-only. Defaults to true (the demo). Aperture charter §6.3.
+    pub demo_identity_mode: bool,
 }
 
 impl AppState {
@@ -376,7 +380,16 @@ impl AppState {
             lane_boxes: None,
             people: None,
             sessions: Arc::new(session::SessionStore::new()),
+            demo_identity_mode: true,
         })
+    }
+
+    /// AUTH-3: toggle demo-identity mode (default on). Off = real deployment,
+    /// where cross-principal view-as is admin-only. Used by the FC-A3 tests to
+    /// exercise the real-mode (non-admin -> 404) branch.
+    pub fn with_demo_identity_mode(mut self, on: bool) -> AppState {
+        self.demo_identity_mode = on;
+        self
     }
 
     /// AP-6: wires the append-only box store (status changes + accepted
@@ -822,13 +835,9 @@ async fn handle_lens_diff(
         return bad_request("left and right are required");
     };
     let (left, right) = (left.clone(), right.clone());
-    // AUTH-2 (FC-A2): a diff compares two principals' scopes — cross-principal
-    // viewing, which is the AUTH-3 boundary (admin view-as). DENIED here with the
-    // one 404 (no existence leak) unless both sides are the caller themselves.
-    if left != actor || right != actor {
-        return doc_not_found();
-    }
-
+    // AUTH-3 (FC-A3): the cross-principal gate now lives in diff::diff_view (the
+    // source), so it also covers the export path; the handler just relays the
+    // one-404 / 200 it returns.
     let blocking_state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         diff::diff_view(&blocking_state, &actor, &left, &right)

@@ -331,12 +331,13 @@ pub fn diff_view(
     left_id: &str,
     right_id: &str,
 ) -> Result<Option<(Vec<u8>, u64)>, AskError> {
-    // AUTH-2 (FC-A2): a diff compares two principals' scopes — cross-principal
-    // viewing, the AUTH-3 boundary (admin view-as). DENIED with the one 404
-    // (None) unless both sides are the caller. This gate lives at the source so
-    // it also covers the export path, which re-derives the diff here directly
-    // (not via the /lens/diff HTTP handler).
-    if left_id != actor || right_id != actor {
+    // AUTH-3 (FC-A3): a diff is an aggregation view-as over two principals —
+    // admin-classed (one class stricter than a lens). Permitted iff
+    // demo_identity_mode OR the viewer is admin; otherwise the one 404. The gate
+    // lives at the source so it also covers the export path (which re-derives the
+    // diff here, not via the HTTP handler). The audit (authorize_lens_diff) runs
+    // BEFORE the view is assembled and fails closed if it cannot be written.
+    if !crate::role_scope::view_as_allowed(state, actor) {
         return Ok(None);
     }
     if left_id == right_id {
