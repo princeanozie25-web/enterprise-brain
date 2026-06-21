@@ -26,7 +26,9 @@ pub mod identity;
 pub mod lane;
 pub mod lens;
 pub mod node_summary;
+pub mod ratelimit;
 pub mod role_scope;
+pub mod routes;
 pub mod scope;
 pub mod session;
 pub mod sidecar;
@@ -223,6 +225,9 @@ pub struct AppState {
     /// is free (still audited before render); when false (real deployment), it is
     /// admin-only. Defaults to true (the demo). Aperture charter §6.3.
     pub demo_identity_mode: bool,
+    /// AUTH-4 (D1): fixed-window rate limiter guarding `/auth/login` — cheap-reject
+    /// login floods before any session-minting work.
+    pub login_rate: Arc<ratelimit::RateLimiter>,
 }
 
 impl AppState {
@@ -381,7 +386,22 @@ impl AppState {
             people: None,
             sessions: Arc::new(session::SessionStore::new()),
             demo_identity_mode: true,
+            login_rate: Arc::new(ratelimit::RateLimiter::default_login()),
         })
+    }
+
+    /// AUTH-4 (D1): set the `/auth/login` rate limit (max attempts per window
+    /// seconds). Tests dial this down to exercise the 429 branch.
+    pub fn with_login_rate(mut self, max: u32, window_secs: u64) -> AppState {
+        self.login_rate = Arc::new(ratelimit::RateLimiter::new(max, window_secs));
+        self
+    }
+
+    /// AUTH-4 (D1): set the per-principal concurrent-session quota. Replaces the
+    /// (still-empty) session store, so it must be called before any login.
+    pub fn with_session_quota(mut self, quota: usize) -> AppState {
+        self.sessions = Arc::new(session::SessionStore::with_quota(quota));
+        self
     }
 
     /// AUTH-3: toggle demo-identity mode (default on). Off = real deployment,
@@ -1373,6 +1393,14 @@ async fn handle_login(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LoginRequest>,
 ) -> Response {
+    // AUTH-4 (D1): cheap-reject login floods BEFORE any minting work. Every
+    // attempt (including malformed ones) counts toward the window.
+    if !state.login_rate.check() {
+        return json_bytes_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            b"{\"demo_identity_mode\":true,\"error\":\"too many login attempts\"}\n".to_vec(),
+        );
+    }
     let principal = req.principal_id.trim();
     if principal.is_empty() {
         return json_bytes_response(
@@ -1380,7 +1408,14 @@ async fn handle_login(
             b"{\"demo_identity_mode\":true,\"error\":\"principal_id is required\"}\n".to_vec(),
         );
     }
-    let minted = state.sessions.mint(principal);
+    // AUTH-4 (D1): a principal may hold at most `quota` concurrent sessions;
+    // excess is rejected rather than minted.
+    let Some(minted) = state.sessions.try_mint(principal) else {
+        return json_bytes_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            b"{\"demo_identity_mode\":true,\"error\":\"session quota exceeded\"}\n".to_vec(),
+        );
+    };
     let body = format!(
         "{{\"demo_identity_mode\":true,\"principal_id\":{},\"session_token\":{},\"expires_at\":{}}}\n",
         serde_json::Value::from(minted.principal_id.as_str()),
@@ -1421,26 +1456,44 @@ async fn handle_logout(State(state): State<Arc<AppState>>, request: Request) -> 
     response
 }
 
-/// Session-validation middleware. Every route EXCEPT `/healthz` and
-/// `/auth/login` requires a valid session; the resolved principal is placed in
-/// the request extensions for `DemoPrincipal`. No / expired / invalid / revoked
-/// session -> 401. OPTIONS preflights carry no auth (the CORS layer answers
-/// them) and pass through.
+/// AUTH-4 (M1) + FC-A1: the route-classification + session middleware. Every
+/// request is classified by [`routes::classify`] for its (method, path):
+///   * `Public` (`/healthz`, `/auth/login`) runs without a session;
+///   * `SessionRequired` runs only behind a valid session — the resolved
+///     principal is placed in the request extensions for `DemoPrincipal`;
+///     no / expired / invalid / revoked session -> 401;
+///   * UNCLASSIFIED (anything `classify` does not recognise, incl. unknown
+///     paths and wrong methods) is DENIED, never served (fail-closed) — the
+///     standing `governance_routes` test fails the build if a registered route
+///     is left unclassified, so a new route cannot be silently exposed.
+/// OPTIONS preflights carry no auth (the CORS layer answers them) and pass
+/// through; HEAD shares its GET route's classification.
 async fn require_session(
     State(state): State<Arc<AppState>>,
     mut request: Request,
     next: Next,
 ) -> Response {
-    let path = request.uri().path();
-    if request.method() == Method::OPTIONS || path == "/healthz" || path == "/auth/login" {
+    if request.method() == Method::OPTIONS {
         return next.run(request).await;
     }
-    match session_principal(request.headers(), &state) {
-        Some(principal) => {
-            request.extensions_mut().insert(SessionPrincipal(principal));
-            next.run(request).await
+    let method = if request.method() == Method::HEAD {
+        Method::GET
+    } else {
+        request.method().clone()
+    };
+    let path = request.uri().path().to_string();
+    match routes::classify(&method, &path) {
+        None => identity::route_denied(),
+        Some(routes::RouteClass::Public) => next.run(request).await,
+        Some(routes::RouteClass::SessionRequired(_scope)) => {
+            match session_principal(request.headers(), &state) {
+                Some(principal) => {
+                    request.extensions_mut().insert(SessionPrincipal(principal));
+                    next.run(request).await
+                }
+                None => identity::unauthorized(),
+            }
         }
-        None => identity::unauthorized(),
     }
 }
 

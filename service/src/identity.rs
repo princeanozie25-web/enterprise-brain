@@ -41,3 +41,16 @@ pub fn unauthorized() -> Response {
     )
         .into_response()
 }
+
+/// AUTH-4 (M1): a route with no explicit auth/scope classification is DENIED,
+/// never served (default-deny). Returned as a plain 404 so an unclassified
+/// route is indistinguishable from an unknown path — the deny and the router's
+/// own "no such route" agree, and nothing is leaked about what exists.
+pub fn route_denied() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        [(header::CONTENT_TYPE, "application/json")],
+        "{\"demo_identity_mode\":true,\"error\":\"not found\"}\n",
+    )
+        .into_response()
+}

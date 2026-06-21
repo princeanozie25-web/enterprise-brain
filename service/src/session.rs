@@ -21,6 +21,10 @@ use retrieval::index::sha256_hex;
 pub const SESSION_TTL_SECS: u64 = 8 * 60 * 60;
 /// The session cookie name (httpOnly, SameSite=Lax — set on login).
 pub const SESSION_COOKIE: &str = "eb_session";
+/// AUTH-4 (D1): the maximum number of concurrent LIVE sessions one principal
+/// may hold. Generous (the console reuses one session per identity), but a
+/// flood that keeps minting for a single principal is rejected past this.
+pub const DEFAULT_SESSION_QUOTA: usize = 64;
 
 #[derive(Clone)]
 struct SessionRecord {
@@ -47,6 +51,8 @@ pub struct SessionPrincipal(pub String);
 /// In-memory, per-process session store. Keyed by sha256(token).
 pub struct SessionStore {
     by_token_hash: Mutex<HashMap<String, SessionRecord>>,
+    /// AUTH-4 (D1): per-principal concurrent-session cap.
+    quota: usize,
 }
 
 impl Default for SessionStore {
@@ -57,15 +63,67 @@ impl Default for SessionStore {
 
 impl SessionStore {
     pub fn new() -> SessionStore {
+        SessionStore::with_quota(DEFAULT_SESSION_QUOTA)
+    }
+
+    /// A store with an explicit per-principal session quota (AUTH-4 tests dial
+    /// this down to exercise the rejection branch deterministically).
+    pub fn with_quota(quota: usize) -> SessionStore {
         SessionStore {
             by_token_hash: Mutex::new(HashMap::new()),
+            quota,
         }
+    }
+
+    /// The per-principal concurrent-session quota in force.
+    pub fn quota(&self) -> usize {
+        self.quota
     }
 
     /// Mint a session that expires `SESSION_TTL_SECS` from now.
     pub fn mint(&self, principal_id: &str) -> MintedSession {
         let now = now_unix();
         self.mint_with_expiry(principal_id, now, now + SESSION_TTL_SECS)
+    }
+
+    /// AUTH-4 (D1): mint subject to the per-principal concurrent-session quota.
+    /// Returns `None` (rejected) if the principal already holds `quota` live
+    /// sessions. The count + insert happen under one lock, so concurrent mints
+    /// cannot race past the cap.
+    pub fn try_mint(&self, principal_id: &str) -> Option<MintedSession> {
+        let now = now_unix();
+        let token = new_token();
+        let record = SessionRecord {
+            principal_id: principal_id.to_string(),
+            issued_at: now,
+            expires_at: now + SESSION_TTL_SECS,
+        };
+        let mut map = self.by_token_hash.lock().expect("session store mutex");
+        let live = map
+            .values()
+            .filter(|r| r.principal_id == principal_id && r.expires_at > now)
+            .count();
+        if live >= self.quota {
+            return None;
+        }
+        map.insert(sha256_hex(token.as_bytes()), record.clone());
+        Some(MintedSession {
+            token,
+            principal_id: record.principal_id,
+            issued_at: record.issued_at,
+            expires_at: record.expires_at,
+        })
+    }
+
+    /// Count the live (unexpired) sessions a principal currently holds.
+    pub fn live_count_for(&self, principal_id: &str) -> usize {
+        let now = now_unix();
+        self.by_token_hash
+            .lock()
+            .expect("session store mutex")
+            .values()
+            .filter(|r| r.principal_id == principal_id && r.expires_at > now)
+            .count()
     }
 
     /// Mint a session with explicit issue/expiry instants. Login uses `mint`;
@@ -193,5 +251,34 @@ mod tests {
         let a = store.mint("p060");
         let b = store.mint("p060");
         assert_ne!(a.token, b.token, "each session is a fresh unguessable token");
+    }
+
+    #[test]
+    fn try_mint_rejects_past_the_per_principal_quota() {
+        let store = SessionStore::with_quota(3);
+        // Three live sessions for one principal are fine.
+        for _ in 0..3 {
+            assert!(store.try_mint("p060").is_some());
+        }
+        assert_eq!(store.live_count_for("p060"), 3);
+        // The 4th is rejected (excess past the quota).
+        assert!(
+            store.try_mint("p060").is_none(),
+            "the (quota+1)th concurrent session for a principal is rejected"
+        );
+        // A DIFFERENT principal is unaffected — the quota is per-principal.
+        assert!(store.try_mint("p088").is_some());
+    }
+
+    #[test]
+    fn revoking_a_session_frees_a_quota_slot() {
+        let store = SessionStore::with_quota(1);
+        let s = store.try_mint("p060").expect("first fits");
+        assert!(store.try_mint("p060").is_none(), "quota of 1 is full");
+        assert!(store.revoke(&s.token));
+        assert!(
+            store.try_mint("p060").is_some(),
+            "a freed slot accepts a new session"
+        );
     }
 }
