@@ -9,6 +9,7 @@ import { GraphSidebar } from "./GraphSidebar";
 import { GraphInspector } from "./GraphInspector";
 import { MotionAside, MotionPanel } from "./MotionPrimitives";
 import { Skeleton } from "./Skeleton";
+import { ThemeToggle } from "./ThemeToggle";
 import { graphRelationshipRows } from "./graphDisplay";
 
 /**
@@ -214,7 +215,7 @@ export function GraphRoom({
       aria-label="Enterprise Brain graph"
     >
       <header
-        className="ap-card ap-glass fixed inset-x-0 top-0 z-30 grid items-center gap-4 border-x-0 border-t-0 px-6"
+        className="ap-nav fixed inset-x-0 top-0 z-30 grid items-center gap-4 border-x-0 border-t-0 px-6"
         style={{
           height: 58,
           gridTemplateColumns: "minmax(168px, 1fr) minmax(220px, 380px) minmax(168px, 1fr)",
@@ -245,6 +246,7 @@ export function GraphRoom({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            aria-label="Search the map"
             placeholder="Search"
             className="w-full rounded-full py-1.5 pl-9 pr-8 text-center"
             style={{
@@ -267,7 +269,7 @@ export function GraphRoom({
           )}
         </div>
         <div className="flex min-w-0 items-center justify-end gap-2">
-          <ThemeToggle />
+          <ThemeToggle compact />
           <span
             className="ap-card ap-register-chrome inline-flex items-center gap-2 rounded-full px-3 py-1"
             style={{ fontSize: TYPE.scale.xs }}
@@ -289,7 +291,7 @@ export function GraphRoom({
 
       {authPending ? (
         <div className="grid h-full place-items-center px-6 pt-16" data-testid="graph-authenticating">
-          <div className="ap-card w-full max-w-xl rounded p-4">
+          <div className="ap-card w-full max-w-xl rounded-lg p-4">
             <Skeleton lines={6} />
           </div>
         </div>
@@ -303,7 +305,7 @@ export function GraphRoom({
         </div>
       ) : loading ? (
         <div className="grid h-full place-items-center px-6 pt-16">
-          <div className="ap-card w-full max-w-xl rounded p-4">
+          <div className="ap-card w-full max-w-xl rounded-lg p-4">
             <Skeleton lines={6} />
           </div>
         </div>
@@ -448,7 +450,7 @@ function GraphAuditPanel({
           ["people", graph.people.length],
           ["projects", graph.projects.length],
         ].map(([label, value]) => (
-          <div key={label} className="ap-hairline rounded border px-2 py-1.5">
+          <div key={label} className="ap-hairline rounded-lg border px-2 py-1.5">
             <p className="ap-register-evidence" style={{ fontSize: TYPE.scale.sm, fontWeight: 700 }}>
               {Number(value).toLocaleString("en-US")}
             </p>
@@ -480,7 +482,7 @@ function GraphAuditPanel({
         ) : (
           <ul className="space-y-1">
             {relationships.map((row) => (
-              <li key={row.key} className="ap-hairline rounded border px-2 py-1.5" data-testid="graph-relationship-row">
+              <li key={row.key} className="ap-hairline rounded-lg border px-2 py-1.5" data-testid="graph-relationship-row">
                 <p className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
                   {row.from.label}
                 </p>
@@ -498,6 +500,8 @@ function GraphAuditPanel({
 
 function Legend({ systems, agents, projects, people }: { systems: number; agents: number; projects: number; people: number }) {
   const itemStyle = { fontSize: TYPE.scale.xs - 2 };
+  // B4: the legend keys are NEUTRAL (amber belongs to the lit connection path
+  // alone; the affordance dot marks systems, matching their render).
   const dot = (background: string, square = false) => (
     <span
       aria-hidden="true"
@@ -505,24 +509,24 @@ function Legend({ systems, agents, projects, people }: { systems: number; agents
       style={{
         width: square ? 9 : 8,
         height: square ? 9 : 8,
-        borderRadius: square ? 2 : 999,
+        borderRadius: square ? 0 : 9999,
         background,
       }}
     />
   );
   return (
     <MotionAside
-      className="ap-card ap-glass fixed bottom-4 left-5 z-20 flex max-w-[calc(100vw-40px)] flex-wrap items-center gap-3 rounded-full px-3 py-2"
+      className="ap-card fixed bottom-4 left-5 z-20 flex max-w-[calc(100vw-40px)] flex-wrap items-center gap-3 rounded-full px-3 py-2"
       aria-label="Graph legend"
     >
       <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
         {dot(C.affordance)} systems {systems}
       </span>
       <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
-        {dot(C.hairline, true)} agents {agents}
+        {dot(C.inkSoft, true)} agents {agents}
       </span>
       <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
-        {dot(C.warm, true)} projects {projects}
+        {dot(C.hairline, true)} projects {projects}
       </span>
       <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
         {dot(C.ink)} people {people}
@@ -601,7 +605,7 @@ function AccessRequestRail({
           </p>
         ) : (
           recent.map((request) => (
-            <div key={request.request_id} className="ap-hairline rounded border px-2 py-1.5" data-testid="access-request-row">
+            <div key={request.request_id} className="ap-hairline rounded-lg border px-2 py-1.5" data-testid="access-request-row">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
                   {projectLabel(request)}
@@ -626,7 +630,7 @@ function AccessRequestRail({
           </p>
         ) : (
           inbox.map((request) => (
-            <div key={request.request_id} className="ap-hairline rounded border px-2 py-2" data-testid="access-inbox-row">
+            <div key={request.request_id} className="ap-hairline rounded-lg border px-2 py-2" data-testid="access-inbox-row">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
                   {projectLabel(request)}
@@ -643,7 +647,7 @@ function AccessRequestRail({
                   type="button"
                   disabled={busyId === `approve:${request.request_id}` || busyId === `deny:${request.request_id}`}
                   onClick={() => void onDecide(request.request_id, "approve")}
-                  className="ap-affordance-button ap-register-chrome rounded px-2 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="ap-affordance-button ap-register-chrome rounded-lg px-2 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
                   style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
                   data-testid="access-approve"
                 >
@@ -653,7 +657,7 @@ function AccessRequestRail({
                   type="button"
                   disabled={busyId === `approve:${request.request_id}` || busyId === `deny:${request.request_id}`}
                   onClick={() => void onDecide(request.request_id, "deny")}
-                  className="ap-washable ap-register-chrome rounded px-2 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="ap-washable ap-register-chrome rounded-lg px-2 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
                   style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
                   data-testid="access-deny"
                 >
@@ -665,47 +669,6 @@ function AccessRequestRail({
         )}
       </section>
     </MotionAside>
-  );
-}
-
-function ThemeToggle() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-  useEffect(() => {
-    const current = document.documentElement.getAttribute("data-theme");
-    setTheme(current === "light" ? "light" : "dark");
-  }, []);
-  const flip = () => {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    document.documentElement.setAttribute("data-theme", next);
-    try {
-      localStorage.setItem("ap-theme", next);
-    } catch {
-      /* private mode: the choice just will not persist */
-    }
-  };
-  return (
-    <button
-      type="button"
-      onClick={flip}
-      className="ap-card ap-washable grid rounded-full"
-      style={{ width: 34, height: 34, placeItems: "center" }}
-      data-testid="theme-toggle"
-      data-theme={theme}
-      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-      title={theme === "dark" ? "Light mode" : "Dark mode"}
-    >
-      <svg width={16} height={16} viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx={12} cy={12} r={4} fill="none" stroke={C.ink} strokeWidth={2} />
-        <path
-          d="M12 2v2.5M12 19.5V22M4.93 4.93 6.7 6.7M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07 6.7 17.3M17.3 6.7l1.77-1.77"
-          fill="none"
-          stroke={C.ink}
-          strokeWidth={2}
-          strokeLinecap="round"
-        />
-      </svg>
-    </button>
   );
 }
 
@@ -721,7 +684,7 @@ function GraphEmpty({
   const satellites = [-Math.PI / 2, Math.PI / 6, (5 * Math.PI) / 6];
   return (
     <MotionPanel
-      className="ap-card flex flex-col items-center gap-3 rounded px-6 py-12 text-center"
+      className="ap-card flex flex-col items-center gap-3 rounded-lg px-6 py-12 text-center"
       data-testid={testid}
     >
       <svg width={64} height={64} viewBox="0 0 64 64" aria-hidden="true">

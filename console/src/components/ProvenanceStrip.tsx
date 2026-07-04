@@ -10,7 +10,7 @@ import { TYPE } from "@/lib/tokens";
 function Badge({ children, testid }: { children: string; testid: string }) {
   return (
     <span
-      className="ap-hairline ap-register-chrome ap-soft inline-block rounded border px-2 py-0.5"
+      className="ap-hairline ap-register-chrome ap-soft inline-block rounded-lg border px-2 py-0.5"
       style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
       data-testid={testid}
     >

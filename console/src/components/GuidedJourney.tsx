@@ -14,10 +14,10 @@ type JourneyStep = {
   surface?: JourneySurface;
 };
 
-const DEMO_WORK_IDENTITY = "p060";
-
+/** A2: no hardwired identity — with no principal the journey links carry no
+ * `?as` at all, and the identity picker (the front door) catches arrivals. */
 function actorQuery(principal: string | null): string {
-  return `?as=${encodeURIComponent(principal ?? DEMO_WORK_IDENTITY)}`;
+  return principal === null ? "" : `?as=${encodeURIComponent(principal)}`;
 }
 
 function journeySteps(principal: string | null): JourneyStep[] {
@@ -25,10 +25,10 @@ function journeySteps(principal: string | null): JourneyStep[] {
   const me = `/me${query}`;
   return [
     {
-      detail: "Choose who Enterprise Brain is acting for.",
+      detail: "Your work, your access, at a glance.",
       href: me,
       key: "me",
-      label: "Work Identity",
+      label: "Home",
       surface: "me" as const,
     },
     {
@@ -92,13 +92,13 @@ export function GuidedJourney({
   const compact = current !== "home" && current !== "bursar";
   const selectionCopy =
     principal === null
-      ? "Start with a Work Identity. Until one is selected, Enterprise Brain has no permission scope to show work, access, knowledge, or answers."
+      ? "Pick who you are first. Until then, Enterprise Brain has no permission scope to show work, access, knowledge, or answers."
       : "This path carries the selected Work Identity through work, access, Ask, the Operating Map, and governed spend.";
 
   if (compact) {
     return (
       <MotionSection
-        className="ap-card ap-glass rounded border p-2"
+        className="ap-card rounded-lg border p-2"
         aria-label="Guided product path"
         data-testid={testId}
         data-compact="true"
@@ -116,7 +116,7 @@ export function GuidedJourney({
             {visibleSteps.map((step, index) => {
               const active = current === (step.activeSurface ?? step.surface);
               const canOpen = !step.adminOnly || showAdminSteps;
-              const className = `${active ? "ap-affordance-button" : "ap-washable ap-flat"} ap-register-chrome inline-flex min-h-9 shrink-0 items-center gap-1 rounded border px-2.5 py-1.5`;
+              const className = `${active ? "ap-affordance-button" : "ap-washable ap-flat"} ap-register-chrome inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5`;
               const content = (
                 <>
                   <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
@@ -164,7 +164,7 @@ export function GuidedJourney({
 
   return (
     <MotionSection
-      className="ap-card ap-glass rounded border p-3"
+      className="ap-card rounded-lg border p-3"
       aria-label="Guided product path"
       data-testid={testId}
     >
@@ -185,7 +185,7 @@ export function GuidedJourney({
         {visibleSteps.map((step, index) => {
           const active = current === (step.activeSurface ?? step.surface);
           const canOpen = !step.adminOnly || showAdminSteps;
-          const className = `${active ? "ap-affordance-button" : "ap-washable ap-flat"} ap-register-chrome flex min-h-24 flex-col justify-between rounded border px-3 py-2`;
+          const className = `${active ? "ap-affordance-button" : "ap-washable ap-flat"} ap-register-chrome flex min-h-24 flex-col justify-between rounded-lg border px-3 py-2`;
           const content = (
             <>
               <span className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>

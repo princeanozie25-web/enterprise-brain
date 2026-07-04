@@ -95,7 +95,7 @@ function actionLabel(item: WorkflowItem): string {
 function Chip({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
   return (
     <span
-      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded px-1.5 py-0.5`}
+      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded-lg px-1.5 py-0.5`}
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}
@@ -116,7 +116,7 @@ export function WorkflowView({
 }) {
   if (loading) {
     return (
-      <div className="ap-card rounded p-4" data-testid="workflow-loading">
+      <div className="ap-card rounded-lg p-4" data-testid="workflow-loading">
         <Skeleton lines={5} />
       </div>
     );
@@ -168,7 +168,7 @@ export function WorkflowView({
           return (
             <MotionPanel
               key={group.label}
-              className="ap-glass-panel min-w-0 rounded-2xl p-3"
+              className="ap-card min-w-0 rounded-2xl p-3"
               style={{ minHeight: 300 }}
               data-testid="workflow-group"
               delayIndex={groupIndex}
@@ -201,7 +201,7 @@ export function WorkflowView({
               <div className="space-y-2">
                 {items.length === 0 ? (
                   <div
-                    className="ap-hairline ap-soft rounded border px-2 py-3 text-center"
+                    className="ap-hairline ap-soft rounded-lg border px-2 py-3 text-center"
                     style={{ fontSize: TYPE.scale.xs }}
                     data-testid="workflow-group-empty"
                   >
@@ -239,7 +239,7 @@ function WorkflowRolePosture({
 
   return (
     <div
-      className="ap-card ap-glass mb-4 grid grid-cols-1 gap-2 rounded border p-3 md:grid-cols-4"
+      className="ap-card mb-4 grid grid-cols-1 gap-2 rounded-lg border p-3 md:grid-cols-4"
       data-testid="workflow-role-posture"
     >
       <WorkflowPostureFact
@@ -289,7 +289,7 @@ function WorkflowPostureFact({
   value: string;
 }) {
   return (
-    <div className="ap-flat ap-washable rounded border px-2 py-2" data-testid="workflow-role-posture-fact">
+    <div className="ap-flat ap-washable rounded-lg border px-2 py-2" data-testid="workflow-role-posture-fact">
       <div className="flex items-start justify-between gap-2">
         <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
           {label}
@@ -347,7 +347,7 @@ function WorkflowCard({ item }: { item: WorkflowItem }) {
         {KIND_LABEL[item.kind]} in {item.provenance.workflow.name}
       </p>
 
-      <div className="ap-hairline mt-3 rounded-xl border px-2 py-2">
+      <div className="ap-hairline mt-3 rounded-2xl border px-2 py-2">
         <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
           Project / capability
         </p>

@@ -62,7 +62,7 @@ export function GraphSidebar({
 
   return (
     <aside
-      className="ap-card ap-elevated flex shrink-0 flex-col gap-3 overflow-y-auto rounded p-3"
+      className="ap-card ap-elevated flex shrink-0 flex-col gap-3 overflow-y-auto rounded-lg p-3"
       style={{ width: 232, maxHeight: "82vh" }}
       data-testid="graph-sidebar"
     >
@@ -112,7 +112,7 @@ export function GraphSidebar({
                 key={f.key}
                 type="button"
                 onClick={() => onToggleKind(f.key)}
-                className={`ap-register-chrome rounded px-2 py-0.5${on ? " ap-affordance-button" : " ap-chip"}`}
+                className={`ap-register-chrome rounded-lg px-2 py-0.5${on ? " ap-affordance-button" : " ap-chip"}`}
                 style={{ fontSize: TYPE.scale.xs }}
                 data-testid="filter-toggle"
                 data-kind={f.key}
@@ -139,7 +139,7 @@ export function GraphSidebar({
                 <button
                   type="button"
                   onClick={() => onFocusDept(active ? null : d.id)}
-                  className="ap-washable flex w-full items-center gap-2 rounded px-1.5 py-1 text-left"
+                  className="ap-washable flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left"
                   style={{ fontSize: TYPE.scale.xs, outline: active ? "1px solid var(--affordance)" : undefined }}
                   data-testid="sidebar-dept"
                   data-dept={d.id}

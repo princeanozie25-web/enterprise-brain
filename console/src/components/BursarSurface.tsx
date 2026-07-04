@@ -2,7 +2,6 @@
 
 import { TYPE } from "@/lib/tokens";
 import { MotionArticle, MotionSection } from "./MotionPrimitives";
-import { DemoIdentityNotice } from "./TrustPosture";
 
 const DOCTRINE = [
   {
@@ -47,7 +46,7 @@ function bursarPanelStyle(): React.CSSProperties {
 function StatusChip({ children }: { children: React.ReactNode }) {
   return (
     <span
-      className="ap-chip ap-register-evidence rounded px-2 py-1"
+      className="ap-chip ap-register-evidence rounded-lg px-2 py-1"
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}
@@ -58,7 +57,7 @@ function StatusChip({ children }: { children: React.ReactNode }) {
 function DoctrineCard({ delayIndex, detail, label }: { delayIndex: number; detail: string; label: string }) {
   return (
     <MotionArticle
-      className="ap-glass-panel rounded-2xl p-4"
+      className="ap-card rounded-2xl p-4"
       data-testid="bursar-doctrine-card"
       delayIndex={delayIndex}
       style={bursarPanelStyle()}
@@ -76,7 +75,7 @@ function DoctrineCard({ delayIndex, detail, label }: { delayIndex: number; detai
 export function BursarSurface() {
   return (
     <main className="min-w-0 flex-1" data-testid="bursar-surface">
-      <MotionSection className="ap-glass-elevated mb-4 overflow-hidden rounded-2xl p-5 md:p-6">
+      <MotionSection className="ap-hero mb-4 overflow-hidden rounded-2xl p-5 md:p-6">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.35fr_0.65fr]">
           <div className="max-w-3xl">
             <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
@@ -105,8 +104,7 @@ export function BursarSurface() {
         </div>
       </MotionSection>
 
-      <DemoIdentityNotice className="mb-4" context="bursar" testId="bursar-demo-identity-mode" />
-
+      {/* A4: the page's single demo-status line is the shell's notice. */}
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]" aria-label="Bursar doctrine">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {DOCTRINE.map((item, index) => (
@@ -115,7 +113,7 @@ export function BursarSurface() {
         </div>
 
         <MotionSection
-          className="ap-glass-panel rounded-2xl p-4"
+          className="ap-card rounded-2xl p-4"
           data-testid="bursar-contract-panel"
           delayIndex={3}
         >
@@ -140,7 +138,7 @@ export function BursarSurface() {
 
       <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[0.88fr_1.12fr]">
         <MotionSection
-          className="ap-glass-panel rounded-2xl p-4"
+          className="ap-card rounded-2xl p-4"
           data-testid="bursar-empty-state"
           delayIndex={4}
           style={bursarPanelStyle()}
@@ -164,7 +162,7 @@ export function BursarSurface() {
         </MotionSection>
 
         <MotionSection
-          className="ap-glass-panel rounded-2xl p-4"
+          className="ap-card rounded-2xl p-4"
           data-testid="bursar-future-beat"
           delayIndex={5}
           style={bursarPanelStyle()}
@@ -182,7 +180,7 @@ export function BursarSurface() {
             {BOUNDARIES.map((boundary) => (
               <p
                 key={boundary}
-                className="ap-chip rounded px-3 py-2"
+                className="ap-chip rounded-lg px-3 py-2"
                 style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
               >
                 {boundary}

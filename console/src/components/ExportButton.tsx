@@ -55,7 +55,7 @@ export function ExportButton({
       type="button"
       onClick={onExport}
       disabled={disabled || busy || actor === null || request === null || filename === null}
-      className="ap-washable ap-register-chrome ap-soft rounded px-2 py-0.5"
+      className="ap-washable ap-register-chrome ap-soft rounded-lg px-2 py-0.5"
       style={{ fontSize: TYPE.scale.xs }}
       data-testid="export-evidence"
     >

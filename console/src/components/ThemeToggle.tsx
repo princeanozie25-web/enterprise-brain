@@ -31,7 +31,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   return (
     <button
       type="button"
-      className="ap-glass-panel ap-washable ap-register-chrome min-h-10 rounded-full px-3 py-2"
+      className="ap-card ap-washable ap-register-chrome min-h-10 rounded-full px-3 py-2"
       style={{ borderColor: "var(--hairline)", fontSize: compact ? TYPE.scale.xs : TYPE.scale.sm, fontWeight: 600 }}
       onClick={() => {
         applyTheme(nextMode);

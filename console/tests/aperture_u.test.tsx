@@ -249,8 +249,10 @@ describe("U-9: the demo caption is furniture", () => {
     stubMatchMedia(false);
     render(<Console />);
 
+    // A4: the single per-page demo-status line is the SHELL notice now (the
+    // LensBar chip is gone — one line per page, still furniture).
     const expectBanner = () => {
-      const banner = screen.getByTestId("demo-banner");
+      const banner = screen.getByTestId("shell-demo-identity-mode");
       expect(banner.textContent).toContain("Demo Identity Mode");
       expect(banner.textContent).toContain("Production identity is not connected");
       expect(within(banner).queryAllByRole("button")).toEqual([]);

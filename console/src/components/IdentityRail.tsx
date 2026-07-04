@@ -17,7 +17,7 @@ export function IdentityRail({
 }) {
   return (
     <div className="flex h-full flex-col gap-3" data-testid="identity-rail">
-      <div className="ap-card rounded p-3" data-testid="scope-panel">
+      <div className="ap-card rounded-lg p-3" data-testid="scope-panel">
         <h2
           className="ap-soft uppercase tracking-wide"
           style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -42,7 +42,7 @@ export function IdentityRail({
                 {scope.band === null ? (
                   <span className="ap-soft">none</span>
                 ) : (
-                  <span className="ap-card ap-register-chrome inline-block rounded px-1.5 py-0.5">
+                  <span className="ap-card ap-register-chrome inline-block rounded-lg px-1.5 py-0.5">
                     {scope.band}
                   </span>
                 )}
@@ -66,7 +66,7 @@ function ScopeChips({ label, values }: { label: string; values: string[] }) {
           values.map((value) => (
             <span
               key={value}
-              className="ap-card ap-register-chrome inline-block rounded px-1.5 py-0.5"
+              className="ap-card ap-register-chrome inline-block rounded-lg px-1.5 py-0.5"
               style={{ fontWeight: 500 }}
               data-testid="scope-chip"
             >

@@ -1,7 +1,7 @@
 "use client";
 
 import { TYPE } from "@/lib/tokens";
-import { MotionArticle, MotionSection } from "./MotionPrimitives";
+import { MotionSection } from "./MotionPrimitives";
 
 type DemoIdentityContext = "standard" | "admin" | "bursar" | "employee";
 
@@ -16,37 +16,6 @@ const CONTEXT_COPY: Record<DemoIdentityContext, string> = {
     "Actor selection previews permission boundaries in this local pilot workspace. Production identity binding is not connected in this build.",
 };
 
-const TRUST_ITEMS = [
-  {
-    detail: "No Work Identity means no permission scope for work, knowledge, or Ask.",
-    label: "Deny by default",
-  },
-  {
-    detail: "Ask runs inside the selected Work Identity and validates granted context server-side.",
-    label: "Permission-aware Ask",
-  },
-  {
-    detail: "Read grants are scoped to specific capabilities and remain visible as audit rows.",
-    label: "Scoped grants",
-  },
-  {
-    detail: "Admin and Bursar routes are separated from employee surfaces in this UI.",
-    label: "Separated authority",
-  },
-  {
-    detail: "A production deployment would bind Enterprise Brain to IAM, SSO, SCIM, RBAC/ABAC, audit, and policy enforcement.",
-    label: "Enterprise identity boundary",
-  },
-];
-
-function posturePanelStyle(): React.CSSProperties {
-  return {
-    backdropFilter: "blur(var(--material-blur))",
-    background: "var(--surface-glass)",
-    boxShadow: "var(--shadow-1), inset 0 1px 0 var(--edge-highlight)",
-  };
-}
-
 export function DemoIdentityNotice({
   className = "",
   compact = false,
@@ -60,7 +29,7 @@ export function DemoIdentityNotice({
 }) {
   return (
     <MotionSection
-      className={`ap-card ap-glass rounded border ${compact ? "p-2" : "p-3"} ${className}`}
+      className={`ap-card rounded-lg border ${compact ? "p-2" : "p-3"} ${className}`}
       data-testid={testId}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -76,7 +45,7 @@ export function DemoIdentityNotice({
           </p>
         </div>
         <span
-          className="ap-chip ap-register-evidence rounded px-2 py-1"
+          className="ap-chip ap-register-evidence rounded-lg px-2 py-1"
           style={{ fontSize: TYPE.scale.xs }}
         >
           permission preview
@@ -90,34 +59,6 @@ export function DemoIdentityNotice({
           The architecture is designed for enterprise IAM, SSO, SCIM, RBAC/ABAC, audit, and policy enforcement. This build does not claim those integrations are live.
         </p>
       )}
-    </MotionSection>
-  );
-}
-
-export function BuyerTrustPosture({
-  className = "",
-  testId = "buyer-trust-posture",
-}: {
-  className?: string;
-  testId?: string;
-}) {
-  return (
-    <MotionSection className={`grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr] ${className}`} data-testid={testId}>
-      {TRUST_ITEMS.map((item, index) => (
-        <MotionArticle
-          key={item.label}
-          className="ap-card rounded border p-4"
-          delayIndex={index}
-          style={posturePanelStyle()}
-        >
-          <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
-            {item.label}
-          </h2>
-          <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-            {item.detail}
-          </p>
-        </MotionArticle>
-      ))}
     </MotionSection>
   );
 }
