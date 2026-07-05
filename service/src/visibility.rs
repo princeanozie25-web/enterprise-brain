@@ -3,17 +3,24 @@
 //! document access. Every metadata surface (/graph, /node/*, /lens) filters
 //! through this; no surface invents its own visibility rule.
 //!
-//! DD-2 (structural core): a STANDING principal sees their own department's
-//! structure (the people in their department), their reporting relationships
-//! (their manager and their direct reports), the agents they own, the org core,
-//! and the org's shared source systems. STANDING = non-empty group membership;
-//! a principal with no groups (p_void) — or an unknown principal — sees NOTHING.
+//! DD-2 (full): a STANDING principal sees
+//!   * STRUCTURAL CORE — their own department's people, their reporting line
+//!     (manager + direct reports), the agents they own, the org core, and the
+//!     org's shared source systems; PLUS
+//!   * GRANT/CAPABILITY REACHABILITY (AUTH-2b) — the CO-MEMBERS of every group
+//!     they hold, i.e. the cross-department people a grant / shared group /
+//!     capability connects them to. A grant CREATES authorization (it is not a
+//!     bypass): a node is grant-reachable ONLY via a group the actor actually
+//!     holds — no group, no reach. `visible = structural ∪ grant-reachable`,
+//!     strictly additive over the structural core.
+//! STANDING = non-empty group membership; a principal with no groups (p_void) —
+//! or an unknown principal — sees NOTHING (no standing, no grants).
 //!
 //! Fail-closed and pre-assembly: callers compute the projection, then build the
 //! response from the in-scope set only. Out-of-scope data is never assembled and
-//! then stripped. Grant/capability reachability is an additive follow-up and is
-//! deliberately NOT part of this structural core (it does not affect the
-//! person/agent/org metadata oracle).
+//! then stripped. The metadata conformance oracle proves this projection
+//! (structural ∪ grant-reachable) exhaustively, computing the expectation
+//! independently from the raw fixture.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -33,6 +40,8 @@ struct VisCompany {
     agents: Vec<VisAgent>,
     #[serde(default)]
     sources: Vec<String>,
+    #[serde(default)]
+    groups: Vec<VisGroup>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +56,15 @@ struct VisPerson {
 struct VisAgent {
     id: String,
     owner_user_id: String,
+}
+
+/// AUTH-2b: a group and its members, the carrier of grant reachability. The
+/// member set is the set of nodes the group's holders may reach (its co-members).
+#[derive(Debug, Deserialize)]
+struct VisGroup {
+    id: String,
+    #[serde(default)]
+    member_ids: Vec<String>,
 }
 
 fn load_company(state: &AppState) -> Result<VisCompany> {
@@ -124,8 +142,28 @@ pub fn compute(state: &AppState, actor: &str) -> Result<Visibility, AskError> {
         }
     }
 
+    // Grant/capability reachability (AUTH-2b — completes DD-2): the actor also
+    // sees the CO-MEMBERS of every group it holds. The held groups come from the
+    // scope statement (THE authority on what a principal holds — for a person,
+    // company.groups membership; for an agent, its grant.groups), so a node is
+    // reachable ONLY because the actor genuinely holds the granting group; no
+    // group -> nothing added. Additive: this only ever inserts into `people`.
+    let held: BTreeSet<String> = state
+        .identity
+        .statement_for(actor)
+        .groups
+        .into_iter()
+        .collect();
+    for group in &company.groups {
+        if held.contains(&group.id) {
+            for member in &group.member_ids {
+                people.insert(member.clone());
+            }
+        }
+    }
+
     // Departments: the departments of every visible person (own + cross-dept
-    // manager/report), plus the actor's own department.
+    // manager/report + grant-reachable), plus the actor's own department.
     let mut departments = BTreeSet::new();
     for pid in &people {
         if let Some(dept) = dept_of.get(pid.as_str()) {
