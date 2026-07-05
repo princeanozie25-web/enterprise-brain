@@ -10,10 +10,10 @@ import { MotionPanel } from "./MotionPrimitives";
  * AdminPreviewGate — an HONEST preview interstitial for the admin-domain
  * surfaces (Operating Map, Bursar Ledger Room).
  *
- * THIS IS NOT AN AUTHORIZATION BOUNDARY — the SERVER is. Since AUTH-2, /graph
- * and /node/summary are per-identity scoped server-side (structural + the
- * grant-reachable slice when that lands); this gate cannot widen or narrow
- * that. It exists only to set expectations before the surface opens, on one
+ * THIS IS NOT AN AUTHORIZATION BOUNDARY — the SERVER is. Since AUTH-2/AUTH-2b,
+ * /graph and /node/summary are per-identity scoped server-side (structural
+ * core plus grant-reachable visibility, both enforced now); this gate cannot
+ * widen or narrow that. It exists only to set expectations on one
  * explicit opt-in. The *_surface_allowed flag from /me/scope is a DERIVED
  * signal, not an enforced boundary for these surfaces.
  *
