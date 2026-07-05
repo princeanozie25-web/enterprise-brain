@@ -66,7 +66,7 @@ function journeySteps(principal: string | null): JourneyStep[] {
     },
     {
       adminOnly: true,
-      detail: "Admin-side spend preview; ledger data and authority are not connected here.",
+      detail: "Admin-side spend view; reads the local ledger producer, read-only.",
       href: "/admin/bursar",
       key: "bursar-ledger-room",
       label: "Spend Ledger",
