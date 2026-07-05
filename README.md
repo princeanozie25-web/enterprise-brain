@@ -65,11 +65,19 @@ with the system they're testing. **One wrong answer fails the whole release.**
 
 ## See it
 
-> **[ screenshot placeholder ]** — the same org map for two identities, side by
-> side: a finance lead sees a rich slice of their part of the company; an
-> identity with no standing sees an empty map (not a blurred one). *To be added
-> once the console's live render is wired to the new permission layer; the
-> behaviour is already proven on the engine — see [The proof](#the-proof).*
+The same org map, the same build, two identities — captured live against the
+running product:
+
+| A finance head | An identity with no access |
+| --- | --- |
+| ![The Operating Map as Felix Osei, a finance head: 19 named people, 142 visible connections — his slice of the company, drawn from real org data](console/docs/screenshots/s3-map-p060.png) | ![The Operating Map as Zara Castillo, who holds no access: zero connections and an empty-state card — "No organizational view in your scope" — not a blurred map](console/docs/screenshots/s4-map-pvoid.png) |
+
+Felix Osei (a finance head) sees his slice: 19 named people and 142
+connections. Zara Castillo (no access) sees an honest empty map — zero nodes,
+no blur, no silhouettes. The difference is enforced on the server, per
+identity, before anything is retrieved or drawn; the page only ever receives
+what that identity may see. Scope-proven on a synthetic company (see
+[The proof](#the-proof)), not certified secure.
 
 ## How it works
 
