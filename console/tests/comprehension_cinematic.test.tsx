@@ -60,15 +60,64 @@ function contrast(a: string, b: string): number {
 // ===========================================================================
 
 describe("T-A2 / T-A3: no retired product names or coined room labels in rendered text", () => {
-  const BANNED = ["Aperture", "Company Operating System", "Knowledge View", "Capability Map"];
+  const BANNED = [
+    "Aperture",
+    "Company Operating System",
+    "Knowledge View",
+    "Capability Map",
+    // Copy pass: internal product names and retired room labels never render.
+    "Bursar",
+    "Workflow Command",
+  ];
   for (const term of BANNED) {
+    // Letter-boundary match: bans the term as a rendered WORD while letting
+    // identifiers-as-strings (view keys like "adminBursar") stay out of scope,
+    // per the renderedText contract above.
+    const asWord = new RegExp(`(?<![A-Za-z])${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z])`);
     it(`"${term}" appears in no rendered string`, () => {
-      const offenders = TSX.filter((f) => renderedText(read(f)).includes(term)).map((f) =>
+      const offenders = TSX.filter((f) => asWord.test(renderedText(read(f)))).map((f) =>
         f.replace(SRC, "src"),
       );
       expect(offenders).toEqual([]);
     });
   }
+});
+
+describe("Copy pass: locked-table extension — labels + subtitles render verbatim", () => {
+  const LOCKED: Array<{ file: string; strings: string[] }> = [
+    // Nav doors carry the locked labels (label= is a rendered string prop).
+    {
+      file: "components/Console.tsx",
+      strings: ['label="Projects"', 'label="Operating Map"', 'label="Spend Ledger"'],
+    },
+    // Room mastheads carry the one-line subtitles, verbatim from the table.
+    { file: "components/ProjectSurface.tsx", strings: ["Work in flight, scoped to what you can see."] },
+    { file: "components/GraphRoom.tsx", strings: ["The organization as your access renders it."] },
+    {
+      file: "components/BursarSurface.tsx",
+      strings: ["Spend Ledger", "What AI assistance costs, and who authorized it."],
+    },
+  ];
+  for (const { file, strings } of LOCKED) {
+    for (const s of strings) {
+      it(`${file} carries ${JSON.stringify(s)}`, () => {
+        expect(read(join(SRC, file))).toContain(s);
+      });
+    }
+  }
+
+  it("the under-claim phrases are gone from every source file", () => {
+    for (const stale of ["still being added", "in-progress slice"]) {
+      const offenders = TSX.filter((f) => read(f).includes(stale)).map((f) => f.replace(SRC, "src"));
+      expect(offenders).toEqual([]);
+    }
+  });
+
+  it("the Operating Map gate note claims grant-reachable enforcement (reconciled, not modest)", () => {
+    expect(read(join(SRC, "components/AdminPreviewGate.tsx"))).toContain(
+      "Structural and grant-reachable visibility are both enforced now.",
+    );
+  });
 });
 
 describe("T-A3: the Ask 'Verified answers' disabled copy kills the 'hallucinations on' reading", () => {

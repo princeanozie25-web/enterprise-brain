@@ -328,15 +328,15 @@ export function Console({
     <div className="min-h-screen">
       <LensBar principal={principal} onSwitch={switchPrincipal} />
 
-      {/* ONE VOCABULARY (A1): room labels come from the locked table. The
-          three rooms the table does not cover (Workflow Command, Operating
-          Map, Bursar Ledger Room) keep their existing labels — flagged in the
-          pass closeout rather than renamed ad hoc. */}
+      {/* ONE VOCABULARY (A1): room labels come from the locked table, extended
+          by the copy pass to cover all rooms: Projects (/project), Operating
+          Map (/admin/graph), Spend Ledger (/admin/bursar). Internal product
+          names never render. */}
       <nav className="ap-nav border-x-0 border-t-0" aria-label="Product surfaces" data-testid="view-switcher">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-1.5">
           <ViewDoor label="Home" href="/me" active={view === "me"} principal={principal} testId="view-door-me" />
           <ViewDoor
-            label="Workflow Command"
+            label="Projects"
             href="/project"
             active={view === "project"}
             principal={principal}
@@ -352,7 +352,7 @@ export function Console({
           />
           {(view === "adminBursar" || view === "adminGraph") && (
             <ViewDoor
-              label="Bursar Ledger Room"
+              label="Spend Ledger"
               href="/admin/bursar"
               active={view === "adminBursar"}
               principal={principal}

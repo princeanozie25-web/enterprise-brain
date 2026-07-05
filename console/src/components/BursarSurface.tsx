@@ -31,9 +31,9 @@ const CONTRACT = [
 
 const BOUNDARIES = [
   "Enterprise Brain governs what the model may know and do.",
-  "Bursar governs what the model may spend.",
+  "The Spend Ledger governs what the model may spend.",
   "Employee and workflow surfaces do not expose this room.",
-  "Read grants do not create Bursar authority.",
+  "Read grants do not create spend authority.",
 ];
 
 function bursarPanelStyle(): React.CSSProperties {
@@ -85,13 +85,13 @@ export function BursarSurface() {
               className="ap-register-chrome mt-2"
               style={{ fontSize: TYPE.scale.xl, fontWeight: 600, lineHeight: TYPE.line.display }}
             >
-              Bursar Ledger Room
+              Spend Ledger
             </h1>
             <p className="ap-soft mt-3" style={{ fontSize: TYPE.scale.md, lineHeight: TYPE.line.body }}>
-              Governed spend for Enterprise Brain model actions.
+              What AI assistance costs, and who authorized it.
             </p>
             <p className="ap-soft mt-3 max-w-2xl" style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body }}>
-              This route is a UI-only placeholder for the future Ledger Room. It will sit beside
+              This route is a UI-only placeholder for the future Spend Ledger. It will sit beside
               answers when real ledger data is connected, showing the governed spend that was capped,
               authorized, audited, and reconciled.
             </p>
@@ -105,7 +105,7 @@ export function BursarSurface() {
       </MotionSection>
 
       {/* A4: the page's single demo-status line is the shell's notice. */}
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]" aria-label="Bursar doctrine">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]" aria-label="Spend Ledger doctrine">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {DOCTRINE.map((item, index) => (
             <DoctrineCard key={item.label} delayIndex={index + 1} detail={item.detail} label={item.label} />

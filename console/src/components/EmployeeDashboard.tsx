@@ -1353,7 +1353,7 @@ function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
         >
           <div className="min-w-0">
             <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
-              Workflow Command
+              Projects
             </p>
             <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
               Requests, approvals, workflow alerts, grants, and role-scope updates.
@@ -2660,7 +2660,7 @@ function WorkflowSummary({ actor, items }: { actor: string; items: WorkflowItem[
   }
   // Cockpit digest: only the items actually in flight (everything except Done),
   // in lane-priority order, capped at five. The full five-lane board lives on the
-  // Workflow Command surface (/project), reachable via "Open workflow".
+  // Projects surface (/project), reachable via "Open workflow".
   const ACTIVE_ORDER = ["In Progress", "Next", "Waiting", "Blocked"];
   const active = items
     .filter((item) => workflowGroup(item.status) !== "Done")
@@ -2672,7 +2672,7 @@ function WorkflowSummary({ actor, items }: { actor: string; items: WorkflowItem[
   return (
     <div className="space-y-2" data-testid="dashboard-workflow" id="dashboard-workflow">
       {digest.length === 0 ? (
-        <EmptyLine>No active workflow items in flight. Completed work lives in Workflow Command.</EmptyLine>
+        <EmptyLine>No active workflow items in flight. Completed work lives in Projects.</EmptyLine>
       ) : (
         digest.map((item, index) => (
           <MotionAnchor

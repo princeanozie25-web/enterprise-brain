@@ -170,7 +170,7 @@ describe("workflow projection UI", () => {
   it("groups real workflow items by status without evidence rows", () => {
     const { container } = render(<WorkflowView workflow={WORKFLOW} roleScope={ROLE_SCOPE} />);
     const groups = screen.getAllByTestId("workflow-group");
-    expect(screen.getByRole("heading", { name: "Workflow Command" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Projects" })).toBeTruthy();
     expect(container.textContent).toContain(`${WORKFLOW.items.length} visible items`);
     expect(groups.length).toBe(5);
     expect(within(groups[0]).getAllByTestId("workflow-item").length).toBe(1);
@@ -196,13 +196,13 @@ describe("workflow projection UI", () => {
     expect(container.textContent ?? "").not.toMatch(/unread|notification|metric|fake/i);
   });
 
-  it("renders the project surface with Operating Map Trace and Workflow Command tabs", async () => {
+  it("renders the project surface with Operating Map Trace and Projects tabs", async () => {
     stubProjectFetch();
     render(<ProjectSurface actor="p060" capabilityId="cap31" />);
     await waitFor(() => expect(screen.getByTestId("project-title").textContent).toBe("Access Review 31"));
     expect(screen.getByTestId("workflow-view")).toBeTruthy();
     expect(screen.getByTestId("project-tabs").textContent).toContain("Operating Map Trace");
-    expect(screen.getByTestId("project-tabs").textContent).toContain("Workflow Command");
+    expect(screen.getByTestId("project-tabs").textContent).toContain("Projects");
 
     fireEvent.click(screen.getAllByTestId("project-tab")[0]);
     expect(screen.getByTestId("project-graph-view")).toBeTruthy();
@@ -220,7 +220,7 @@ describe("workflow projection UI", () => {
     const { container } = render(<ProjectSurface actor="p060" capabilityId={null} />);
 
     const empty = screen.getByTestId("project-missing-capability");
-    expect(empty.textContent).toContain("Choose real work before opening Workflow Command.");
+    expect(empty.textContent).toContain("Choose real work before opening Projects.");
     expect(empty.textContent).toContain("does not fabricate project state");
     expect(screen.getByTestId("project-empty-work-identity-link").getAttribute("href")).toBe("/me?as=p060");
     expect(screen.getByTestId("project-empty-operating-map-link").getAttribute("href")).toBe(

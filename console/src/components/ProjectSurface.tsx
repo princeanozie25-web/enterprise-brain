@@ -52,7 +52,10 @@ function ProjectEntryState({
     <main className="min-w-0 flex-1" data-testid={testId}>
       <MotionSection className="ap-hero rounded-2xl p-4">
         <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-          Workflow Command
+          Projects
+        </p>
+        <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+          Work in flight, scoped to what you can see.
         </p>
         <h1 className="ap-register-chrome mt-2" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
           {title}
@@ -156,9 +159,9 @@ export function ProjectSurface({
     return (
       <ProjectEntryState
         actor={actor}
-        detail="Workflow Command opens when a real capability is selected from Work Identity or the Operating Map. This page does not fabricate project state."
+        detail="Projects opens when a real capability is selected from Work Identity or the Operating Map. This page does not fabricate project state."
         testId="project-missing-capability"
-        title="Choose real work before opening Workflow Command."
+        title="Choose real work before opening Projects."
       />
     );
   }
@@ -190,7 +193,7 @@ export function ProjectSurface({
               Operating Map Trace
             </TabButton>
             <TabButton active={tab === "workflow"} onClick={() => setTab("workflow")}>
-              Workflow Command
+              Projects
             </TabButton>
           </div>
         </div>

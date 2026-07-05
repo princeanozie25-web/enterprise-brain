@@ -39,14 +39,16 @@ Open http://localhost:3000.
    identity is pre-selected.
 
 2. **Pick Felix Osei → Home renders for p060.**
-   The nav reads in plain words — **Home / Workflow Command / Ask / Operating
+   The nav reads in plain words — **Home / Projects / Ask / Operating
    Map / My Access / Company Map / Review Queue** — a single demo-status line,
    and a **"Try asking"** chip staged above the fold.
 
 3. **Open the Operating Map.**
-   The org map draws **only Felix's slice** — 15 real people, each a labelled
+   The org map draws **only Felix's slice** — 19 real people, each a labelled
    node (no monogram caterpillar), the Finance hub, real edges, honest counts
-   (people 15 / projects 6). Every node is tabbable (`role="button"`,
+   (people 19 / projects 16). Four of the 19 sit outside Finance: board
+   co-members Felix's grp_board grant reaches, included since AUTH-2b landed.
+   Every node is tabbable (`role="button"`,
    `tabIndex=0`; arrow keys traverse, Enter opens, Escape returns focus) and a
    visually-hidden list mirrors the nodes for screen readers.
 
@@ -70,7 +72,7 @@ Open http://localhost:3000.
 | 1 | one name, one sentence, pick-who-you-are, honest demo line | picker DOM: heading "Enterprise Brain"; "Who are you today?"; verbatim demo line; three real fixture ids |
 | 1 | no hardwired identity | front door is the picker; `/me`, `/project` links carry no `?as` when identity-less |
 | 2 | one vocabulary, one demo line per page | nav labels = locked table; single `shell-demo-identity-mode` |
-| 3 | real, scoped, keyboard-operable map | 15 named nodes for p060 (structural Finance slice); `role=button`/`tabIndex=0`; SR list mirror |
+| 3 | real, scoped, keyboard-operable map | 19 named nodes for p060 (structural Finance slice ∪ grant-reachable board co-members, AUTH-2b); `role=button`/`tabIndex=0`; SR list mirror |
 | 4 | scoped, sourced Ask | p060 → 10 `confidential` docs |
 | 5 | fail-closed refusal | p_void → 0 docs; "Groups: none"; honest empty copy |
 

@@ -8,7 +8,7 @@ import { MotionPanel } from "./MotionPrimitives";
 
 /**
  * AdminPreviewGate — an HONEST preview interstitial for the admin-domain
- * surfaces (Operating Map, Bursar Ledger Room).
+ * surfaces (Operating Map, Spend Ledger).
  *
  * THIS IS NOT AN AUTHORIZATION BOUNDARY — the SERVER is. Since AUTH-2/AUTH-2b,
  * /graph and /node/summary are per-identity scoped server-side (structural
@@ -33,14 +33,14 @@ const SURFACE_COPY: Record<
     lead:
       "The Operating Map shows the part of the company org structure your Work Identity is permitted to see — not the whole company.",
     note:
-      "Enforced now, server-side: this map and its node metadata are scoped per Work Identity. You see your own department, your reporting lines, and the agents you own; an identity with no standing sees an empty map. Structural visibility is enforced today; visibility that flows from one-off access grants is still being added.",
+      "Enforced now, server-side: this map and its node metadata are scoped per Work Identity. You see your own department, your reporting lines, the agents you own, and the people a group you hold connects you to; an identity with no standing sees an empty map. Structural and grant-reachable visibility are both enforced now.",
     cta: "Read-only. You see only your slice of the company.",
   },
   bursar: {
     context: "bursar",
     eyebrow: "Preview — not connected",
-    heading: "Bursar Ledger Room — preview (not connected)",
-    lead: "The Bursar Ledger Room is a placeholder for the future governed-spend room.",
+    heading: "Spend Ledger — preview (not connected)",
+    lead: "The Spend Ledger is a placeholder for the future governed-spend room.",
     note:
       "No ledger data and no finance authority are connected in this build; your document access is separately permission-scoped on the server.",
     cta: "Read-only preview. Not connected in this build.",

@@ -499,7 +499,7 @@ describe("EmployeeDashboard", () => {
     expect(notifications.textContent).not.toMatch(/unread/i);
 
     const commandLayer = screen.getByTestId("dashboard-workflow-command");
-    expect(commandLayer.textContent).toContain("Workflow Command");
+    expect(commandLayer.textContent).toContain("Projects");
     expect(commandLayer.textContent).toContain("Requests");
     expect(commandLayer.textContent).toContain("Approvals");
     expect(commandLayer.textContent).toContain("Department Updates");
@@ -531,7 +531,7 @@ describe("EmployeeDashboard", () => {
     expect(screen.getByTestId("dashboard-department-workflow-layer").textContent).toContain("Finance");
     expect(screen.queryByTestId("dashboard-approval-workflow-layer")).toBeNull();
 
-    // /me shows a compact digest (no lane board); the full board lives on Workflow Command.
+    // /me shows a compact digest (no lane board); the full board lives on Projects.
     expect(screen.queryAllByTestId("dashboard-workflow-group").length).toBe(0);
     expect(screen.getAllByTestId("dashboard-workflow-item").length).toBe(2);
     expect(screen.getByTestId("dashboard-workflow-open").getAttribute("href")).toBe("/project?as=p060");
