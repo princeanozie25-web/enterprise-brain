@@ -58,10 +58,13 @@ Zero over-shared, zero wrongly hidden, in either matrix. Crucially, the
 company data — so the tests genuinely catch mistakes instead of quietly agreeing
 with the system they're testing. **One wrong answer fails the whole release.**
 
-> Scope of the 15,500: this proves *org-map / metadata visibility* — which
-> people, departments, and systems each identity may see. Visibility that flows
-> from one-off access grants and project assignments is a separate, in-progress
-> slice (see [Status](#status)); the number is not claimed to cover it.
+> Scope of the 15,500: this proves *org-map / metadata visibility* exhaustively —
+> which people, departments, and systems each identity may see, for all 124
+> principals × 125 nodes, covering both structural visibility (your department,
+> your reporting lines, the agents you own) **and** grant-reachable visibility
+> (the people a group you hold connects you to). Together with the 74,400
+> document decisions, every access decision the product makes is scope-proven
+> on this synthetic company — not certified secure.
 
 ## See it
 
@@ -164,11 +167,12 @@ real proof rather than a tautology.
 The same methodology, applied to the org map. For every (principal, node) pair —
 124 principals × 125 nodes (the org core + 120 people + 4 agents) = **15,500
 decisions** — the expected visibility is computed independently from the raw
-company structure (department, manager, group standing) and checked against the
-live metadata surfaces: **0 false-allow / 0 false-deny**
+company structure (department, manager, group membership) and checked against
+the live metadata surfaces: **0 false-allow / 0 false-deny**
 (`service/tests/metadata_conformance.rs`). A principal with no group standing
-projects to the empty set. (Grant- and capability-reachable visibility is the
-in-progress AUTH-2b slice and is intentionally outside this count.)
+projects to the empty set. The rule proven is the full one: structural core
+∪ grant-reachable — a principal also sees the co-members of every group it
+holds, and nothing else.
 
 ### Component notes
 
@@ -225,15 +229,16 @@ Live (enforced on the engine):
   the query, fail-closed, conformance-proven at 74,400/0/0.
 - **Session-bound identity** — login mints a signed session; the header can no
   longer assert who you are.
-- **Per-identity scoping of the org map** — structural visibility, proven at
-  15,500/0/0.
+- **Per-identity scoping of the org map** — structural ∪ grant-reachable
+  visibility, proven at 15,500/0/0.
+- **Audited "view-as"** — a cross-identity view is written to the audit log
+  before it renders, and is refused outright if it cannot be recorded; outside
+  demo mode it is admin-classed.
+- **Console live render** — the org-map view draws each identity's slice from
+  the scoped engine responses (captured live in [See it](#see-it)).
 
 In progress:
-- **Grant/capability-reachable visibility** (AUTH-2b) — completes metadata scoping.
-- **Admin "view-as"** (AUTH-3) — re-enables cross-identity views for authorised admins.
 - **Spend governance** and further security hardening.
-- **Console live render** — wiring the cockpit's org-map view to the new session
-  + scoping layer (the engine already enforces it).
 
 ## Running it
 

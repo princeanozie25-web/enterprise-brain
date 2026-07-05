@@ -173,7 +173,7 @@ describe("route separation", () => {
     expect(screen.getByTestId("view-door-atlas").textContent).toBe("Company Map");
     expect(screen.getByTestId("view-door-lane").textContent).toBe("Review Queue");
     expect(screen.getByTestId("view-door-project").getAttribute("href")).toBe("/project");
-    expect(screen.getByTestId("view-door-project").textContent).toBe("Workflow Command");
+    expect(screen.getByTestId("view-door-project").textContent).toBe("Projects");
     expect(screen.getByTestId("view-door-ask").getAttribute("href")).toBe("/ask");
     expect(screen.getByTestId("view-door-admin-graph").getAttribute("href")).toBe("/admin/graph");
     expect(screen.getByTestId("view-door-admin-graph").textContent).toBe("Operating Map");
@@ -187,7 +187,7 @@ describe("route separation", () => {
     expect(localStorage.getItem("ap-theme")).toBe("light");
   });
 
-  it("renders direct Ask and Workflow Command route shells without fabricating access", () => {
+  it("renders direct Ask and Projects route shells without fabricating access", () => {
     const ask = render(<Console view="ask" />);
     expect(screen.getByRole("heading", { name: "Ask" })).toBeTruthy();
     expect(screen.getByText("Ask a question. Every answer shows its sources.")).toBeTruthy();
@@ -206,7 +206,7 @@ describe("route separation", () => {
     expect(document.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
 
-  it("renders Bursar as an honest Ledger-room placeholder without fake spend data", () => {
+  it("renders the Spend Ledger as an honest placeholder without fake spend data", () => {
     render(<Console view="adminBursar" />);
 
     // Fail-closed: the admin-domain surface is gated behind an explicit,
@@ -217,8 +217,8 @@ describe("route separation", () => {
 
     const surface = screen.getByTestId("bursar-surface");
     const text = surface.textContent ?? "";
-    expect(text).toContain("Bursar Ledger Room");
-    expect(text).toContain("Governed spend for Enterprise Brain model actions.");
+    expect(text).toContain("Spend Ledger");
+    expect(text).toContain("What AI assistance costs, and who authorized it.");
     expect(text).toContain("Authorization before spend");
     expect(text).toContain("Fail closed by default");
     expect(text).toContain("Audit before effect");
@@ -228,7 +228,7 @@ describe("route separation", () => {
     expect(text).toContain("admin-side preview");
     expect(text).toContain("finance authority pending");
     // A4: the demo-status line lives on the SHELL notice (one per page),
-    // not inside the Bursar surface.
+    // not inside the Spend Ledger surface.
     const shellNotice = screen.getByTestId("shell-demo-identity-mode").textContent ?? "";
     expect(shellNotice).toContain("Demo Identity Mode");
     expect(shellNotice).toContain("Production identity is not connected");

@@ -69,7 +69,7 @@ function journeySteps(principal: string | null): JourneyStep[] {
       detail: "Admin-side spend preview; ledger data and authority are not connected here.",
       href: "/admin/bursar",
       key: "bursar-ledger-room",
-      label: "Bursar Ledger Room",
+      label: "Spend Ledger",
       surface: "bursar" as const,
     },
   ];

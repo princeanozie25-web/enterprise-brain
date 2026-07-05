@@ -430,6 +430,9 @@ function GraphAuditPanel({
           <h2 className="ap-register-chrome mt-0.5 truncate" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
             Operating Map
           </h2>
+          <p className="ap-soft mt-0.5" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            The organization as your access renders it.
+          </p>
         </div>
         <span
           className="ap-chip ap-register-chrome shrink-0 rounded-full px-2 py-1"
