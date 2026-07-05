@@ -17,6 +17,7 @@ import { BursarSurface } from "./BursarSurface";
 import { DocInspector } from "./DocInspector";
 import { EmployeeDashboard } from "./EmployeeDashboard";
 import { ExportButton } from "./ExportButton";
+import { FirstQuestionChip } from "./FirstQuestionChip";
 import { GraphRoom } from "./GraphRoom";
 import { GuidedJourney } from "./GuidedJourney";
 import { IdentityRail } from "./IdentityRail";
@@ -150,6 +151,12 @@ export function Console({
     setEntryDiff(diff.length > 0 ? diff : null);
     const subject = (params.get("subject") ?? "").trim();
     setEntrySubject(subject.length > 0 ? subject : null);
+    // First-run door (A2): a suggested question arrives staged, never
+    // auto-submitted — the person presses Ask themselves.
+    const staged = (params.get("q") ?? "").trim();
+    if (staged.length > 0) {
+      setQuery(staged);
+    }
   });
 
   useEffect(() => {
@@ -306,8 +313,10 @@ export function Console({
             ? "bursar"
             : null;
   const showGuidedJourney = journeySurface !== null && view !== "me";
-  const showShellDemoIdentity = view !== "adminGraph" && view !== "me";
-  const showAdminPreviewBadge = view === "adminGraph" || view === "adminBursar";
+  // A4: exactly ONE demo-status line per page. The shell notice carries it
+  // everywhere except the full-screen graph room, which has its own single
+  // header banner (the shell notice would be hidden beneath it anyway).
+  const showShellDemoIdentity = view !== "adminGraph";
   // FC-A1: the principal the rooms may fetch as — only once its server session
   // is minted. Until then it is null, so child rooms (whose effects run BEFORE
   // this shell's login effect) never fetch un-authenticated and 401. The Ask
@@ -319,9 +328,13 @@ export function Console({
     <div className="min-h-screen">
       <LensBar principal={principal} onSwitch={switchPrincipal} />
 
-      <nav className="ap-glass-nav border-x-0 border-t-0" aria-label="Product surfaces" data-testid="view-switcher">
+      {/* ONE VOCABULARY (A1): room labels come from the locked table. The
+          three rooms the table does not cover (Workflow Command, Operating
+          Map, Bursar Ledger Room) keep their existing labels — flagged in the
+          pass closeout rather than renamed ad hoc. */}
+      <nav className="ap-nav border-x-0 border-t-0" aria-label="Product surfaces" data-testid="view-switcher">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-1.5">
-          <ViewDoor label="Work Identity" href="/me" active={view === "me"} principal={principal} testId="view-door-me" />
+          <ViewDoor label="Home" href="/me" active={view === "me"} principal={principal} testId="view-door-me" />
           <ViewDoor
             label="Workflow Command"
             href="/project"
@@ -346,17 +359,8 @@ export function Console({
               testId="view-door-bursar"
             />
           )}
-          {showAdminPreviewBadge && (
-            <span
-              className="ap-register-evidence ap-soft rounded px-1.5 py-0.5"
-              style={{ fontSize: TYPE.scale.xs }}
-              data-testid="admin-preview-badge"
-            >
-              Demo Identity Mode: admin and spend rooms are previews; production authority binding is not connected
-            </span>
-          )}
-          <ViewDoor label="Knowledge View" href="/lens" active={view === "lens"} principal={principal} testId="view-door-lens" />
-          <ViewDoor label="Capability Map" href="/atlas" active={view === "atlas"} principal={principal} testId="view-door-atlas" />
+          <ViewDoor label="My Access" href="/lens" active={view === "lens"} principal={principal} testId="view-door-lens" />
+          <ViewDoor label="Company Map" href="/atlas" active={view === "atlas"} principal={principal} testId="view-door-atlas" />
           <ViewDoor label="Review Queue" href="/lane" active={view === "lane"} principal={principal} testId="view-door-lane" />
         </div>
       </nav>
@@ -382,6 +386,8 @@ export function Console({
           (view === "adminGraph" || view === "adminBursar" ? principal : activePrincipal) ??
           "no-work-identity"
         }
+        id="main"
+        tabIndex={-1}
         className={`mx-auto flex ${view === "me" ? "max-w-7xl gap-3 px-4 py-3" : "max-w-6xl gap-6 p-4"} flex-col md:flex-row ${irisClass}`}
         data-testid="iris-stage"
       >
@@ -401,7 +407,10 @@ export function Console({
             <BursarSurface />
           </AdminPreviewGate>
         ) : view === "me" ? (
-          <EmployeeDashboard actor={activePrincipal} />
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <FirstQuestionChip principal={activePrincipal} />
+            <EmployeeDashboard actor={activePrincipal} />
+          </div>
         ) : view === "lens" ? (
           <main className="min-w-0 flex-1">
             <LensRoom actor={activePrincipal} entryDiff={entryDiff} entrySubject={entrySubject} />
@@ -435,11 +444,11 @@ export function Console({
               Ask
             </h1>
             <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
-              Permission-aware Ask with Work Identity scope, provenance, and fail-closed grant checks.
+              Ask a question. Every answer shows its sources.
             </p>
           </MotionPanel>
 
-          <MotionPanel className="ap-glass-elevated rounded-2xl p-4" delayIndex={1}>
+          <MotionPanel className="ap-hero rounded-2xl p-4" delayIndex={1}>
             {(entryGrantId !== null || grantContext !== null || grantContextUnavailable) && (
               <GrantedAskContextPanel
                 capabilityId={entryCapability}
@@ -452,16 +461,17 @@ export function Console({
             <textarea
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              aria-label="Ask a question"
               placeholder={
                 principal === null
-                  ? "Choose a Work Identity first"
+                  ? "Pick who you are first — answers depend on what you're allowed to see."
                   : grantContext
                     ? "Ask within this granted capability context..."
                     : "Ask within your scope..."
               }
               disabled={principal === null}
               rows={2}
-              className="w-full resize-none rounded px-3 py-2"
+              className="w-full resize-none rounded-lg px-3 py-2"
               style={{ fontSize: TYPE.scale.sm }}
               data-testid="query-input"
             />
@@ -492,7 +502,7 @@ export function Console({
                   asking ||
                   (entryGrantId !== null && entryCapability !== null && grantContext === null)
                 }
-                className="ap-affordance-button ml-auto min-h-10 self-center rounded px-3 py-2"
+                className="ap-affordance-button ml-auto min-h-10 self-center rounded-lg px-3 py-2"
                 style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
                 data-testid="ask-button"
               >
@@ -501,9 +511,23 @@ export function Console({
             </div>
           </MotionPanel>
 
+          {/* A3: async outcomes are announced — answer arrival and the quiet
+              refusal both reach assistive tech without stealing focus. */}
+          <p className="sr-only" role="status" aria-live="polite" data-testid="ask-live-status">
+            {asking
+              ? "Looking for an answer within your access."
+              : envelope
+                ? envelope.answer
+                  ? `Answer ready, with ${envelope.results.length} source document${envelope.results.length === 1 ? "" : "s"}.`
+                  : envelope.results.length > 0
+                    ? `Found ${envelope.results.length} source document${envelope.results.length === 1 ? "" : "s"} within your access; no written answer was generated in this build.`
+                    : "Nothing within your access supports an answer, and nothing was invented."
+                : ""}
+          </p>
+
           <div className="mt-4 space-y-4">
             {asking && (
-              <MotionPanel className="ap-glass-panel rounded-2xl p-4">
+              <MotionPanel className="ap-card rounded-2xl p-4">
                 <Skeleton lines={3} />
               </MotionPanel>
             )}
@@ -524,7 +548,7 @@ export function Console({
                   />
                 </div>
                 <AnswerCard envelope={envelope} onOpenDoc={openDoc} />
-                <MotionSection className="ap-glass-panel rounded-2xl p-3" delayIndex={1}>
+                <MotionSection className="ap-card rounded-2xl p-3" delayIndex={1}>
                   <h2
                     className="ap-soft px-2 pb-1 pt-1 uppercase tracking-wide"
                     style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -564,8 +588,12 @@ export function Console({
  */
 const BROAD_SEARCH_AVAILABLE = false;
 const VERIFIED_ANSWERS_AVAILABLE = false;
-const BROAD_SEARCH_UNAVAILABLE_REASON = "Unavailable in this build — semantic index not loaded";
-const VERIFIED_ANSWERS_UNAVAILABLE_REASON = "Unavailable in this build — verification model not loaded";
+// A3: plain reasons. The second line exists because "Verified answers: OFF"
+// was read as "hallucinations: ON" — every answer always carries its sources,
+// with or without the verification pass.
+const BROAD_SEARCH_UNAVAILABLE_REASON = "Not available in this build.";
+const VERIFIED_ANSWERS_UNAVAILABLE_REASON =
+  "Not available in this build — every answer always shows its sources either way.";
 
 /**
  * A labelled toggle switch for the Ask controls. Keyboard-accessible
@@ -666,7 +694,7 @@ function GrantedAskContextPanel({
   const title = serverContext?.capability.name ?? capabilityId ?? "Granted capability";
   return (
     <MotionSection
-      className="ap-glass-panel mb-3 rounded-2xl p-3"
+      className="ap-card mb-3 rounded-2xl p-3"
       data-testid="ask-granted-context"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -679,7 +707,7 @@ function GrantedAskContextPanel({
           </h2>
         </div>
         <span
-          className="ap-chip ap-register-chrome rounded px-2 py-1"
+          className="ap-chip ap-register-chrome rounded-lg px-2 py-1"
           style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
         >
           {status}
@@ -705,7 +733,7 @@ function GrantedAskContextPanel({
 function GrantChip({ children }: { children: React.ReactNode }) {
   return (
     <span
-      className="ap-chip ap-register-evidence rounded px-1.5 py-0.5"
+      className="ap-chip ap-register-evidence rounded-lg px-1.5 py-0.5"
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}
@@ -734,7 +762,7 @@ function ViewDoor({
   if (active) {
     return (
       <span
-        className="ap-register-chrome rounded px-2 py-0.5"
+        className="ap-register-chrome rounded-lg px-2 py-0.5"
         style={{ fontSize: TYPE.scale.xs, fontWeight: 600, backgroundColor: DERIVED.wash }}
         aria-current="page"
         data-testid={testid}
@@ -747,7 +775,7 @@ function ViewDoor({
   return (
     <a
       href={`${href}${carry}`}
-      className="ap-washable ap-register-chrome rounded px-2 py-0.5"
+      className="ap-washable ap-register-chrome rounded-lg px-2 py-0.5"
       style={{ fontSize: TYPE.scale.xs, fontWeight: 500 }}
       data-testid={testid}
     >

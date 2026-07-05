@@ -127,33 +127,38 @@ function stubRouteFetch() {
 }
 
 describe("route separation", () => {
-  it("renders the root as an intentional product entry route", () => {
+  it("renders the root as the identity-picker front door (A2)", () => {
     render(<ProductHome />);
 
     expect(screen.getByTestId("root-home")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Company Operating System" })).toBeTruthy();
-    expect(screen.getByText("Governed knowledge")).toBeTruthy();
-    expect(screen.getByText("Governed workflows")).toBeTruthy();
-    expect(screen.getByText("Governed spend")).toBeTruthy();
-    expect(screen.getByTestId("root-demo-flow").textContent).toContain("Work Identity");
-    expect(screen.getByTestId("root-demo-flow").textContent).toContain("Granted Knowledge");
-    expect(screen.getByTestId("root-demo-flow").textContent).toContain("Bursar Ledger Room");
-    expect(screen.getByTestId("root-link-me").getAttribute("href")).toBe("/me?as=p060");
-    expect(screen.getByTestId("root-link-me").textContent).toContain("Work Identity");
-    expect(screen.getByTestId("root-link-project").getAttribute("href")).toBe("/project");
-    expect(screen.getByTestId("root-link-project").textContent).toContain("Workflow Command");
-    expect(screen.getByTestId("root-link-ask").getAttribute("href")).toBe("/ask?as=p060");
-    expect(screen.getByTestId("root-link-ask").textContent).toContain("Permission-aware Ask");
-    expect(screen.getByTestId("root-link-admin-graph").getAttribute("href")).toBe("/admin/graph?as=p060");
-    expect(screen.getByTestId("root-link-admin-graph").textContent).toContain("Operating Map");
-    expect(screen.getByTestId("root-link-admin-bursar").getAttribute("href")).toBe("/admin/bursar");
-    expect(screen.getByTestId("root-link-admin-bursar").textContent).toContain("Bursar Ledger Room");
-    expect(screen.getByTestId("root-demo-identity-mode").textContent).toContain("Demo Identity Mode");
-    expect(screen.getByTestId("root-demo-identity-mode").textContent).toContain("Production identity is not connected");
-    expect(screen.getByTestId("root-buyer-trust-posture").textContent).toContain("Enterprise identity boundary");
-    expect(screen.getByTestId("root-buyer-trust-posture").textContent).toContain("Admin and Bursar routes are separated");
-    expect(screen.getByTestId("root-admin-note").textContent).toContain("Production");
-    expect(screen.getByTestId("root-admin-note").textContent).toContain("ledger producers");
+    // One product name, one sentence — nothing else competes.
+    expect(screen.getByRole("heading", { name: "Enterprise Brain" })).toBeTruthy();
+    expect(screen.getByTestId("root-one-sentence").textContent).toContain(
+      "Every answer respects what you're allowed to see",
+    );
+    expect(screen.queryByText("Company Operating System")).toBeNull();
+    expect((screen.getByTestId("root-home").textContent ?? "")).not.toContain("Aperture");
+
+    // The picker is the front door: heading, the verbatim demo-mode line,
+    // and the three featured REAL fixture identities. No hardwired p060.
+    expect(screen.getByRole("heading", { name: "Who are you today?" })).toBeTruthy();
+    const demoLine = screen.getByTestId("identity-picker-demo-line").textContent ?? "";
+    expect(demoLine).toContain("Demo mode: sign in as anyone — no password.");
+    expect(demoLine).toContain("View-as is open to everyone.");
+    expect(demoLine).toContain("Nothing here is deployed.");
+    expect(screen.getByTestId("identity-option-p060").getAttribute("href")).toBe("/me?as=p060");
+    expect(screen.getByTestId("identity-option-p060").textContent).toContain("Felix Osei");
+    expect(screen.getByTestId("identity-option-p088").getAttribute("href")).toBe("/me?as=p088");
+    expect(screen.getByTestId("identity-option-p088").textContent).toContain("Tomas Reyes");
+    expect(screen.getByTestId("identity-option-p_void").getAttribute("href")).toBe("/me?as=p_void");
+    expect(screen.getByTestId("identity-option-p_void").textContent).toContain("No access");
+
+    // The old wall of route cards / doctrine tiles / trust grid is gone —
+    // the front door asks ONE question.
+    expect(screen.queryByTestId("root-link-me")).toBeNull();
+    expect(screen.queryByTestId("root-demo-flow")).toBeNull();
+    expect(screen.queryByTestId("root-buyer-trust-posture")).toBeNull();
+    expect(screen.queryByTestId("root-admin-note")).toBeNull();
     expect(screen.getByTestId("root-home").textContent ?? "").not.toMatch(/supplier|invoice|procurement/i);
     expect(screen.getByTestId("root-home").textContent ?? "").not.toMatch(/derived-only|derived only|SOC2|SOC 2|ISO27001|ISO 27001|certified|certification|live SSO|live IAM/i);
   });
@@ -162,7 +167,11 @@ describe("route separation", () => {
     render(<Console view="me" />);
 
     expect(screen.getByTestId("view-door-me").getAttribute("aria-current")).toBe("page");
-    expect(screen.getByTestId("view-door-me").textContent).toBe("Work Identity");
+    // A1: the locked vocabulary — /me is Home; lens/atlas carry plain names.
+    expect(screen.getByTestId("view-door-me").textContent).toBe("Home");
+    expect(screen.getByTestId("view-door-lens").textContent).toBe("My Access");
+    expect(screen.getByTestId("view-door-atlas").textContent).toBe("Company Map");
+    expect(screen.getByTestId("view-door-lane").textContent).toBe("Review Queue");
     expect(screen.getByTestId("view-door-project").getAttribute("href")).toBe("/project");
     expect(screen.getByTestId("view-door-project").textContent).toBe("Workflow Command");
     expect(screen.getByTestId("view-door-ask").getAttribute("href")).toBe("/ask");
@@ -170,7 +179,8 @@ describe("route separation", () => {
     expect(screen.getByTestId("view-door-admin-graph").textContent).toBe("Operating Map");
     expect(screen.queryByTestId("view-door-bursar")).toBeNull();
     expect(screen.queryByTestId("admin-preview-badge")).toBeNull();
-    expect(screen.queryByTestId("shell-demo-identity-mode")).toBeNull();
+    // A4: the shell notice is THE single demo-status line — on /me too.
+    expect(screen.getByTestId("shell-demo-identity-mode")).toBeTruthy();
     expect(screen.getByTestId("theme-toggle").textContent).toContain("Light mode");
     fireEvent.click(screen.getByTestId("theme-toggle"));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
@@ -180,7 +190,7 @@ describe("route separation", () => {
   it("renders direct Ask and Workflow Command route shells without fabricating access", () => {
     const ask = render(<Console view="ask" />);
     expect(screen.getByRole("heading", { name: "Ask" })).toBeTruthy();
-    expect(screen.getByText("Permission-aware Ask with Work Identity scope, provenance, and fail-closed grant checks.")).toBeTruthy();
+    expect(screen.getByText("Ask a question. Every answer shows its sources.")).toBeTruthy();
     expect(screen.queryByTestId("view-door-bursar")).toBeNull();
     ask.unmount();
 
@@ -188,8 +198,10 @@ describe("route separation", () => {
     const empty = screen.getByTestId("project-empty");
     expect(empty.textContent).toContain("Choose a Work Identity to review work.");
     expect(empty.textContent).toContain("real capability-backed workflow");
-    expect(screen.getByTestId("project-empty-work-identity-link").getAttribute("href")).toBe("/me?as=p060");
-    expect(screen.getByTestId("project-empty-operating-map-link").getAttribute("href")).toBe("/admin/graph?as=p060");
+    // A2: no hardwired identity — identity-less links carry no ?as; the
+    // front-door picker catches them.
+    expect(screen.getByTestId("project-empty-work-identity-link").getAttribute("href")).toBe("/me");
+    expect(screen.getByTestId("project-empty-operating-map-link").getAttribute("href")).toBe("/admin/graph");
     expect(screen.queryByTestId("view-door-bursar")).toBeNull();
     expect(document.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
@@ -215,8 +227,11 @@ describe("route separation", () => {
     expect(text).toContain("producer not connected in this UI surface");
     expect(text).toContain("admin-side preview");
     expect(text).toContain("finance authority pending");
-    expect(text).toContain("Demo Identity Mode");
-    expect(text).toContain("Production identity is not connected");
+    // A4: the demo-status line lives on the SHELL notice (one per page),
+    // not inside the Bursar surface.
+    const shellNotice = screen.getByTestId("shell-demo-identity-mode").textContent ?? "";
+    expect(shellNotice).toContain("Demo Identity Mode");
+    expect(shellNotice).toContain("Production identity is not connected");
     expect(text).toContain("No ledger fixture is connected in this workspace yet.");
     expect(text).toContain("Same console: the answer, and the governed spend it cost");
     expect(text).not.toMatch(/supplier|invoice|procurement|duplicate payment|savings opportunity/i);

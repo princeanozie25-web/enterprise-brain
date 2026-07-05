@@ -9,7 +9,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 
 import type { GraphResponse, NodeSummary, OrgStats } from "@/lib/api";
 import { GEOMETRY } from "@/lib/tokens";
-import { OrgGraph, nameVisible } from "@/components/OrgGraph";
+import { OrgGraph, PEOPLE_CLUSTER_THRESHOLD } from "@/components/OrgGraph";
 import { GraphRoom, lensHref } from "@/components/GraphRoom";
 import { GraphSidebar } from "@/components/GraphSidebar";
 import { GraphInspector } from "@/components/GraphInspector";
@@ -129,16 +129,17 @@ describe("U-33: the graph renders core, hubs, agents, sources, and all people", 
 // U-34 ANCHOR LABELS vs MEMBER HOVER-REVEAL
 // ---------------------------------------------------------------------------
 
-describe("U-34: anchors are labelled; members reveal their name on hover", () => {
-  it("labels anchors always and members only on hover", () => {
+describe("U-34 (ring law): every rendered person carries their full name, always", () => {
+  it("names anchors AND members without hover or zoom — no monogram caterpillar", () => {
     renderGraph();
-    expect(within(personNode("p060")).getByTestId("graph-person-name").textContent).toBe("Felix Osei");
-    const member = personNode("p061");
-    expect(within(member).queryByTestId("graph-person-name")).toBeNull();
-    fireEvent.mouseEnter(member);
-    expect(within(member).getByTestId("graph-person-name").textContent).toBe("Ana Flores");
-    fireEvent.mouseLeave(member);
-    expect(within(personNode("p061")).queryByTestId("graph-person-name")).toBeNull();
+    for (const [id, name] of [
+      ["p060", "Felix Osei"],
+      ["p061", "Ana Flores"],
+      ["p074", "Yuki Moreau"],
+      ["p075", "Mei Kim"],
+    ] as const) {
+      expect(within(personNode(id)).getByTestId("graph-person-name").textContent).toBe(name);
+    }
   });
 });
 
@@ -217,26 +218,96 @@ describe("U-38: pan/zoom transforms the scene and Fit/reset restores it", () => 
 });
 
 // ---------------------------------------------------------------------------
-// U-39 LOD RULE (pure) + U-40 ZOOM REVEALS REAL NAMES
+// U-39 THE RING LAW (B1) — real nodes, keyboard operability, honest clusters
 // ---------------------------------------------------------------------------
 
-describe("U-39: the LOD name rule", () => {
-  it("names anchors always; members only when active or past the reveal scale", () => {
-    expect(nameVisible("anchor", false, 1)).toBe(true);
-    expect(nameVisible("member", false, 1)).toBe(false);
-    expect(nameVisible("member", true, 1)).toBe(true);
-    expect(nameVisible("member", false, GEOMETRY.graphLodReveal - 0.01)).toBe(false);
-    expect(nameVisible("member", false, GEOMETRY.graphLodReveal)).toBe(true);
+/** A synthetic >threshold payload for the cluster rule (a test fixture IS a
+ * payload — every rendered node still maps to one of its entries). */
+function bigGraph(peopleCount: number): GraphResponse {
+  const people = Array.from({ length: peopleCount }, (_, i) => ({
+    id: `p${String(i + 1).padStart(3, "0")}`,
+    display_name: `Person ${i + 1}`,
+    title: "Analyst",
+    department_id: i % 2 === 0 ? "Finance" : "IT",
+    avatar_ref: "",
+    is_self: i === 0,
+    ring: "member" as const,
+  }));
+  return { ...GRAPH, people, edges: [], projects: [], tools: [], sources: [] };
+}
+
+describe("U-39 (T-B8): every rendered graph node maps to a real payload entity", () => {
+  it("renders zero decorative/synthetic nodes — all data-ids come from the payload", () => {
+    const { container } = renderGraph({ query: "Access Review" }); // projects revealed too
+    const payloadIds = new Set<string>([
+      GRAPH.center.id,
+      ...GRAPH.departments.map((d) => d.id),
+      ...GRAPH.people.map((p) => p.id),
+      ...GRAPH.tools.map((t) => t.id),
+      ...GRAPH.sources.map((s) => s.id),
+      ...GRAPH.projects.map((p) => p.id),
+    ]);
+    const rendered = Array.from(container.querySelectorAll("[data-id]"));
+    expect(rendered.length).toBeGreaterThan(0);
+    for (const el of rendered) {
+      expect(payloadIds.has(el.getAttribute("data-id")!)).toBe(true);
+    }
+  });
+
+  it("mirrors the rendered nodes for screen readers", () => {
+    renderGraph();
+    const mirror = screen.getByTestId("graph-sr-mirror");
+    for (const person of GRAPH.people) {
+      expect(mirror.textContent).toContain(person.display_name);
+    }
+    expect(mirror.textContent).toContain("Bryremead Distribution Ltd");
   });
 });
 
-describe("U-40: zooming in reveals members' real names", () => {
-  it("a member shows its true display_name once zoomed past the reveal scale", () => {
+describe("U-39b (T-B2): the graph is keyboard-operable", () => {
+  it("nodes are tab stops; Enter activates; Escape returns focus to the graph root", () => {
+    const onSelectNode = vi.fn();
+    renderGraph({ onSelectNode });
+    const node = personNode("p061");
+    expect(node.getAttribute("tabindex")).toBe("0");
+    expect(node.getAttribute("role")).toBe("button");
+    node.focus();
+    fireEvent.keyDown(node, { key: "Enter" });
+    expect(onSelectNode).toHaveBeenCalledWith({ id: "p061", kind: "human", label: "Ana Flores" });
+    fireEvent.keyDown(node, { key: "Escape" });
+    expect(document.activeElement).toBe(screen.getByTestId("org-graph"));
+  });
+
+  it("arrow keys traverse the ring order", () => {
     renderGraph();
-    const svg = screen.getByLabelText("Organization graph");
-    expect(within(personNode("p075")).queryByTestId("graph-person-name")).toBeNull();
-    fireEvent.wheel(svg, { deltaY: -700, clientX: 400, clientY: 400 });
-    expect(within(personNode("p075")).getByTestId("graph-person-name").textContent).toBe("Mei Kim");
+    const center = screen.getByTestId("graph-center");
+    center.focus();
+    fireEvent.keyDown(center, { key: "ArrowRight" });
+    // The next stop after the center is the first department hub.
+    const finance = screen.getAllByTestId("graph-dept").find((d) => d.getAttribute("data-dept") === "Finance")!;
+    expect(document.activeElement).toBe(finance);
+  });
+});
+
+describe("U-40 (cluster rule): past the threshold the ring collapses to honest department clusters", () => {
+  it(`over ${PEOPLE_CLUSTER_THRESHOLD} people: clusters with in-scope counts, no person nodes`, () => {
+    render(
+      <OrgGraph graph={bigGraph(PEOPLE_CLUSTER_THRESHOLD + 2)} onSelectNode={() => {}} onFocusDept={() => {}} />,
+    );
+    expect(screen.queryAllByTestId("graph-person").length).toBe(0);
+    const clusters = screen.getAllByTestId("graph-people-cluster");
+    expect(clusters.length).toBe(2);
+    const counts = clusters.map((c) => Number(c.getAttribute("data-count"))).sort((a, b) => a - b);
+    expect(counts[0] + counts[1]).toBe(PEOPLE_CLUSTER_THRESHOLD + 2);
+    expect(clusters[0].textContent).toContain("people in scope");
+  });
+
+  it(`at or under ${PEOPLE_CLUSTER_THRESHOLD} people: every person renders individually`, () => {
+    render(
+      <OrgGraph graph={bigGraph(PEOPLE_CLUSTER_THRESHOLD)} onSelectNode={() => {}} onFocusDept={() => {}} />,
+    );
+    expect(screen.getAllByTestId("graph-person").length).toBe(PEOPLE_CLUSTER_THRESHOLD);
+    expect(screen.queryAllByTestId("graph-people-cluster").length).toBe(0);
   });
 });
 
@@ -616,7 +687,7 @@ describe("U-48: the Org Brain room wires counts, selection, and theme", () => {
     await waitFor(() => expect(screen.getByTestId("inspector-card")).toBeTruthy());
     expect(screen.getByTestId("inspector-name").textContent).toBe("Yuki Moreau");
     expect(screen.getByTestId("inspector-relationship-trace").textContent).toContain("Yuki Moreau");
-    expect(screen.getByTestId("inspector-enter-lens").textContent).toContain("Knowledge View");
+    expect(screen.getByTestId("inspector-enter-lens").textContent).toContain("access view");
     expect(document.querySelector("a[href*='/person']")).toBeNull();
     await waitFor(() =>
       expect(screen.getByTestId("graph-relationship-summary").textContent).toContain("Relationships connected to Yuki Moreau"),

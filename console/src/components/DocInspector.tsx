@@ -1,6 +1,9 @@
+"use client";
+
 import type { DocCard } from "@/lib/api";
 import { INSPECTOR_WIDTH } from "@/lib/constants";
 import { TYPE } from "@/lib/tokens";
+import { useModalDialogFocus } from "./A11yDialog";
 import { SensitivityBadge } from "./SensitivityBadge";
 import { Skeleton } from "./Skeleton";
 
@@ -8,9 +11,12 @@ import { Skeleton } from "./Skeleton";
  * The doc inspector side sheet (420px). Restyled into the Aperture language
  * (hairline elevation — the shadow is gone; whitespace and the 1px rule do
  * the work). A 404 — byte-identical for out-of-scope and nonexistent —
- * renders ONE empty state (U-5). Flagged in the AP-1 closeout: this file
- * was not on the restyle list, but the color law binds every visual
- * decision and its old shadow + off-palette grays violated it.
+ * renders ONE empty state (U-5).
+ *
+ * B6 (comprehension pass): a real dialog — role/aria-modal, focus moves in on
+ * open, Tab is trapped, Escape closes, focus returns to the opener. The
+ * behavior comes from the shared useModalDialogFocus primitive (extracted
+ * from the /me drawer), not a local copy.
  */
 export function DocInspector({
   open,
@@ -26,11 +32,18 @@ export function DocInspector({
   onClose: () => void;
   onOpenDoc: (docId: string) => void;
 }) {
+  const { dialogRef, onKeyDown } = useModalDialogFocus({ open, onClose });
   if (!open) {
     return null;
   }
   return (
     <aside
+      ref={dialogRef as React.MutableRefObject<HTMLElement | null>}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Document"
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
       className="ap-card fixed inset-y-0 right-0 z-20 flex flex-col border-y-0 border-r-0"
       style={{ width: INSPECTOR_WIDTH }}
       data-testid="doc-inspector"
@@ -45,7 +58,7 @@ export function DocInspector({
         <button
           type="button"
           onClick={onClose}
-          className="ap-washable ap-soft rounded px-2 py-0.5"
+          className="ap-washable ap-soft rounded-lg px-2 py-0.5"
           style={{ fontSize: TYPE.scale.sm }}
           data-testid="inspector-close"
         >
@@ -74,7 +87,7 @@ export function DocInspector({
             </p>
             {card.superseded && (
               <div
-                className="ap-card ap-soft rounded px-3 py-2"
+                className="ap-card ap-soft rounded-lg px-3 py-2"
                 style={{ fontSize: TYPE.scale.xs }}
                 data-testid="superseded-notice"
               >

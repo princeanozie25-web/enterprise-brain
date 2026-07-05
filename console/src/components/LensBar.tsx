@@ -48,8 +48,10 @@ export function LensBar({
     onSwitch(id);
   };
 
+  // A4: the LensBar no longer carries its own demo-status line — the shell's
+  // single DemoIdentityNotice (or the room's one banner) does. One per page.
   return (
-    <header className="ap-glass-nav border-x-0 border-t-0" data-testid="lens-bar">
+    <header className="ap-nav border-x-0 border-t-0" data-testid="lens-bar">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
@@ -69,7 +71,7 @@ export function LensBar({
             </span>
             {principal && (
               <span
-                className="ap-chip ap-register-chrome rounded px-1.5 py-0.5"
+                className="ap-chip ap-register-chrome rounded-lg px-1.5 py-0.5"
                 style={{
                   fontSize: TYPE.scale.xs,
                   color: COLOR.inkSoft,
@@ -85,18 +87,12 @@ export function LensBar({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onFocus={() => setOpen(true)}
+            aria-label="Search demo Work Identities"
             placeholder="Search demo Work Identities"
-            className="w-full rounded px-2 py-1 sm:w-64"
+            className="w-full rounded-lg px-2 py-1 sm:w-64"
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="principal-search"
           />
-          <span
-            className="ap-chip ap-register-chrome rounded-full px-2 py-1"
-            style={{ fontSize: TYPE.scale.xs }}
-            data-testid="demo-banner"
-          >
-            Demo Identity Mode: Production identity is not connected.
-          </span>
         </div>
         <ThemeToggle compact />
       </div>
@@ -104,7 +100,7 @@ export function LensBar({
       {listVisible && (
         <div className="ap-fade-view mx-auto max-w-6xl px-4 pb-2">
           <div
-            className="ap-card ap-elevated overflow-y-auto rounded"
+            className="ap-card ap-elevated overflow-y-auto rounded-lg"
             style={{ height: PRINCIPAL_LIST_HEIGHT }}
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
             data-testid="principal-list"
@@ -134,9 +130,6 @@ export function LensBar({
         </div>
       )}
 
-      <p className="sr-only">
-        Work Identity selection previews permission boundaries in this local pilot workspace. Production identity is not connected.
-      </p>
     </header>
   );
 }

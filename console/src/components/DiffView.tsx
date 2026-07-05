@@ -109,16 +109,16 @@ export function DiffView({
         <button
           type="button"
           onClick={onClose}
-          className="ap-washable ap-soft rounded px-2 py-0.5"
+          className="ap-washable ap-soft rounded-lg px-2 py-0.5"
           style={{ fontSize: TYPE.scale.xs }}
           data-testid="diff-close"
         >
-          Back to Knowledge View
+          Back to My Access
         </button>
       </div>
 
       {loading && (
-        <div className="ap-card rounded p-4">
+        <div className="ap-card rounded-lg p-4">
           <Skeleton lines={4} />
         </div>
       )}
@@ -181,7 +181,7 @@ export function DiffView({
 
           {/* The shared table: divergent routes lead; both chips per row. */}
           {ordered.length > 0 && (
-            <section className="ap-card mt-4 rounded p-3" data-testid="diff-shared">
+            <section className="ap-card mt-4 rounded-lg p-3" data-testid="diff-shared">
               <h3
                 className="ap-soft px-2 pb-1 uppercase tracking-wide"
                 style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -215,7 +215,7 @@ function Passport({
   human?: PersonCard;
 }) {
   return (
-    <section className="ap-card min-w-0 flex-1 rounded p-4" data-testid={`diff-passport-${side}`}>
+    <section className="ap-card min-w-0 flex-1 rounded-lg p-4" data-testid={`diff-passport-${side}`}>
       <div className="flex flex-wrap items-center gap-2">
         <PersonAvatar
           principalId={id}
@@ -239,7 +239,7 @@ function Passport({
           {id}
         </span>
         <span
-          className="ap-hairline ap-register-chrome ap-soft rounded border px-1.5 py-0.5"
+          className="ap-hairline ap-register-chrome ap-soft rounded-lg border px-1.5 py-0.5"
           style={{ fontSize: TYPE.scale.xs }}
         >
           {kind}
@@ -268,7 +268,7 @@ function ExclusiveColumn({
       </h3>
       <div className="space-y-3">
         {sections.map((section) => (
-          <section className="ap-card rounded p-3" key={section.reason}>
+          <section className="ap-card rounded-lg p-3" key={section.reason}>
             <div className="flex items-baseline justify-between gap-3 px-2 pb-1">
               <h4
                 className="ap-register-chrome"
@@ -278,7 +278,7 @@ function ExclusiveColumn({
                 {section.sentence}
               </h4>
               <span
-                className="ap-hairline ap-register-evidence ap-soft shrink-0 rounded border px-1.5 py-0.5"
+                className="ap-hairline ap-register-evidence ap-soft shrink-0 rounded-lg border px-1.5 py-0.5"
                 style={{ fontSize: TYPE.scale.xs }}
                 data-testid="diff-section-rule"
               >
@@ -388,7 +388,7 @@ function SharedRowItem({
             the divergence marker — no icon, no color. */}
         <span className="flex shrink-0 items-center gap-1.5 pr-2">
           <span
-            className="ap-hairline ap-register-evidence ap-soft rounded border px-1 py-0.5"
+            className="ap-hairline ap-register-evidence ap-soft rounded-lg border px-1 py-0.5"
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="shared-chip-left"
           >
@@ -396,7 +396,7 @@ function SharedRowItem({
           </span>
           <span className="ap-hairline self-stretch border-l" aria-hidden="true" />
           <span
-            className="ap-hairline ap-register-evidence ap-soft rounded border px-1 py-0.5"
+            className="ap-hairline ap-register-evidence ap-soft rounded-lg border px-1 py-0.5"
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="shared-chip-right"
           >

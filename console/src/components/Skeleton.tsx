@@ -9,7 +9,7 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
       {Array.from({ length: lines }, (_, i) => (
         <div
           key={i}
-          className="h-3 rounded"
+          className="h-3 rounded-lg"
           style={{ width: `${88 - i * 14}%`, backgroundColor: DERIVED.wash }}
         />
       ))}

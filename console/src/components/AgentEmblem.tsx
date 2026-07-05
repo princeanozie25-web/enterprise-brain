@@ -27,7 +27,7 @@ export function AgentEmblem({
     <button
       type="button"
       onClick={() => onNavigate(agent.agent_id)}
-      className="ap-washable rounded p-2 text-left"
+      className="ap-washable rounded-lg p-2 text-left"
       data-testid="agent-emblem"
     >
       <svg

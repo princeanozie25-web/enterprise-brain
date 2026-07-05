@@ -133,10 +133,10 @@ export function AtlasRoom({
           className="ap-register-chrome"
           style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
         >
-          Capability Map
+          Company Map
         </h1>
         <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
-          The capability surface: work structure first, evidence filtered by the selected Work Identity.
+          How the company is organized.
         </p>
       </header>
 
@@ -144,7 +144,7 @@ export function AtlasRoom({
       <RoomActor card={atlas?.actor ?? null} />
 
       {loading && (
-        <div className="ap-card rounded p-4">
+        <div className="ap-card rounded-lg p-4">
           <Skeleton lines={4} />
         </div>
       )}
@@ -164,7 +164,7 @@ export function AtlasRoom({
       {!loading &&
         atlas &&
         atlas.strategies.map((strategy) => (
-          <section key={strategy.id} className="ap-card mt-4 rounded p-3" data-testid="strategy-band">
+          <section key={strategy.id} className="ap-card mt-4 rounded-lg p-3" data-testid="strategy-band">
             <div className="flex items-baseline justify-between gap-3 px-1 pb-2">
               <h2
                 className="ap-register-chrome"
@@ -278,11 +278,11 @@ function CapabilityCard({
   // The viewer's OWN remainder — their produce, legal to count.
   const remainder = capability.docs.length - shown.length;
   return (
-    <div className="ap-card rounded p-2" data-testid="capability-card">
+    <div className="ap-card rounded-lg p-2" data-testid="capability-card">
       <button
         type="button"
         onClick={onOpen}
-        className="ap-washable block w-full rounded text-left"
+        className="ap-washable block w-full rounded-lg text-left"
         data-testid="capability-open"
       >
         <span
@@ -391,7 +391,7 @@ function CapabilitySheet({
         <button
           type="button"
           onClick={onClose}
-          className="ap-washable ap-soft rounded px-2 py-0.5"
+          className="ap-washable ap-soft rounded-lg px-2 py-0.5"
           style={{ fontSize: TYPE.scale.sm }}
           data-testid="sheet-close"
         >

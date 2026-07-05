@@ -223,9 +223,13 @@ describe("U-22: the affordance lives in four homes and sends params only", () =>
     expect((verified as HTMLButtonElement).disabled).toBe(true);
     expect(broad.getAttribute("aria-disabled")).toBe("true");
     expect(verified.getAttribute("aria-disabled")).toBe("true");
-    expect(screen.getByTestId("toggle-hybrid-reason").textContent).toContain("semantic index not loaded");
-    expect(screen.getByTestId("toggle-judge-reason").textContent).toContain("verification model not loaded");
-    // Clicking a disabled toggle does nothing (no flip, no 500).
+    // A3: plain reasons, and the "Verified" line kills the "hallucinations
+    // on when off" reading (every answer always shows its sources).
+    expect(screen.getByTestId("toggle-hybrid-reason").textContent).toBe("Not available in this build.");
+    expect(screen.getByTestId("toggle-judge-reason").textContent).toContain(
+      "every answer always shows its sources either way",
+    );
+    // Clicking a disabled toggle does nothing (no flip, no engine error).
     fireEvent.click(broad);
     expect(broad.getAttribute("aria-checked")).toBe("false");
   });

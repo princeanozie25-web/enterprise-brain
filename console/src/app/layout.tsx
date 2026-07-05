@@ -4,8 +4,9 @@ import "@/fonts/fonts.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Ask Brain — Aperture",
-  description: "Enterprise Brain realization surface — demo identity mode",
+  title: "Enterprise Brain",
+  description:
+    "Ask your company's knowledge. Every answer respects what you're allowed to see. Demo identity mode.",
 };
 
 // Every CSS variable and base rule is GENERATED from tokens.ts: no color,
@@ -72,6 +73,7 @@ const apertureBase = `
   --line-display: ${TYPE.line.display};
   --dur-quick: ${MOTION.fadeQuick};
   --dur-view: ${MOTION.fadeView};
+  --dur-lift: ${MOTION.lift};
   --dur-iris: ${MOTION.iris};
   --ease-out: ${MOTION.easeOut};
   --ease-iris: ${MOTION.irisEase};
@@ -126,40 +128,22 @@ body {
   border-color: var(--hairline-strong);
   box-shadow: var(--shadow-focus);
 }
-.ap-glass {
-  background: var(--glass-fill);
-  border-color: var(--glass-border);
-  backdrop-filter: blur(var(--material-blur));
-  -webkit-backdrop-filter: blur(var(--material-blur));
-  box-shadow: var(--shadow-1), inset 0 1px 0 var(--glass-highlight);
+/* THE GLASS LAW (comprehension pass, B2): backdrop-filter exists ONLY on
+   overlays — floating popovers/panels and the drawer scrim. Page-level
+   surfaces use the solid elevation tokens (.ap-card / .ap-elevated /
+   .ap-focus-surface). The old page-level glass classes are gone. */
+.ap-nav {
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-1);
 }
-.ap-glass-nav {
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--surface-glass) 94%, transparent), color-mix(in srgb, var(--surface-glass) 66%, transparent)),
-    var(--glass-fill);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(calc(var(--material-blur) * 1.2)) saturate(1.2);
-  -webkit-backdrop-filter: blur(calc(var(--material-blur) * 1.2)) saturate(1.2);
-  box-shadow: var(--shadow-2), inset 0 1px 0 var(--glass-highlight);
-}
-.ap-glass-panel {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-glass) 94%, transparent), color-mix(in srgb, var(--surface-glass) 74%, transparent)),
-    var(--glass-fill);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(calc(var(--material-blur) * 1.1)) saturate(1.16);
-  -webkit-backdrop-filter: blur(calc(var(--material-blur) * 1.1)) saturate(1.16);
-  box-shadow: var(--shadow-2), inset 0 1px 0 var(--glass-highlight);
-}
-.ap-glass-elevated {
+.ap-hero {
   background:
     radial-gradient(circle at 8% -10%, color-mix(in srgb, var(--atmos-violet) 16%, transparent), transparent 20rem),
     radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--atmos-blue) 12%, transparent), transparent 18rem),
-    linear-gradient(145deg, color-mix(in srgb, var(--surface-glass) 96%, transparent), color-mix(in srgb, var(--surface-glass) 68%, transparent));
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(calc(var(--material-blur) * 1.25)) saturate(1.22);
-  -webkit-backdrop-filter: blur(calc(var(--material-blur) * 1.25)) saturate(1.22);
-  box-shadow: var(--shadow-focus), inset 0 1px 0 var(--glass-highlight);
+    linear-gradient(145deg, var(--surface-2), var(--surface-1));
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-focus), inset 0 1px 0 var(--edge-highlight);
 }
 .ap-glass-popover {
   background: color-mix(in srgb, var(--surface-glass) 90%, transparent);
@@ -188,13 +172,14 @@ body {
     background-color var(--dur-quick) var(--ease-out),
     border-color var(--dur-quick) var(--ease-out),
     box-shadow var(--dur-quick) var(--ease-out),
-    transform var(--dur-quick) var(--ease-out);
+    transform var(--dur-lift) var(--ease-out);
 }
 .ap-washable:hover {
   background-color: var(--surface-2);
   border-color: var(--hairline-strong);
   box-shadow: var(--shadow-2);
-  transform: translateY(-4px);
+  /* THE hover-lift (B3): one value repo-wide, shared with MOTION.framerHoverY. */
+  transform: translateY(-2px);
 }
 .ap-washable:active { transform: translateY(1px); }
 .ap-affordance-button {
@@ -209,7 +194,25 @@ body {
 .ap-affordance-button:active { transform: translateY(1px); }
 .ap-affordance-button:disabled { opacity: 0.4; }
 a, .ap-affordance-text { color: var(--affordance); }
-:focus-visible { outline: 2px solid var(--affordance); outline-offset: 1px; }
+/* Focus (B4): the desaturated interactive ink-blue token — 2px ring, 2px
+   offset, both themes. Amber never marks focus; it is the signal color. */
+:focus-visible { outline: 2px solid var(--affordance); outline-offset: 2px; }
+.ap-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+}
+.ap-skip-link:focus-visible {
+  left: 12px;
+  top: 12px;
+  position: fixed;
+  background: var(--affordance);
+  color: var(--paper);
+  padding: 8px 16px;
+  border-radius: 9999px;
+  box-shadow: var(--shadow-2);
+}
 input[type="checkbox"] { accent-color: var(--affordance); }
 input, textarea {
   background: var(--surface-1);
@@ -252,7 +255,12 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
         <style dangerouslySetInnerHTML={{ __html: apertureBase }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <a href="#main" className="ap-skip-link ap-register-chrome">
+          Skip to content
+        </a>
+        {children}
+      </body>
     </html>
   );
 }

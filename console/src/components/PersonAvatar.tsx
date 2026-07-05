@@ -17,18 +17,23 @@ export function PersonAvatar({
   displayName,
   department,
   size = 36,
+  tint: tintOverride,
 }: {
   principalId: string;
   displayName?: string | null;
   department?: string | null;
   size?: number;
+  /** B1: the Company/Operating Map passes its neutral-ramp tint here so the
+   * graph never paints saturated (sensitivity-reserved) hues on departments.
+   * Rooms that pass nothing keep the existing department tint behavior. */
+  tint?: { background: string; border: string };
 }) {
   const [failed, setFailed] = useState(false);
   // A new principal id is a new face to try — reset the fallback.
   useEffect(() => setFailed(false), [principalId]);
 
   const label = displayName ?? principalId;
-  const tint = (department && DEPARTMENT_TINT[department]) || AVATAR_FALLBACK_TINT;
+  const tint = tintOverride ?? ((department && DEPARTMENT_TINT[department]) || AVATAR_FALLBACK_TINT);
 
   if (!failed) {
     return (
@@ -96,7 +101,7 @@ export function RoomActor({ card }: { card: PersonCard | null | undefined }) {
   }
   return (
     <div
-      className="ap-card mb-3 flex items-center gap-2 rounded px-3 py-1.5"
+      className="ap-card mb-3 flex items-center gap-2 rounded-lg px-3 py-1.5"
       data-testid="room-actor"
     >
       <PersonAvatar

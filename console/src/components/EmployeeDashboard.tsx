@@ -16,11 +16,11 @@ import type {
   WorkflowItem,
 } from "@/lib/api";
 import { TYPE } from "@/lib/tokens";
+import { useModalDialogFocus } from "./A11yDialog";
 import { MotionAnchor, MotionArticle, MotionSection } from "./MotionPrimitives";
 import { PersonAvatar } from "./PersonAvatar";
 import { Skeleton } from "./Skeleton";
 import { ThemeToggle } from "./ThemeToggle";
-import { DemoIdentityNotice } from "./TrustPosture";
 
 const WORKFLOW_GROUPS = [
   { label: "In Progress", statuses: ["active"] },
@@ -97,17 +97,18 @@ function workflowStatusLabel(status: string): string {
   }
 }
 
+// B2: dashboard panels are SOLID elevation — glass belongs to overlays only.
 function dashboardPanelStyle(): React.CSSProperties {
   return {
-    background: "var(--glass-fill)",
-    boxShadow: "var(--shadow-2), inset 0 1px 0 var(--glass-highlight)",
+    background: "var(--surface-1)",
+    boxShadow: "var(--shadow-1)",
   };
 }
 
 function Chip({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
   return (
     <span
-      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded px-1.5 py-0.5`}
+      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded-lg px-1.5 py-0.5`}
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}
@@ -444,7 +445,7 @@ function Panel({
   title: string;
 }) {
   return (
-    <MotionSection className="ap-glass-panel rounded-2xl p-4" delayIndex={delayIndex} style={dashboardPanelStyle()}>
+    <MotionSection className="ap-card rounded-2xl p-4" delayIndex={delayIndex} style={dashboardPanelStyle()}>
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
           {title}
@@ -860,7 +861,7 @@ function CommandPod({ delayIndex, pod }: { delayIndex: number; pod: CommandPodMo
       </p>
       {pod.callToAction && (
         <span
-          className="ap-affordance-button ap-register-chrome mt-4 inline-flex rounded px-3 py-2"
+          className="ap-affordance-button ap-register-chrome mt-4 inline-flex rounded-lg px-3 py-2"
           style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
         >
           {pod.callToAction}
@@ -872,7 +873,7 @@ function CommandPod({ delayIndex, pod }: { delayIndex: number; pod: CommandPodMo
   return (
     <MotionAnchor
       href={pod.href}
-      className="ap-card ap-washable block rounded p-3"
+      className="ap-card ap-washable block rounded-lg p-3"
       delayIndex={delayIndex}
       data-pod-kind={pod.kind}
       data-testid={isAsk ? "dashboard-ask-pod" : `dashboard-pod-${pod.kind}`}
@@ -902,7 +903,7 @@ function DashboardPanelTabs({
 
   return (
     <div
-      className="ap-glass-panel flex flex-wrap gap-1 rounded-full p-1"
+      className="ap-card flex flex-wrap gap-1 rounded-full p-1"
       data-testid="dashboard-panel-tabs"
       aria-label="Open cockpit panels"
     >
@@ -944,7 +945,7 @@ function AskAgentCard({ actor, grants }: { actor: string; grants: AccessGrantRec
   return (
     <MotionAnchor
       href={href}
-      className="ap-glass-elevated ap-washable block h-full rounded-2xl p-4"
+      className="ap-card ap-washable block h-full rounded-2xl p-4"
       data-testid="dashboard-ask-agent-card"
     >
       <div className="flex h-full flex-col justify-between gap-4">
@@ -980,7 +981,7 @@ function TodayCockpit({ model }: { model: TodayCockpitModel }) {
   const attentionCount = model.needsAttention.length;
   return (
     <MotionSection
-      className="ap-glass-panel rounded-2xl p-3"
+      className="ap-card rounded-2xl p-3"
       data-testid="dashboard-today-cockpit"
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
@@ -1050,7 +1051,7 @@ function CockpitSection({
 }) {
   const visibleItems = items.slice(0, 2);
   return (
-    <section className="ap-card rounded-xl border p-2" data-testid={testId}>
+    <section className="ap-card rounded-2xl border p-2" data-testid={testId}>
       <div className="flex items-center justify-between gap-3">
         <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           {title}
@@ -1089,7 +1090,7 @@ function CockpitRow({
   return (
     <MotionAnchor
       href={item.href}
-      className="ap-card ap-washable block rounded-xl border p-2"
+      className="ap-card ap-washable block rounded-2xl border p-2"
       delayIndex={delayIndex}
       data-cockpit-action={item.action.toLowerCase()}
       data-cockpit-tone={item.tone}
@@ -1105,7 +1106,7 @@ function CockpitRow({
           </h4>
         </div>
         <span
-          className="ap-affordance-button ap-register-chrome rounded px-2 py-1"
+          className="ap-affordance-button ap-register-chrome rounded-lg px-2 py-1"
           style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
         >
           {item.action}
@@ -1242,7 +1243,7 @@ function RoleExperienceSummary({ cards }: { cards: RoleExperienceCard[] }) {
       {cards.map((card, index) => (
         <MotionArticle
           key={`${card.label}:${card.metric}`}
-          className="ap-card rounded border p-3"
+          className="ap-card rounded-lg border p-3"
           delayIndex={index}
           data-role-tone={card.tone}
           data-testid={`dashboard-role-card-${card.tone}`}
@@ -1280,7 +1281,7 @@ function NotificationCenter({ items }: { items: NotificationItem[] }) {
       }}
     >
       <summary
-        className="ap-card ap-washable flex min-h-10 cursor-pointer list-none items-center gap-2 rounded px-3 py-2"
+        className="ap-card ap-washable flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2"
         data-testid="dashboard-notification-trigger"
         style={dashboardPanelStyle()}
       >
@@ -1292,7 +1293,7 @@ function NotificationCenter({ items }: { items: NotificationItem[] }) {
         </span>
       </summary>
       <div
-        className="ap-card absolute right-0 z-20 mt-2 w-[min(380px,calc(100vw-2rem))] rounded border p-3 shadow-lg"
+        className="ap-card absolute right-0 z-20 mt-2 w-[min(380px,calc(100vw-2rem))] rounded-lg border p-3 shadow-lg"
         data-testid="dashboard-notification-dropdown"
         style={dashboardPanelStyle()}
       >
@@ -1310,7 +1311,7 @@ function NotificationCenter({ items }: { items: NotificationItem[] }) {
               <a
                 key={`${item.category}:${item.title}`}
                 href={item.href}
-                className="ap-washable block rounded border px-3 py-2"
+                className="ap-washable block rounded-lg border px-3 py-2"
                 data-testid="dashboard-notification-item"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -1342,12 +1343,12 @@ function NotificationCenter({ items }: { items: NotificationItem[] }) {
 function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
   return (
     <MotionSection
-      className="ap-card ap-glass mb-4 rounded border p-2"
+      className="ap-card mb-4 rounded-lg border p-2"
       data-testid="dashboard-workflow-command"
     >
       <details className="group">
         <summary
-          className="ap-washable flex min-h-10 cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded px-3 py-2"
+          className="ap-washable flex min-h-10 cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2"
           data-testid="dashboard-workflow-command-trigger"
         >
           <div className="min-w-0">
@@ -1365,7 +1366,7 @@ function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
               items.slice(0, 5).map((item) => (
                 <span
                   key={`${item.category}:${item.title}:chip`}
-                  className="ap-chip ap-register-chrome rounded px-2 py-1"
+                  className="ap-chip ap-register-chrome rounded-lg px-2 py-1"
                   style={{ fontSize: TYPE.scale.xs }}
                   data-testid="dashboard-workflow-command-category"
                 >
@@ -1381,7 +1382,7 @@ function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
           data-testid="dashboard-workflow-command-menu"
         >
           {items.length === 0 ? (
-            <MotionArticle className="ap-card rounded border p-3">
+            <MotionArticle className="ap-card rounded-lg border p-3">
               <EmptyLine compact>No command categories are backed by current request, workflow, or grant rows.</EmptyLine>
             </MotionArticle>
           ) : (
@@ -1389,7 +1390,7 @@ function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
               <MotionAnchor
                 key={`${item.category}:${item.title}:command`}
                 href={item.href}
-                className="ap-card ap-washable block rounded border p-3"
+                className="ap-card ap-washable block rounded-lg border p-3"
                 delayIndex={index}
                 data-testid="dashboard-workflow-command-item"
               >
@@ -1421,7 +1422,7 @@ function WorkflowCommandSubbar({ items }: { items: NotificationItem[] }) {
 
 function WorkspaceNotifications({ items }: { items: NotificationItem[] }) {
   return (
-    <section className="ap-card rounded border p-2.5" data-testid="dashboard-notification-center">
+    <section className="ap-card rounded-lg border p-2.5" data-testid="dashboard-notification-center">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
@@ -1441,7 +1442,7 @@ function WorkspaceNotifications({ items }: { items: NotificationItem[] }) {
             <MotionAnchor
               key={`${item.category}:${item.title}`}
               href={item.href}
-              className="ap-card ap-washable block rounded border px-2 py-1.5"
+              className="ap-card ap-washable block rounded-lg border px-2 py-1.5"
               delayIndex={index}
               data-testid="dashboard-notification-item"
             >
@@ -1497,7 +1498,7 @@ function WorkspacePanel({
 
   return (
     <MotionSection
-      className="ap-glass-panel rounded-2xl p-3"
+      className="ap-card rounded-2xl p-3"
       data-testid="dashboard-workspace"
       id="dashboard-workspace"
     >
@@ -1543,7 +1544,7 @@ function WorkspacePanel({
                 <MotionAnchor
                   key={item.item_id}
                   href={`/project?cap=${encodeURIComponent(item.capability_id)}&as=${encodeURIComponent(actor)}`}
-                  className="ap-card ap-washable block rounded p-2"
+                  className="ap-card ap-washable block rounded-lg p-2"
                   delayIndex={index}
                   data-testid="dashboard-workspace-workflow-alert"
                 >
@@ -1649,7 +1650,7 @@ function ProfilePanel({
 
   return (
     <section
-      className="ap-glass-panel rounded-2xl p-3"
+      className="ap-card rounded-2xl p-3"
       data-testid="dashboard-profile-panel"
       id="dashboard-profile"
     >
@@ -1665,8 +1666,8 @@ function ProfilePanel({
         <Chip>{scopeModeLabel(roleScope)}</Chip>
       </div>
 
-      <DemoIdentityNotice className="mb-3" compact context="employee" testId="dashboard-demo-identity-mode" />
-
+      {/* A4: the page's single demo-status line is the shell's notice — the
+          dashboard no longer stacks its own copy. */}
       <div className="grid grid-cols-1 gap-3">
         <div className="grid grid-cols-1 gap-3">
           <WorkspaceBlock title="Identity" defaultOpen>
@@ -1724,7 +1725,7 @@ function ProfilePanel({
                 auditRows.slice(0, 5).map((row) => {
                   const project = projectById.get(row.target);
                   return (
-                    <div key={`${row.label}:${row.id}`} className="ap-card rounded p-2">
+                    <div key={`${row.label}:${row.id}`} className="ap-card rounded-lg p-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
@@ -1783,7 +1784,7 @@ function SettingsPanel({
   const systems = deriveConnectedSystems(graph);
   return (
     <MotionSection
-      className="ap-glass-panel rounded-2xl p-3"
+      className="ap-card rounded-2xl p-3"
       data-testid="dashboard-settings-panel"
       id="dashboard-settings"
     >
@@ -1822,7 +1823,7 @@ function SettingsPanel({
               systems.map((system) => (
                 <div
                   key={`${system.name}:${system.source}`}
-                  className="ap-card flex items-center justify-between gap-3 rounded p-2"
+                  className="ap-card flex items-center justify-between gap-3 rounded-lg p-2"
                   data-testid="dashboard-connected-system"
                 >
                   <div className="min-w-0">
@@ -1853,12 +1854,8 @@ function SettingsPanel({
           <WorkspaceFact
             label="Agent behavior"
             source="not connected"
-            value="Personal agent preferences are not connected in this build"
+            value="Not in this build."
           />
-        </WorkspaceBlock>
-
-        <WorkspaceBlock title="Identity mode">
-          <DemoIdentityNotice compact context="employee" testId="dashboard-demo-identity-mode" />
         </WorkspaceBlock>
       </div>
     </MotionSection>
@@ -1876,65 +1873,13 @@ function DashboardPanelDrawer({
 }) {
   const shouldReduce = useReducedMotion() ?? false;
   const title = mode === "workspace" ? "Workspace" : mode === "profile" ? "Profile" : "Settings";
-  const asideRef = useRef<HTMLElement | null>(null);
-  const restoreRef = useRef<HTMLElement | null>(null);
-  const prevModeRef = useRef<DashboardPanelMode | null>(null);
-
-  // Focus management for the modal drawer: on open, remember the opener and
-  // move focus into the dialog; on a panel switch keep focus inside; on close,
-  // restore focus to whatever opened it. (Closes the P0 WCAG 2.4.3 gap.)
-  useEffect(() => {
-    const prev = prevModeRef.current;
-    if (mode !== null && prev === null) {
-      restoreRef.current = (document.activeElement as HTMLElement | null) ?? null;
-    }
-    if (mode !== null) {
-      asideRef.current?.focus();
-    }
-    if (mode === null && prev !== null) {
-      restoreRef.current?.focus?.();
-      restoreRef.current = null;
-    }
-    prevModeRef.current = mode;
-  }, [mode]);
-
-  // Trap Tab within the drawer and let Escape close it — a self-contained
-  // focus trap (no third-party dependency).
-  const onKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLElement>) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const root = asideRef.current;
-      if (root === null) return;
-      const focusables = Array.from(
-        root.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      );
-      if (focusables.length === 0) {
-        event.preventDefault();
-        root.focus();
-        return;
-      }
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      if (event.shiftKey) {
-        if (active === first || active === root) {
-          event.preventDefault();
-          last.focus();
-        }
-      } else if (active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    },
-    [onClose],
-  );
+  // B6: the drawer's focus management (focus-in on open, Tab trap, Escape
+  // close, focus-restore on close) now comes from the SHARED primitive this
+  // pattern was extracted into — one implementation for every drawer.
+  const { dialogRef: asideRef, onKeyDown } = useModalDialogFocus({
+    open: mode !== null,
+    onClose,
+  });
 
   return (
     <AnimatePresence>
@@ -1964,7 +1909,7 @@ function DashboardPanelDrawer({
             initial={{ opacity: 0, x: shouldReduce ? 0 : 42 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: shouldReduce ? 0 : 28 }}
-            transition={{ duration: shouldReduce ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: shouldReduce ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
           >
             <div className="mb-3 flex items-center justify-between gap-3">
               <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
@@ -1998,8 +1943,8 @@ function WorkspaceBlock({
   title: string;
 }) {
   return (
-    <details className="ap-card rounded border p-2.5" open={defaultOpen ? true : undefined}>
-      <summary className="ap-washable flex cursor-pointer list-none items-center justify-between gap-3 rounded px-1 py-0.5">
+    <details className="ap-card rounded-lg border p-2.5" open={defaultOpen ? true : undefined}>
+      <summary className="ap-washable flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-1 py-0.5">
         <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           {title}
         </h3>
@@ -2064,7 +2009,7 @@ function RoleAwareWorkflowLayer({
 
   return (
     <section
-      className="ap-card ap-elevated mb-4 rounded border p-4"
+      className="ap-card ap-elevated mb-4 rounded-lg border p-4"
       data-testid="dashboard-role-aware-workflow"
       id="dashboard-role-aware-workflow"
     >
@@ -2104,7 +2049,7 @@ function RoleAwareWorkflowLayer({
             title="Team Layer"
           >
             <p
-              className="ap-soft mt-3 rounded border px-2 py-2"
+              className="ap-soft mt-3 rounded-lg border px-2 py-2"
               data-testid="dashboard-leadership-empty"
               style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
             >
@@ -2126,7 +2071,7 @@ function RoleAwareWorkflowLayer({
             </div>
             {departmentCapabilityIds.size === 0 && (
               <p
-                className="ap-soft mt-3 rounded border px-2 py-2"
+                className="ap-soft mt-3 rounded-lg border px-2 py-2"
                 data-testid="dashboard-leadership-empty"
                 style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
               >
@@ -2148,7 +2093,7 @@ function RoleAwareWorkflowLayer({
                 <a
                   key={request.request_id}
                   href={`/project?cap=${encodeURIComponent(request.target.capability_id)}&as=${encodeURIComponent(actor)}`}
-                  className="ap-washable block rounded border px-2 py-1"
+                  className="ap-washable block rounded-lg border px-2 py-1"
                   data-testid="dashboard-approval-workflow-row"
                 >
                   <span className="ap-register-chrome block truncate" style={{ fontSize: TYPE.scale.xs }}>
@@ -2194,7 +2139,7 @@ function WorkflowLayerCard({
   title: string;
 }) {
   return (
-    <MotionArticle className="ap-card rounded border p-3" data-testid={testId}>
+    <MotionArticle className="ap-card rounded-lg border p-3" data-testid={testId}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
@@ -2322,7 +2267,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   if (actor === null) {
     return (
       <main className="min-w-0 flex-1" data-testid="employee-dashboard-empty">
-        <MotionSection className="ap-card rounded p-4">
+        <MotionSection className="ap-card rounded-lg p-4">
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Work Identity
           </p>
@@ -2337,7 +2282,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
           <div className="mt-4 flex flex-wrap gap-2">
             <MotionAnchor
               href="/me?as=p060"
-              className="ap-affordance-button ap-register-chrome rounded px-3 py-2"
+              className="ap-affordance-button ap-register-chrome rounded-lg px-3 py-2"
               style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
               data-testid="employee-empty-start-link"
             >
@@ -2345,7 +2290,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
             </MotionAnchor>
             <MotionAnchor
               href="/ask?as=p060"
-              className="ap-washable ap-register-chrome rounded border px-3 py-2"
+              className="ap-washable ap-register-chrome rounded-lg border px-3 py-2"
               style={{ borderColor: "var(--hairline)", fontSize: TYPE.scale.xs, fontWeight: 600 }}
               data-testid="employee-empty-ask-link"
             >
@@ -2360,7 +2305,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   if (loading) {
     return (
       <main className="min-w-0 flex-1" data-testid="employee-dashboard-loading">
-        <div className="ap-card rounded p-4">
+        <div className="ap-card rounded-lg p-4">
           <Skeleton lines={8} />
         </div>
       </main>
@@ -2434,7 +2379,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
   return (
     <main className="min-w-0 flex-1" data-testid="employee-dashboard">
       <header
-        className="ap-glass-nav sticky top-2 z-20 mb-3 rounded-2xl px-3 py-2"
+        className="ap-nav sticky top-2 z-20 mb-3 rounded-2xl px-3 py-2"
         data-layout="compact-strip"
         data-testid="dashboard-cockpit-header"
       >
@@ -2505,7 +2450,7 @@ export function EmployeeDashboard({ actor }: { actor: string | null }) {
               title="My Projects"
               action={
                 <a
-                  className="ap-register-chrome ap-washable rounded px-2 py-1"
+                  className="ap-register-chrome ap-washable rounded-lg px-2 py-1"
                   href={`/project?as=${encodeURIComponent(actor)}`}
                   style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
                 >
@@ -2590,7 +2535,7 @@ function GrantedKnowledgeList({
         return (
           <MotionArticle
             key={grant.grant_id}
-            className="ap-card rounded border p-3"
+            className="ap-card rounded-lg border p-3"
             delayIndex={index}
             data-testid="dashboard-granted-knowledge-card"
             style={dashboardPanelStyle()}
@@ -2613,7 +2558,7 @@ function GrantedKnowledgeList({
             </div>
             <a
               href={href}
-              className="ap-affordance-button ap-register-chrome mt-3 inline-flex min-h-10 items-center rounded px-3 py-2"
+              className="ap-affordance-button ap-register-chrome mt-3 inline-flex min-h-10 items-center rounded-lg px-3 py-2"
               style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
               data-testid="dashboard-open-grant-ask"
             >
@@ -2636,7 +2581,7 @@ function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
       </p>
       <div className="mt-3 grid grid-cols-1 gap-2">
         {badges.map((badge, index) => (
-          <MotionArticle key={`${badge.label}:${badge.detail}`} className="ap-card rounded p-2" delayIndex={index}>
+          <MotionArticle key={`${badge.label}:${badge.detail}`} className="ap-card rounded-lg p-2" delayIndex={index}>
             <div className="flex items-start justify-between gap-2">
               <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
                 {badge.label}
@@ -2650,15 +2595,6 @@ function ScopePosture({ badges }: { badges: ScopeBadge[] }) {
             </p>
           </MotionArticle>
         ))}
-      </div>
-      <div className="ap-card mt-3 rounded p-2">
-        <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
-          Identity boundary
-        </p>
-        <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-          This permission preview labels the selected Work Identity posture only. Production identity binding
-          is not connected in this build, and restricted surfaces remain unavailable here.
-        </p>
       </div>
     </div>
   );
@@ -2685,7 +2621,7 @@ function ProjectsList({
           <MotionAnchor
             key={project.capability_id}
             href={`/project?cap=${encodeURIComponent(project.capability_id)}&as=${encodeURIComponent(actor)}`}
-            className="ap-card ap-washable rounded p-2.5"
+            className="ap-card ap-washable rounded-lg p-2.5"
             delayIndex={index}
             data-testid="dashboard-project"
           >
@@ -2742,7 +2678,7 @@ function WorkflowSummary({ actor, items }: { actor: string; items: WorkflowItem[
           <MotionAnchor
             key={item.item_id}
             href={`/project?cap=${encodeURIComponent(item.capability_id)}&as=${encodeURIComponent(actor)}`}
-            className="ap-card ap-washable flex items-center justify-between gap-3 rounded border px-2.5 py-2"
+            className="ap-card ap-washable flex items-center justify-between gap-3 rounded-lg border px-2.5 py-2"
             delayIndex={index}
             data-testid="dashboard-workflow-item"
           >
@@ -2781,7 +2717,7 @@ function AgentsList({ agents }: { agents: NonNullable<NodeSummary["agents_owned"
   return (
     <div className="space-y-2" data-testid="dashboard-agents">
       {agents.map((agent, index) => (
-        <MotionArticle key={agent.id} className="ap-card rounded p-2" delayIndex={index} data-testid="dashboard-agent">
+        <MotionArticle key={agent.id} className="ap-card rounded-lg p-2" delayIndex={index} data-testid="dashboard-agent">
           <p className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
             {agent.name}
           </p>
@@ -2823,7 +2759,7 @@ function RequestsList({
   return (
     <div className="space-y-2" data-testid="dashboard-requests" id="dashboard-requests">
       {grantError && (
-        <p className="ap-soft rounded border px-2 py-1" style={{ fontSize: TYPE.scale.xs }} role="alert">
+        <p className="ap-soft rounded-lg border px-2 py-1" style={{ fontSize: TYPE.scale.xs }} role="alert">
           {grantError}
         </p>
       )}
@@ -2836,7 +2772,7 @@ function RequestsList({
             return (
               <MotionArticle
                 key={grant.grant_id}
-                className="ap-card rounded p-2"
+                className="ap-card rounded-lg p-2"
                 delayIndex={index}
                 data-testid="dashboard-grant"
               >
@@ -2844,7 +2780,7 @@ function RequestsList({
                   <div className="min-w-0">
                     <a
                       href={`/project?cap=${encodeURIComponent(grant.target.capability_id)}&as=${encodeURIComponent(actor)}`}
-                      className="ap-register-chrome ap-washable block truncate rounded px-1 py-0.5"
+                      className="ap-register-chrome ap-washable block truncate rounded-lg px-1 py-0.5"
                       style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
                     >
                       {project?.label.replace(/^Capability:\s*/i, "") ?? grant.target.capability_id}
@@ -2864,7 +2800,7 @@ function RequestsList({
                 {canRevoke && (
                   <button
                     type="button"
-                    className="ap-washable ap-register-chrome ap-soft mt-2 rounded border px-2 py-1"
+                    className="ap-washable ap-register-chrome ap-soft mt-2 rounded-lg border px-2 py-1"
                     style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
                     disabled={isRevoking}
                     onClick={() => onRevokeGrant(grant.grant_id)}
@@ -2883,7 +2819,7 @@ function RequestsList({
         return (
           <MotionArticle
             key={`${label}:${request.request_id}`}
-            className="ap-card rounded p-2"
+            className="ap-card rounded-lg p-2"
             delayIndex={index}
             data-testid="dashboard-request"
           >
@@ -2944,7 +2880,7 @@ function KnowledgeSummary({
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="ap-card rounded p-2">
+    <div className="ap-card rounded-lg p-2">
       <p className="ap-register-evidence" style={{ fontSize: TYPE.scale.lg, fontWeight: 600 }}>
         {value}
       </p>

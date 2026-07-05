@@ -11,7 +11,7 @@ import { graphRelationshipRows, type GraphRelationshipRow } from "./graphDisplay
 function Chip({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
   return (
     <span
-      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded px-1.5 py-0.5`}
+      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded-lg px-1.5 py-0.5`}
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}
@@ -38,7 +38,7 @@ function RelationshipTrace({ rows }: { rows: GraphRelationshipRow[] }) {
       ) : (
         <ul className="space-y-1">
           {rows.map((row) => (
-            <li key={row.key} className="ap-hairline rounded border px-2 py-1.5" data-testid="inspector-relationship-row">
+            <li key={row.key} className="ap-hairline rounded-lg border px-2 py-1.5" data-testid="inspector-relationship-row">
               <p className="ap-register-chrome truncate" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
                 {row.from.label}
               </p>
@@ -65,11 +65,11 @@ function Reach({ visible, corpus }: { visible: number; corpus: number }) {
         <span className="ap-soft"> of {corpus.toLocaleString("en-US")} documents </span>
         <span className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>({pct}%)</span>
       </p>
-      <div className="mt-1 h-1.5 w-full overflow-hidden rounded" style={{ backgroundColor: "var(--wash)" }}>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-lg" style={{ backgroundColor: "var(--wash)" }}>
         <div style={{ width: `${pct}%`, height: "100%", backgroundColor: "var(--affordance)" }} />
       </div>
       <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
-        Hidden from this Work Identity: {(corpus - visible).toLocaleString("en-US")}. Documents open in the audited Knowledge View.
+        Hidden from this Work Identity: {(corpus - visible).toLocaleString("en-US")}. Documents open in My Access, audited.
       </p>
     </div>
   );
@@ -122,7 +122,7 @@ export function GraphInspector({
             {node.label}
           </p>
           <span
-            className="ap-chip ap-register-chrome mt-1 inline-block rounded px-1.5 py-0.5"
+            className="ap-chip ap-register-chrome mt-1 inline-block rounded-lg px-1.5 py-0.5"
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="inspector-kind"
           >
@@ -132,7 +132,7 @@ export function GraphInspector({
         <button
           type="button"
           onClick={onClose}
-          className="ap-washable ap-soft rounded px-1.5"
+          className="ap-washable ap-soft rounded-lg px-1.5"
           style={{ fontSize: TYPE.scale.md }}
           aria-label="Close inspector"
           data-testid="inspector-close"
@@ -199,7 +199,7 @@ export function GraphInspector({
           <Heading>System of record</Heading>
           <p style={{ fontSize: TYPE.scale.sm }}>{node.label}</p>
           <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
-            A real org system. Documents stay out of the graph and open through the audited Knowledge View.
+            A real org system. Documents stay out of the graph and open through My Access, audited.
           </p>
         </div>
       )}
@@ -241,7 +241,7 @@ export function GraphInspector({
           {actor !== null && (
             <a
               href={`/project?cap=${encodeURIComponent(selectedProject.id)}&as=${encodeURIComponent(actor)}`}
-              className="ap-affordance-button ap-register-chrome block rounded px-3 py-1.5 text-center"
+              className="ap-affordance-button ap-register-chrome block rounded-lg px-3 py-1.5 text-center"
               style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
               data-testid="project-surface-link"
             >
@@ -312,14 +312,14 @@ export function GraphInspector({
           <button
             type="button"
             onClick={() => onEnterLens(node.id)}
-            className="ap-affordance-button ap-register-chrome w-full rounded px-3 py-1.5"
+            className="ap-affordance-button ap-register-chrome w-full rounded-lg px-3 py-1.5"
             style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
             data-testid="inspector-enter-lens"
           >
-            Open {node.label}&apos;s Knowledge View
+            Open {node.label}&apos;s access view
           </button>
           <p className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
-            Opening another Work Identity&apos;s Knowledge View is audited server-side.
+            Opening another person&apos;s access view is audited server-side.
           </p>
         </div>
       )}
@@ -410,7 +410,7 @@ function ProjectAccessRequest({
         </p>
       </div>
       {existing && (
-        <div className="ap-hairline ap-soft rounded border px-2 py-1.5" style={{ fontSize: TYPE.scale.xs }}>
+        <div className="ap-hairline ap-soft rounded-lg border px-2 py-1.5" style={{ fontSize: TYPE.scale.xs }}>
           Current request: <span className="ap-register-chrome">{existing.status}</span>
         </div>
       )}
@@ -423,7 +423,7 @@ function ProjectAccessRequest({
           onChange={(event) => setJustification(event.target.value)}
           disabled={disabled}
           rows={3}
-          className="ap-card w-full resize-none rounded px-2 py-2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="ap-card w-full resize-none rounded-lg px-2 py-2 disabled:cursor-not-allowed disabled:opacity-50"
           style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
           data-testid="access-request-justification"
         />
@@ -441,7 +441,7 @@ function ProjectAccessRequest({
       <button
         type="submit"
         disabled={disabled}
-        className="ap-affordance-button ap-register-chrome w-full rounded px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50"
+        className="ap-affordance-button ap-register-chrome w-full rounded-lg px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50"
         style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
         data-testid="access-request-submit"
       >

@@ -209,12 +209,17 @@ export function LaneRoom({ actor }: { actor: string | null }) {
   return (
     <div data-testid="lane-room">
       <div className="mb-3 flex items-center gap-3">
-        <h1
-          className="ap-register-chrome"
-          style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
-        >
-          Review Queue
-        </h1>
+        <div className="min-w-0">
+          <h1
+            className="ap-register-chrome"
+            style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
+          >
+            Review Queue
+          </h1>
+          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+            Items waiting for a human decision.
+          </p>
+        </div>
         {/* Permanent, same register as the demo caption — furniture. */}
         <span
           className="ap-soft"
@@ -227,7 +232,7 @@ export function LaneRoom({ actor }: { actor: string | null }) {
           <button
             type="button"
             onClick={() => setShowDismissed((value) => !value)}
-            className="ap-washable ap-soft rounded px-2 py-0.5"
+            className="ap-washable ap-soft rounded-lg px-2 py-0.5"
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="toggle-dismissed"
           >
@@ -236,7 +241,7 @@ export function LaneRoom({ actor }: { actor: string | null }) {
           <button
             type="button"
             onClick={() => setShowRollup((value) => !value)}
-            className="ap-washable ap-soft rounded px-2 py-0.5"
+            className="ap-washable ap-soft rounded-lg px-2 py-0.5"
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="rollup-toggle"
           >
@@ -249,7 +254,7 @@ export function LaneRoom({ actor }: { actor: string | null }) {
       <RoomActor card={lane?.actor ?? null} />
 
       {showRollup && rollup && (
-        <section className="ap-card mb-4 rounded p-3" data-testid="rollup-panel">
+        <section className="ap-card mb-4 rounded-lg p-3" data-testid="rollup-panel">
           <table className="w-full" data-testid="rollup-table">
             <thead>
               <tr className="ap-soft" style={{ fontSize: TYPE.scale.xs }}>
@@ -296,13 +301,13 @@ export function LaneRoom({ actor }: { actor: string | null }) {
       )}
 
       {inbox && inbox.proposals.length > 0 && (
-        <section className="ap-card ap-fade-view mb-4 rounded p-3" data-testid="inbox-strip">
-          <h3
+        <section className="ap-card ap-fade-view mb-4 rounded-lg p-3" data-testid="inbox-strip">
+          <h2
             className="ap-soft px-1 pb-1 uppercase tracking-wide"
             style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
           >
             Inbox — proposals awaiting your decision
-          </h3>
+          </h2>
           {inbox.proposals.map((proposal) => (
             <div
               key={proposal.proposal_id}
@@ -321,7 +326,7 @@ export function LaneRoom({ actor }: { actor: string | null }) {
               <button
                 type="button"
                 onClick={() => decideInbox(proposal.proposal_id, "accept")}
-                className="ap-affordance-button rounded px-2 py-0.5"
+                className="ap-affordance-button rounded-lg px-2 py-0.5"
                 style={{ fontSize: TYPE.scale.xs }}
                 data-testid="inbox-accept"
               >
@@ -330,7 +335,7 @@ export function LaneRoom({ actor }: { actor: string | null }) {
               <button
                 type="button"
                 onClick={() => decideInbox(proposal.proposal_id, "dismiss")}
-                className="ap-washable ap-soft rounded px-2 py-0.5"
+                className="ap-washable ap-soft rounded-lg px-2 py-0.5"
                 style={{ fontSize: TYPE.scale.xs }}
                 data-testid="inbox-dismiss"
               >
@@ -342,7 +347,7 @@ export function LaneRoom({ actor }: { actor: string | null }) {
       )}
 
       {loading && (
-        <div className="ap-card rounded p-4">
+        <div className="ap-card rounded-lg p-4">
           <Skeleton lines={4} />
         </div>
       )}
@@ -451,21 +456,21 @@ function BoxCard({
   return (
     <section
       id={`box-${box.box_id}`}
-      className="ap-card ap-fade-view rounded p-3"
+      className="ap-card ap-fade-view rounded-lg p-3"
       style={blocked ? { borderLeft: `2px solid ${DERIVED.hairline}` } : undefined}
       data-testid="lane-box"
       data-status={box.status}
     >
       <div className="flex items-baseline gap-2">
-        <h3
+        <h2
           className="ap-register-chrome min-w-0 flex-1 truncate"
           style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}
           data-testid="box-name"
         >
           {box.capability.name}
-        </h3>
+        </h2>
         <span
-          className="ap-hairline ap-register-evidence ap-soft shrink-0 rounded border px-1.5 py-0.5"
+          className="ap-hairline ap-register-evidence ap-soft shrink-0 rounded-lg border px-1.5 py-0.5"
           style={{ fontSize: TYPE.scale.xs }}
           data-testid="box-status"
         >
@@ -474,7 +479,7 @@ function BoxCard({
         <button
           type="button"
           onClick={onExplain}
-          className="ap-washable ap-soft shrink-0 rounded px-2 py-0.5"
+          className="ap-washable ap-soft shrink-0 rounded-lg px-2 py-0.5"
           style={{ fontSize: TYPE.scale.xs }}
           data-testid="box-explain"
         >
@@ -533,7 +538,7 @@ function BoxCard({
             <button
               type="button"
               onClick={() => onStatus(box.box_id, "active")}
-              className="ap-affordance-button rounded px-2 py-0.5"
+              className="ap-affordance-button rounded-lg px-2 py-0.5"
               style={{ fontSize: TYPE.scale.xs }}
               data-testid="box-action-active"
             >
@@ -542,7 +547,7 @@ function BoxCard({
             <button
               type="button"
               onClick={() => onStatus(box.box_id, "dismissed")}
-              className="ap-washable ap-soft rounded px-2 py-0.5"
+              className="ap-washable ap-soft rounded-lg px-2 py-0.5"
               style={{ fontSize: TYPE.scale.xs }}
               data-testid="box-action-dismissed"
             >
@@ -554,7 +559,7 @@ function BoxCard({
           <button
             type="button"
             onClick={() => onStatus(box.box_id, "done")}
-            className="ap-affordance-button rounded px-2 py-0.5"
+            className="ap-affordance-button rounded-lg px-2 py-0.5"
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="box-action-done"
           >

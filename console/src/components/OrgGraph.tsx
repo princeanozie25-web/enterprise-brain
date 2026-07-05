@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { select } from "d3-selection";
 import { zoom as d3zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
 import type { GraphEdge, GraphPerson, GraphProject, GraphResponse } from "@/lib/api";
-import { DEPARTMENT_TINT, DERIVED, FONT, GEOMETRY, TYPE } from "@/lib/tokens";
+import { FONT, GEOMETRY, TYPE, graphRampStep } from "@/lib/tokens";
 import { PersonAvatar } from "./PersonAvatar";
 
 type Pos = { x: number; y: number };
@@ -19,6 +19,24 @@ type Layout = {
   deptArcs: Map<string, DeptArc>;
 };
 
+/**
+ * THE RING LAW (comprehension pass, B1):
+ * - Every rendered node maps to a REAL entity in the scoped /graph payload —
+ *   zero decorative nodes, zero synthetic satellites (T-B8 enforces it).
+ * - A person is a 40px circle (initial-pair or face) with the FULL NAME
+ *   always beneath at 13px/500 — no monogram caterpillar, no LOD hiding.
+ * - Departments are coded ONLY by the sensitivity-safe NEUTRAL RAMP
+ *   (tokens.GRAPH_NEUTRAL_RAMP); saturated color stays reserved. Amber marks
+ *   the LIT CONNECTION PATH and nothing else; selection rings are the
+ *   interactive ink-blue.
+ * - Edges render ONLY from real payload relationships: 1.5px, ≥60% opacity
+ *   at rest (interaction dimming is transient emphasis, not the base style).
+ * - Past 40 in-scope people the ring collapses to per-department cluster
+ *   chips (department name + in-scope count — counts come straight from the
+ *   payload; dark counts stay banned).
+ * - Fully keyboard-operable (tab / Enter / Space / arrows / Escape) with a
+ *   visually-hidden list mirror for screen readers (WCAG 2.1.1, 4.1.2).
+ */
 const STAGE = {
   width: 1400,
   height: 980,
@@ -35,10 +53,15 @@ const STAGE = {
   sourceRadius: 8,
   agentSize: 7,
   projectSize: 9,
-  personMember: 8,
-  personMemberActive: 18,
-  personAnchor: 30,
+  /** B1: one person size — a 40px circle, every ring. */
+  personNode: 40,
+  /** Cluster chips (>40 people): a quiet rounded-lg chip per department. */
+  clusterWidth: 148,
+  clusterHeight: 44,
 } as const;
+
+/** The people ring collapses to department clusters past this count. */
+export const PEOPLE_CLUSTER_THRESHOLD = 40;
 
 const C = {
   ink: "var(--ink)",
@@ -50,32 +73,11 @@ const C = {
   wash: "var(--wash)",
 };
 
-/** LOD rule for a person's name: anchors always; a member's name on hover,
- * selection, a search hit, or once zoomed past the reveal scale. Pure -
- * exported for the LOD test. */
-export function nameVisible(
-  ring: "anchor" | "member",
-  active: boolean,
-  scaleK: number,
-  lodReveal: number = GEOMETRY.graphLodReveal,
-): boolean {
-  return ring === "anchor" || active || scaleK >= lodReveal;
-}
-
 function polar(angle: number, radius: number, cx = STAGE.cx, cy = STAGE.cy): Pos {
   return {
     x: cx + radius * Math.cos(angle),
     y: cy + radius * Math.sin(angle),
   };
-}
-
-function jitter(index: number, amplitude: number, seed = 1): number {
-  const value = Math.sin((index + 1) * 12.9898 + seed * 78.233) * 43758.5453;
-  return (value - Math.floor(value) - 0.5) * amplitude;
-}
-
-function tintOf(label: string): { background: string; border: string } {
-  return DEPARTMENT_TINT[label] ?? { background: DERIVED.wash, border: DERIVED.hairline };
 }
 
 function shortMark(label: string): string {
@@ -126,13 +128,14 @@ function computeLayout(graph: GraphResponse): Layout {
     const end = start + span;
     hubAngle.set(dept.id, center);
     deptArcs.set(dept.id, { start, center, end, count: list.length });
-    pos.set(dept.id, polar(center, STAGE.ringDept + jitter(graph.departments.indexOf(dept), 9, 2)));
+    pos.set(dept.id, polar(center, STAGE.ringDept));
 
     list.forEach((person, index) => {
+      // Deterministic, jitter-free ring placement: 40px nodes with always-on
+      // names need honest, even spacing, not organic scatter.
       const frac = list.length <= 1 ? 0.5 : index / (list.length - 1);
       const angle = start + frac * span;
-      const radius = STAGE.ringPeople + jitter(index, person.ring === "anchor" ? 12 : 20, dept.id.length);
-      pos.set(person.id, polar(angle, radius));
+      pos.set(person.id, polar(angle, STAGE.ringPeople));
       ang.set(person.id, angle);
     });
     cursor = end + gap / 2;
@@ -147,7 +150,7 @@ function computeLayout(graph: GraphResponse): Layout {
       base !== undefined
         ? base + (seen % 2 === 0 ? 1 : -1) * 0.11 * Math.ceil((seen + 1) / 2)
         : -Math.PI / 2 + (index / Math.max(graph.tools.length, 1)) * 2 * Math.PI;
-    pos.set(tool.id, polar(angle, STAGE.ringAgents + jitter(index, 8, 5)));
+    pos.set(tool.id, polar(angle, STAGE.ringAgents));
     ang.set(tool.id, angle);
   });
 
@@ -160,27 +163,30 @@ function computeLayout(graph: GraphResponse): Layout {
       base !== undefined
         ? base + (seen % 2 === 0 ? 1 : -1) * 0.066 * Math.ceil((seen + 1) / 2)
         : -Math.PI / 2 + (index / Math.max(graph.projects.length, 1)) * 2 * Math.PI;
-    pos.set(project.id, polar(angle, STAGE.ringProjects + jitter(index, 7, 11)));
+    pos.set(project.id, polar(angle, STAGE.ringProjects));
     ang.set(project.id, angle);
   });
 
   graph.sources.forEach((source, index) => {
     const angle = -Math.PI / 2 + (index / Math.max(graph.sources.length, 1)) * 2 * Math.PI;
-    pos.set(source.id, polar(angle + jitter(index, 0.05, 7), STAGE.ringSources + jitter(index, 8, 8)));
+    pos.set(source.id, polar(angle, STAGE.ringSources));
     ang.set(source.id, angle);
   });
 
   return { pos, ang, hubAngle, deptArcs };
 }
 
-const EDGE_STYLE: Record<string, { width: number; opacity: number; dash?: string; warm?: boolean }> = {
-  reports_to: { width: 0.9, opacity: 0.16 },
-  member_of: { width: 0.75, opacity: 0.12 },
-  owns_agent: { width: 1.0, opacity: 0.38, dash: "2 5", warm: true },
-  system_of: { width: 0.9, opacity: 0.2, dash: "1 8" },
-  works_on: { width: 0.85, opacity: 0.18, dash: "1 7" },
-  involves_department: { width: 0.9, opacity: 0.24, dash: "2 7", warm: true },
-  uses: { width: 0.9, opacity: 0.2, dash: "1 8" },
+/** B1: one edge weight — 1.5px at ≥60% opacity from the real payload. Kind
+ * is carried by dash pattern, never by extra hue. */
+const EDGE_BASE = { width: 1.5, opacity: 0.6 } as const;
+const EDGE_DASH: Record<string, string | undefined> = {
+  reports_to: undefined,
+  member_of: undefined,
+  owns_agent: "2 5",
+  system_of: "1 8",
+  works_on: "1 7",
+  involves_department: "2 7",
+  uses: "1 8",
 };
 
 function edgePath(from: Pos, to: Pos, curve: number): string {
@@ -222,23 +228,23 @@ export function OrgGraph({
   const [hover, setHover] = useState<string | null>(null);
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const nodeRefs = useRef<Map<string, SVGGElement>>(new Map());
+
+  const clustered = graph.people.length > PEOPLE_CLUSTER_THRESHOLD;
 
   const peopleById = useMemo(() => new Map(graph.people.map((p) => [p.id, p])), [graph.people]);
   const toolsById = useMemo(() => new Map(graph.tools.map((t) => [t.id, t])), [graph.tools]);
   const sourcesById = useMemo(() => new Map(graph.sources.map((s) => [s.id, s])), [graph.sources]);
   const projectsById = useMemo(() => new Map(graph.projects.map((p) => [p.id, p])), [graph.projects]);
   const deptById = useMemo(() => new Map(graph.departments.map((d) => [d.id, d])), [graph.departments]);
-  const primaryAnchorIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const dept of graph.departments) {
-      const anchor = graph.people
-        .filter((person) => person.department_id === dept.id && person.ring === "anchor")
-        .sort((a, b) => a.id.localeCompare(b.id))[0];
-      if (anchor) ids.add(anchor.id);
-    }
-    return ids;
-  }, [graph.departments, graph.people]);
+  const deptIndex = useMemo(
+    () => new Map(graph.departments.map((d, index) => [d.id, index])),
+    [graph.departments],
+  );
+  const rampOf = (deptId: string | null | undefined) =>
+    graphRampStep(deptId != null ? deptIndex.get(deptId) ?? 0 : 0);
 
   const neighbors = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -381,14 +387,74 @@ export function OrgGraph({
   };
 
   const edgeHidden = (edge: GraphEdge): boolean =>
+    (clustered && (peopleById.has(edge.from) || peopleById.has(edge.to))) ||
     (hidden.has("people") && (peopleById.has(edge.from) || peopleById.has(edge.to))) ||
     (hidden.has("agents") && (toolsById.has(edge.from) || toolsById.has(edge.to))) ||
     (hidden.has("sources") && (sourcesById.has(edge.from) || sourcesById.has(edge.to))) ||
     (projectsById.has(edge.from) && !projectVisible(projectsById.get(edge.from)!)) ||
     (projectsById.has(edge.to) && !projectVisible(projectsById.get(edge.to)!));
 
+  // -------------------------------------------------------------------------
+  // KEYBOARD OPERABILITY (B1 / WCAG 2.1.1): every rendered node is a real tab
+  // stop. Enter/Space activates (opens the drawer / focuses the department),
+  // arrow keys traverse the ring order, Escape returns focus to the graph
+  // root. Focus mirrors hover so the emphasis visuals double as the focus cue
+  // on top of the standard focus ring.
+  // -------------------------------------------------------------------------
+  const visibleProjects = graph.projects.filter(projectVisible);
+  const keyOrder: string[] = useMemo(() => {
+    const order: string[] = [graph.center.id];
+    for (const dept of graph.departments) order.push(dept.id);
+    if (!hidden.has("agents")) for (const tool of graph.tools) order.push(tool.id);
+    if (!hidden.has("sources")) for (const source of graph.sources) order.push(source.id);
+    for (const project of visibleProjects) order.push(project.id);
+    if (clustered) {
+      for (const dept of graph.departments) order.push(`cluster:${dept.id}`);
+    } else if (!hidden.has("people")) {
+      for (const person of graph.people) order.push(person.id);
+    }
+    return order;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graph, hidden, clustered, visibleProjects.length]);
+
+  const registerNode = (id: string) => (el: SVGGElement | null) => {
+    if (el) nodeRefs.current.set(id, el);
+    else nodeRefs.current.delete(id);
+  };
+
+  const moveFocus = (fromId: string, delta: 1 | -1) => {
+    const index = keyOrder.indexOf(fromId);
+    if (index === -1) return;
+    const next = keyOrder[(index + delta + keyOrder.length) % keyOrder.length];
+    nodeRefs.current.get(next)?.focus();
+  };
+
+  const nodeKeyProps = (id: string, ariaLabel: string, activate: () => void) => ({
+    ref: registerNode(id),
+    tabIndex: 0,
+    role: "button" as const,
+    "aria-label": ariaLabel,
+    onFocus: () => setHover(id),
+    onBlur: () => setHover(null),
+    onKeyDown: (event: React.KeyboardEvent<SVGGElement>) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        activate();
+      } else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        event.preventDefault();
+        moveFocus(id, 1);
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        event.preventDefault();
+        moveFocus(id, -1);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        rootRef.current?.focus();
+      }
+    },
+  });
+
   return (
-    <div className="relative h-full min-h-0" data-testid="org-graph">
+    <div className="relative h-full min-h-0" data-testid="org-graph" ref={rootRef} tabIndex={-1}>
       <button
         type="button"
         onClick={reset}
@@ -410,12 +476,39 @@ export function OrgGraph({
         </svg>
       </button>
 
+      {/* The visually-hidden list mirror (B1 / WCAG 4.1.2): the same rendered
+          nodes as plain text for screen readers — real entities only. */}
+      <ul className="sr-only" data-testid="graph-sr-mirror">
+        <li>{graph.center.label} — organization</li>
+        {graph.departments.map((dept) => (
+          <li key={dept.id}>
+            {dept.label} — department — {deptArcs.get(dept.id)?.count ?? 0} people in scope
+          </li>
+        ))}
+        {!hidden.has("agents") &&
+          graph.tools.map((tool) => <li key={tool.id}>{tool.label} — agent</li>)}
+        {!hidden.has("sources") &&
+          graph.sources.map((source) => <li key={source.id}>{source.label} — system of record</li>)}
+        {visibleProjects.map((project) => (
+          <li key={project.id}>
+            {compactProjectLabel(project.label)} — project — {project.people} people
+          </li>
+        ))}
+        {!clustered &&
+          !hidden.has("people") &&
+          graph.people.map((person) => (
+            <li key={person.id}>
+              {person.display_name} — {person.title} — {deptById.get(person.department_id)?.label ?? person.department_id}
+            </li>
+          ))}
+      </ul>
+
       <svg
         ref={svgRef}
         viewBox={`0 0 ${STAGE.width} ${STAGE.height}`}
         className={`block h-full w-full${reducedMotion ? "" : " ap-fade-view"}`}
         style={{ touchAction: "none", cursor: "grab" }}
-        role="img"
+        role="group"
         aria-label="Organization graph"
       >
         <defs>
@@ -429,7 +522,6 @@ export function OrgGraph({
               if (edgeHidden(edge)) return null;
               const from = at(edge.from);
               const to = at(edge.to);
-              const style = EDGE_STYLE[edge.kind] ?? EDGE_STYLE.member_of;
               const lit = edgeTouchesFocus(edge);
               const faded = dimming && !lit;
               const dx = to.x - from.x;
@@ -440,10 +532,10 @@ export function OrgGraph({
                   key={`${edge.from}-${edge.kind}-${edge.to}-${index}`}
                   d={edgePath(from, to, curve)}
                   fill="none"
-                  stroke={lit || style.warm ? C.warm : C.inkSoft}
-                  strokeWidth={lit ? Math.max(style.width, 1.5) : style.width}
-                  strokeOpacity={faded ? 0.035 : lit ? 0.72 : style.opacity}
-                  strokeDasharray={style.dash}
+                  stroke={lit ? C.warm : C.inkSoft}
+                  strokeWidth={lit ? 2 : EDGE_BASE.width}
+                  strokeOpacity={faded ? 0.15 : lit ? 0.85 : EDGE_BASE.opacity}
+                  strokeDasharray={EDGE_DASH[edge.kind]}
                   strokeLinecap="round"
                   data-testid="graph-edge"
                   data-kind={edge.kind}
@@ -473,13 +565,13 @@ export function OrgGraph({
             {graph.departments.map((dept) => {
               const arc = deptArcs.get(dept.id);
               if (!arc) return null;
-              const tint = tintOf(dept.tint_key);
+              const ramp = rampOf(dept.id);
               return (
                 <path
                   key={dept.id}
                   d={arcPath(STAGE.ringAccess, arc.start, arc.end)}
                   fill="none"
-                  stroke={tint.border}
+                  stroke={ramp.line}
                   strokeWidth={7}
                   strokeLinecap="round"
                   strokeOpacity={focusDept === null || focusDept === dept.id ? 0.48 : 0.07}
@@ -492,9 +584,14 @@ export function OrgGraph({
 
           {graph.departments.map((dept) => {
             const point = at(dept.id);
-            const tint = tintOf(dept.tint_key);
+            const ramp = rampOf(dept.id);
+            const count = deptArcs.get(dept.id)?.count ?? 0;
             const active =
               focusDept === dept.id || selectedId === dept.id || traceRelated(dept.id) || hover === dept.id || matches(dept.id);
+            const activate = () => {
+              onFocusDept(focusDept === dept.id ? null : dept.id);
+              onSelectNode({ id: dept.id, kind: "department", label: dept.label });
+            };
             return (
               <g
                 key={dept.id}
@@ -503,16 +600,15 @@ export function OrgGraph({
                 style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHover(dept.id)}
                 onMouseLeave={() => setHover(null)}
-                onClick={() => {
-                  onFocusDept(focusDept === dept.id ? null : dept.id);
-                  onSelectNode({ id: dept.id, kind: "department", label: dept.label });
-                }}
+                onClick={activate}
                 data-testid="graph-dept"
+                data-id={dept.id}
                 data-dept={dept.id}
+                {...nodeKeyProps(dept.id, `${dept.label} department, ${count} people in scope`, activate)}
               >
                 <title>{`${dept.label} department`}</title>
-                <circle r={STAGE.hubRadius + 10} fill={tint.border} opacity={0.2} filter="url(#graph-soft-glow)" />
-                <circle r={STAGE.hubRadius} fill={tint.background} stroke={tint.border} strokeWidth={1.6} />
+                <circle r={STAGE.hubRadius + 10} fill={ramp.line} opacity={0.16} filter="url(#graph-soft-glow)" />
+                <circle r={STAGE.hubRadius} fill={ramp.surface} stroke={ramp.line} strokeWidth={1.6} />
                 <path
                   d="M-7 4h14M-4 4v-7h8v7M-10 8h20v5h-20z"
                   fill="none"
@@ -525,7 +621,7 @@ export function OrgGraph({
                 <circle
                   r={STAGE.hubRadius + 7}
                   fill="none"
-                  stroke={active ? C.warm : C.hairline}
+                  stroke={active ? C.affordance : C.hairline}
                   strokeWidth={active ? 2 : 1}
                   strokeOpacity={active ? 0.9 : 0}
                 />
@@ -550,7 +646,7 @@ export function OrgGraph({
                   strokeWidth={GEOMETRY.graphLabelHalo}
                   style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3), fontWeight: 500 }}
                 >
-                  {`${deptArcs.get(dept.id)?.count ?? 0} people`}
+                  {`${count} people`}
                 </text>
               </g>
             );
@@ -559,9 +655,10 @@ export function OrgGraph({
           {!hidden.has("agents") &&
             graph.tools.map((tool) => {
               const point = at(tool.id);
-              const tint = tool.department_id ? tintOf(tool.department_id) : tintOf("");
+              const ramp = rampOf(tool.department_id);
               const active = selectedId === tool.id || traceRelated(tool.id) || hover === tool.id || matches(tool.id);
               const size = active || focusDept === tool.department_id ? STAGE.agentSize + 2 : STAGE.agentSize;
+              const activate = () => onSelectNode({ id: tool.id, kind: "agent", label: tool.label });
               return (
                 <g
                   key={tool.id}
@@ -570,10 +667,11 @@ export function OrgGraph({
                   style={{ cursor: "pointer" }}
                   onMouseEnter={() => setHover(tool.id)}
                   onMouseLeave={() => setHover(null)}
-                  onClick={() => onSelectNode({ id: tool.id, kind: "agent", label: tool.label })}
+                  onClick={activate}
                   data-testid="graph-tool"
                   data-id={tool.id}
                   data-kind={tool.kind}
+                  {...nodeKeyProps(tool.id, `${tool.label}, agent`, activate)}
                 >
                   <title>{tool.label}</title>
                   <rect
@@ -582,7 +680,7 @@ export function OrgGraph({
                     width={size * 2}
                     height={size * 2}
                     rx={3}
-                    fill={tint.border}
+                    fill={ramp.line}
                     stroke={C.paper}
                     strokeWidth={1}
                     strokeOpacity={0.42}
@@ -595,10 +693,22 @@ export function OrgGraph({
                   >
                     A
                   </text>
+                  <text
+                    y={size + lab(13)}
+                    textAnchor="middle"
+                    fill={C.inkSoft}
+                    paintOrder="stroke"
+                    stroke={C.paper}
+                    strokeWidth={GEOMETRY.graphLabelHalo}
+                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 2) }}
+                    data-testid="graph-tool-label"
+                  >
+                    {tool.label}
+                  </text>
                   <circle
                     r={size + 5}
                     fill="none"
-                    stroke={C.warm}
+                    stroke={C.affordance}
                     strokeWidth={active ? 2 : 0}
                     strokeOpacity={active ? 0.86 : 0}
                   />
@@ -610,6 +720,7 @@ export function OrgGraph({
             graph.sources.map((source) => {
               const point = at(source.id);
               const active = selectedId === source.id || traceRelated(source.id) || hover === source.id || matches(source.id);
+              const activate = () => onSelectNode({ id: source.id, kind: "source", label: source.label });
               return (
                 <g
                   key={source.id}
@@ -618,15 +729,15 @@ export function OrgGraph({
                   style={{ cursor: "pointer" }}
                   onMouseEnter={() => setHover(source.id)}
                   onMouseLeave={() => setHover(null)}
-                  onClick={() => onSelectNode({ id: source.id, kind: "source", label: source.label })}
+                  onClick={activate}
                   data-testid="graph-source"
                   data-id={source.id}
-                  aria-label={source.label}
+                  {...nodeKeyProps(source.id, `${source.label}, system of record`, activate)}
                 >
                   <circle
                     r={STAGE.sourceRadius + 5}
                     fill={C.paper}
-                    stroke={active ? C.warm : C.hairline}
+                    stroke={active ? C.affordance : C.hairline}
                     strokeWidth={active ? 2 : 1}
                     strokeOpacity={active ? 0.88 : 0.75}
                   />
@@ -655,18 +766,18 @@ export function OrgGraph({
               );
             })}
 
-          {graph.projects.filter(projectVisible).map((project) => {
+          {visibleProjects.map((project) => {
             const point = at(project.id);
             const angle = ang.get(project.id) ?? 0;
-            const tint = tintOf(project.primary_department_id);
+            const ramp = rampOf(project.primary_department_id);
             const active =
               selectedId === project.id || traceRelated(project.id) || hover === project.id || matches(project.id);
             const size = active ? STAGE.projectSize + 2 : STAGE.projectSize;
-            const labelVisible = active || k >= GEOMETRY.graphLodReveal + 0.4;
             const labelRadius = size + lab(12);
             const lx = labelRadius * Math.cos(angle);
             const ly = labelRadius * Math.sin(angle);
             const anchorFor = Math.cos(angle) > 0.34 ? "start" : Math.cos(angle) < -0.34 ? "end" : "middle";
+            const activate = () => onSelectNode({ id: project.id, kind: "project", label: project.label });
             return (
               <g
                 key={project.id}
@@ -675,15 +786,20 @@ export function OrgGraph({
                 style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHover(project.id)}
                 onMouseLeave={() => setHover(null)}
-                onClick={() => onSelectNode({ id: project.id, kind: "project", label: project.label })}
+                onClick={activate}
                 data-testid="graph-project"
                 data-id={project.id}
+                {...nodeKeyProps(
+                  project.id,
+                  `${compactProjectLabel(project.label)}, project, ${project.people} people`,
+                  activate,
+                )}
               >
                 <title>{`${project.label} - ${project.people} people - ${project.workflow_name}`}</title>
                 <path
                   d={`M0 ${-size}L${size} 0L0 ${size}L${-size} 0Z`}
-                  fill={tint.background}
-                  stroke={active ? C.warm : tint.border}
+                  fill={ramp.surface}
+                  stroke={active ? C.affordance : ramp.line}
                   strokeWidth={active ? 2 : 1.1}
                   strokeOpacity={active ? 0.94 : 0.74}
                 />
@@ -699,79 +815,115 @@ export function OrgGraph({
                 <circle
                   r={size + 6}
                   fill="none"
-                  stroke={C.warm}
+                  stroke={C.affordance}
                   strokeWidth={active ? 2 : 0}
                   strokeOpacity={active ? 0.84 : 0}
                 />
-                {labelVisible ? (
-                  <g transform={`translate(${lx},${ly})`}>
-                    <text
-                      textAnchor={anchorFor}
-                      dominantBaseline="middle"
-                      fill={C.ink}
-                      paintOrder="stroke"
-                      stroke={C.paper}
-                      strokeWidth={GEOMETRY.graphLabelHalo}
-                      style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 1), fontWeight: 700 }}
-                      data-testid="graph-project-label"
-                    >
-                      {compactProjectLabel(project.label)}
-                    </text>
-                    <text
-                      y={lab(12)}
-                      textAnchor={anchorFor}
-                      dominantBaseline="middle"
-                      fill={C.inkSoft}
-                      paintOrder="stroke"
-                      stroke={C.paper}
-                      strokeWidth={GEOMETRY.graphLabelHalo}
-                      style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3) }}
-                      data-testid="graph-project-workflow"
-                    >
-                      {compactProjectLabel(project.workflow_name.replace(/^Workflow:\s*/i, ""))}
-                    </text>
-                  </g>
-                ) : null}
+                <g transform={`translate(${lx},${ly})`}>
+                  <text
+                    textAnchor={anchorFor}
+                    dominantBaseline="middle"
+                    fill={C.ink}
+                    paintOrder="stroke"
+                    stroke={C.paper}
+                    strokeWidth={GEOMETRY.graphLabelHalo}
+                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 1), fontWeight: 700 }}
+                    data-testid="graph-project-label"
+                  >
+                    {compactProjectLabel(project.label)}
+                  </text>
+                  <text
+                    y={lab(12)}
+                    textAnchor={anchorFor}
+                    dominantBaseline="middle"
+                    fill={C.inkSoft}
+                    paintOrder="stroke"
+                    stroke={C.paper}
+                    strokeWidth={GEOMETRY.graphLabelHalo}
+                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3) }}
+                    data-testid="graph-project-workflow"
+                  >
+                    {compactProjectLabel(project.workflow_name.replace(/^Workflow:\s*/i, ""))}
+                  </text>
+                </g>
               </g>
             );
           })}
 
-          {!hidden.has("people") &&
-            [...graph.people]
-              .sort((a, b) => (a.ring === b.ring ? 0 : a.ring === "anchor" ? 1 : -1))
-              .map((person) => {
+          {/* THE PEOPLE RING. ≤40 in scope: every person is a real 40px node
+              with the full name always beneath (13px/500). >40: honest
+              per-department cluster chips with in-scope counts. */}
+          {clustered
+            ? graph.departments.map((dept) => {
+                const arc = deptArcs.get(dept.id);
+                if (!arc || arc.count === 0) return null;
+                const point = polar(arc.center, STAGE.ringPeople);
+                const ramp = rampOf(dept.id);
+                const active =
+                  focusDept === dept.id || hover === `cluster:${dept.id}` || matches(dept.id);
+                const activate = () => {
+                  onFocusDept(focusDept === dept.id ? null : dept.id);
+                  onSelectNode({ id: dept.id, kind: "department", label: dept.label });
+                };
+                const clusterId = `cluster:${dept.id}`;
+                return (
+                  <g
+                    key={clusterId}
+                    transform={`translate(${point.x},${point.y})`}
+                    opacity={op(dept.id)}
+                    style={{ cursor: "pointer" }}
+                    onMouseEnter={() => setHover(clusterId)}
+                    onMouseLeave={() => setHover(null)}
+                    onClick={activate}
+                    data-testid="graph-people-cluster"
+                    data-id={dept.id}
+                    data-count={arc.count}
+                    {...nodeKeyProps(clusterId, `${dept.label}: ${arc.count} people in scope`, activate)}
+                  >
+                    <title>{`${dept.label}: ${arc.count} people in scope`}</title>
+                    <rect
+                      x={-STAGE.clusterWidth / 2}
+                      y={-STAGE.clusterHeight / 2}
+                      width={STAGE.clusterWidth}
+                      height={STAGE.clusterHeight}
+                      rx={16}
+                      fill={ramp.surface}
+                      stroke={active ? C.affordance : ramp.line}
+                      strokeWidth={active ? 2 : 1.2}
+                    />
+                    <text
+                      y={-4}
+                      textAnchor="middle"
+                      fill={C.ink}
+                      style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), fontWeight: 600 }}
+                    >
+                      {dept.label}
+                    </text>
+                    <text
+                      y={lab(13)}
+                      textAnchor="middle"
+                      fill={C.inkSoft}
+                      style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 2), fontWeight: 500 }}
+                    >
+                      {`${arc.count} people in scope`}
+                    </text>
+                  </g>
+                );
+              })
+            : !hidden.has("people") &&
+              graph.people.map((person) => {
                 const point = at(person.id);
-                const angle = ang.get(person.id) ?? 0;
                 const active =
                   hover === person.id ||
                   selectedId === person.id ||
                   traceRelated(person.id) ||
                   matches(person.id) ||
                   (focusDept !== null && person.department_id === focusDept);
-                const expanded = person.ring === "anchor" || active || k >= GEOMETRY.graphLodReveal;
-                const size =
-                  person.ring === "anchor"
-                    ? STAGE.personAnchor
-                    : expanded
-                      ? STAGE.personMemberActive
-                      : STAGE.personMember;
-                const ringPad = person.ring === "anchor" ? 3 : expanded ? 2 : 1.5;
-                const labelFrameSafe =
-                  point.x > 90 &&
-                  point.x < STAGE.width - 90 &&
-                  point.y > 110 &&
-                  point.y < STAGE.height - 110;
-                const anchorLabelAllowed =
-                  person.ring !== "anchor" ||
-                  (primaryAnchorIds.has(person.id) && labelFrameSafe) ||
-                  active ||
-                  k >= GEOMETRY.graphLodReveal;
-                const showName = nameVisible(person.ring, active, k) && anchorLabelAllowed;
-                const labelRadius = size / 2 + ringPad + lab(person.ring === "anchor" ? 11 : 8);
-                const lx = labelRadius * Math.cos(angle);
-                const ly = labelRadius * Math.sin(angle);
-                const anchorFor = Math.cos(angle) > 0.34 ? "start" : Math.cos(angle) < -0.34 ? "end" : "middle";
-                const tint = tintOf(person.department_id);
+                const size = STAGE.personNode;
+                const ramp = rampOf(person.department_id);
+                const deptLabel = deptById.get(person.department_id)?.label ?? person.department_id;
+                const activate = () =>
+                  onSelectNode({ id: person.id, kind: "human", label: person.display_name });
                 return (
                   <g
                     key={person.id}
@@ -780,17 +932,18 @@ export function OrgGraph({
                     style={{ cursor: "pointer" }}
                     onMouseEnter={() => setHover(person.id)}
                     onMouseLeave={() => setHover(null)}
-                    onClick={() => onSelectNode({ id: person.id, kind: "human", label: person.display_name })}
+                    onClick={activate}
                     data-testid="graph-person"
                     data-id={person.id}
                     data-ring={person.ring}
                     data-self={person.is_self ? "true" : "false"}
+                    {...nodeKeyProps(person.id, `${person.display_name}, ${person.title}, ${deptLabel}`, activate)}
                   >
                     <title>{`${person.display_name}, ${person.title}`}</title>
-                    <circle r={size / 2 + ringPad + 1} fill={C.paper} stroke={tint.border} strokeWidth={person.ring === "anchor" ? 1.3 : 0.8} />
+                    <circle r={size / 2 + 3} fill={C.paper} stroke={ramp.line} strokeWidth={1.2} />
                     {person.is_self ? (
                       <circle
-                        r={size / 2 + ringPad + 5}
+                        r={size / 2 + 7}
                         fill="none"
                         stroke={C.affordance}
                         strokeWidth={2}
@@ -801,52 +954,51 @@ export function OrgGraph({
                       <PersonAvatar
                         principalId={person.id}
                         displayName={person.display_name}
-                        department={person.department_id}
                         size={size}
+                        tint={{ background: ramp.surface, border: ramp.line }}
                       />
                     </foreignObject>
                     <circle
-                      r={size / 2 + ringPad + 5}
+                      r={size / 2 + 7}
                       fill="none"
-                      stroke={selectedId === person.id || active ? C.warm : C.hairline}
+                      stroke={C.affordance}
                       strokeWidth={selectedId === person.id || active ? 2 : 0}
                       strokeOpacity={selectedId === person.id || active ? 0.9 : 0}
                     />
-                    {showName ? (
-                      <g transform={`translate(${lx},${ly})`}>
+                    {/* The full name, ALWAYS, beneath the node: 13px, 500. */}
+                    <g transform={`translate(0,${size / 2 + lab(16)})`}>
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fill={C.ink}
+                        paintOrder="stroke"
+                        stroke={C.paper}
+                        strokeWidth={GEOMETRY.graphLabelHalo}
+                        style={{
+                          fontFamily: FONT.chrome,
+                          fontSize: lab(TYPE.scale.xs),
+                          fontWeight: 500,
+                        }}
+                        data-testid="graph-person-name"
+                      >
+                        {person.display_name}
+                      </text>
+                      {person.ring === "anchor" || active ? (
                         <text
-                          textAnchor={anchorFor}
+                          y={lab(13)}
+                          textAnchor="middle"
                           dominantBaseline="middle"
-                          fill={C.ink}
+                          fill={C.inkSoft}
                           paintOrder="stroke"
                           stroke={C.paper}
                           strokeWidth={GEOMETRY.graphLabelHalo}
-                          style={{
-                            fontFamily: FONT.chrome,
-                            fontSize: lab(TYPE.scale.xs),
-                            fontWeight: person.ring === "anchor" ? 700 : 500,
-                          }}
-                          data-testid="graph-person-name"
+                          style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 2) }}
+                          data-testid="graph-person-title"
                         >
-                          {person.display_name}
+                          {person.title}
                         </text>
-                        {person.ring === "anchor" || active ? (
-                          <text
-                            y={lab(12)}
-                            textAnchor={anchorFor}
-                            dominantBaseline="middle"
-                            fill={C.inkSoft}
-                            paintOrder="stroke"
-                            stroke={C.paper}
-                            strokeWidth={GEOMETRY.graphLabelHalo}
-                            style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 2) }}
-                            data-testid="graph-person-title"
-                          >
-                            {person.title}
-                          </text>
-                        ) : null}
-                      </g>
-                    ) : null}
+                      ) : null}
+                    </g>
                   </g>
                 );
               })}
@@ -854,13 +1006,17 @@ export function OrgGraph({
           {(() => {
             const point = at(graph.center.id);
             const active = selectedId === graph.center.id || traceRelated(graph.center.id) || hover === graph.center.id;
+            const activate = () =>
+              onSelectNode({ id: graph.center.id, kind: "org", label: graph.center.label });
             return (
               <g
                 data-testid="graph-center"
+                data-id={graph.center.id}
                 style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHover(graph.center.id)}
                 onMouseLeave={() => setHover(null)}
-                onClick={() => onSelectNode({ id: graph.center.id, kind: "org", label: graph.center.label })}
+                onClick={activate}
+                {...nodeKeyProps(graph.center.id, `${graph.center.label}, organization`, activate)}
               >
                 <title>{graph.center.label}</title>
                 <rect
@@ -870,7 +1026,7 @@ export function OrgGraph({
                   height={STAGE.coreRadius * 2}
                   rx={8}
                   fill={C.paper}
-                  stroke={active ? C.warm : C.hairline}
+                  stroke={active ? C.affordance : C.hairline}
                   strokeWidth={active ? 2 : 1.4}
                 />
                 <text

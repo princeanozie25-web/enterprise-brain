@@ -5,26 +5,20 @@ import * as api from "@/lib/api";
 import type { RoleScopeSummary } from "@/lib/api";
 import { TYPE } from "@/lib/tokens";
 import { MotionPanel } from "./MotionPrimitives";
-import { DemoIdentityNotice } from "./TrustPosture";
 
 /**
  * AdminPreviewGate — an HONEST preview interstitial for the admin-domain
  * surfaces (Operating Map, Bursar Ledger Room).
  *
- * THIS IS NOT AN AUTHORIZATION BOUNDARY. The engine does NOT gate /graph or
- * /node/summary on admin_surface_allowed — org structure and node metadata are
- * currently visible to ANY signed-in Work Identity, and per-identity
- * enforcement of these surfaces is pending the authorization build. So this
- * component does not "grant" or "deny" anything; it states plainly what is and
- * isn't enforced today and reveals the surface on one explicit opt-in. The
- * *_surface_allowed flag from /me/scope is a DERIVED signal, not an enforced
- * boundary for these surfaces.
+ * THIS IS NOT AN AUTHORIZATION BOUNDARY — the SERVER is. Since AUTH-2, /graph
+ * and /node/summary are per-identity scoped server-side (structural + the
+ * grant-reachable slice when that lands); this gate cannot widen or narrow
+ * that. It exists only to set expectations before the surface opens, on one
+ * explicit opt-in. The *_surface_allowed flag from /me/scope is a DERIVED
+ * signal, not an enforced boundary for these surfaces.
  *
- * What IS enforced, separately and server-side: the governed document corpus
- * (Ask, documents, granted knowledge) is permission-scoped per principal.
- *
- * If a real deployment ever returns *_surface_allowed === true (the auth
- * build), the gate renders the surface directly.
+ * If a real deployment ever returns *_surface_allowed === true (the admin
+ * role build), the gate renders the surface directly.
  */
 type GatedSurface = "admin" | "bursar";
 
@@ -100,7 +94,7 @@ export function AdminPreviewGate({
   return (
     <main className="min-w-0 flex-1" data-testid={`admin-preview-gate-${surface}`}>
       <MotionPanel
-        className="ap-glass-elevated mx-auto max-w-2xl rounded-2xl p-6 md:p-8"
+        className="ap-hero mx-auto max-w-2xl rounded-2xl p-6 md:p-8"
         data-testid="admin-preview-gate"
       >
         <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
@@ -123,12 +117,6 @@ export function AdminPreviewGate({
         >
           {copy.note}
         </p>
-
-        <DemoIdentityNotice
-          className="mt-4"
-          context={copy.context}
-          testId={`admin-preview-gate-notice-${surface}`}
-        />
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <button

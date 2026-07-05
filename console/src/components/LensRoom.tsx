@@ -278,12 +278,17 @@ export function LensRoom({
   return (
     <div data-testid="lens-room">
       <div className="mb-3 flex items-center gap-2">
-        <h1
-          className="ap-register-chrome"
-          style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
-        >
-          Knowledge View
-        </h1>
+        <div className="min-w-0">
+          <h1
+            className="ap-register-chrome"
+            style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
+          >
+            My Access
+          </h1>
+          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+            What you can see, and the reason you can see it.
+          </p>
+        </div>
         {/* AP-5: masthead-adjacent home — the header row exists while the
             masthead loads, so the disabled state can too (not hidden). */}
         <span className="ml-auto">
@@ -302,13 +307,14 @@ export function LensRoom({
           <input
             value={subjectSearch}
             onChange={(e) => setSubjectSearch(e.target.value)}
+            aria-label="View another principal"
             placeholder="View another principal…"
-            className="w-56 rounded px-2 py-1"
+            className="w-56 rounded-lg px-2 py-1"
             style={{ fontSize: TYPE.scale.xs }}
             data-testid="subject-search"
           />
           {subjectMatches.length > 0 && (
-            <div className="ap-card ap-fade-view absolute right-0 z-10 mt-1 w-56 rounded">
+            <div className="ap-card ap-fade-view absolute right-0 z-10 mt-1 w-56 rounded-lg">
               {subjectMatches.map((id) => (
                 <button
                   key={id}
@@ -327,21 +333,21 @@ export function LensRoom({
       </div>
 
       {loading && (
-        <div className="ap-card rounded p-4">
+        <div className="ap-card rounded-lg p-4">
           <Skeleton lines={4} />
         </div>
       )}
 
       {!loading && !available && (
         <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="lens-unavailable">
-          This Knowledge View is not available.
+          This access view is not available.
         </p>
       )}
 
       {!loading && lens && (
         <>
           {/* MASTHEAD — the passport page. */}
-          <section className="ap-card rounded p-4" data-testid="masthead">
+          <section className="ap-card rounded-lg p-4" data-testid="masthead">
             <div className="flex flex-wrap items-center gap-2">
               <PersonAvatar
                 principalId={lens.subject.id}
@@ -373,7 +379,7 @@ export function LensRoom({
                 {lens.subject.id}
               </span>
               <span
-                className="ap-hairline ap-register-chrome ap-soft rounded border px-1.5 py-0.5"
+                className="ap-hairline ap-register-chrome ap-soft rounded-lg border px-1.5 py-0.5"
                 style={{ fontSize: TYPE.scale.xs }}
                 data-testid="masthead-kind"
               >
@@ -390,13 +396,14 @@ export function LensRoom({
                 <input
                   value={compareSearch}
                   onChange={(e) => setCompareSearch(e.target.value)}
+                  aria-label="Compare with another principal"
                   placeholder="Compare with…"
-                  className="w-44 rounded px-2 py-1"
+                  className="w-44 rounded-lg px-2 py-1"
                   style={{ fontSize: TYPE.scale.xs }}
                   data-testid="compare-search"
                 />
                 {compareMatches.length > 0 && (
-                  <span className="ap-card ap-fade-view absolute right-0 z-10 mt-1 block w-44 rounded">
+                  <span className="ap-card ap-fade-view absolute right-0 z-10 mt-1 block w-44 rounded-lg">
                     {compareMatches.map((id) => (
                       <button
                         key={id}
@@ -440,7 +447,7 @@ export function LensRoom({
           </section>
 
           <div className="mt-4 flex flex-wrap items-start gap-4">
-            <section className="ap-card rounded p-3" data-testid="ego-graph-panel">
+            <section className="ap-card rounded-lg p-3" data-testid="ego-graph-panel">
               <h3
                 className="ap-soft uppercase tracking-wide"
                 style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -456,7 +463,7 @@ export function LensRoom({
             </section>
 
             {lens.agents.length > 0 && (
-              <section className="ap-card rounded p-3" data-testid="agents-panel">
+              <section className="ap-card rounded-lg p-3" data-testid="agents-panel">
                 <h3
                   className="ap-soft uppercase tracking-wide"
                   style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -545,7 +552,7 @@ function MastheadHuman({ human }: { human: HumanRecord }) {
                   {project.capability_name}
                 </span>
                 <span
-                  className="ap-hairline ap-register-chrome ap-soft rounded border px-1 py-0.5"
+                  className="ap-hairline ap-register-chrome ap-soft rounded-lg border px-1 py-0.5"
                   style={{ fontSize: TYPE.scale.xs }}
                 >
                   {project.role}
@@ -571,7 +578,7 @@ function MastheadHuman({ human }: { human: HumanRecord }) {
 function MastheadChip({ value }: { value: string }) {
   return (
     <span
-      className="ap-card ap-register-chrome inline-block rounded px-2 py-1"
+      className="ap-card ap-register-chrome inline-block rounded-lg px-2 py-1"
       style={{ fontSize: TYPE.scale.sm, fontWeight: 500 }}
       data-testid="masthead-chip"
     >
@@ -588,13 +595,13 @@ function HoldingsSection({
   onOpenDoc: (docId: string) => void;
 }) {
   return (
-    <section className="ap-card rounded p-3" id={`holdings-${section.reason}`}>
+    <section className="ap-card rounded-lg p-3" id={`holdings-${section.reason}`}>
       <div className="flex items-baseline justify-between gap-3 px-2 pb-1">
         <h3 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }} data-testid="section-sentence">
           {section.sentence}
         </h3>
         <span
-          className="ap-hairline ap-register-evidence ap-soft shrink-0 rounded border px-1.5 py-0.5"
+          className="ap-hairline ap-register-evidence ap-soft shrink-0 rounded-lg border px-1.5 py-0.5"
           style={{ fontSize: TYPE.scale.xs }}
           data-testid="section-rule"
         >
@@ -661,7 +668,7 @@ function LensDocRow({
           {doc.also_via.map((reason) => (
             <span
               key={reason}
-              className="ap-hairline ap-register-evidence ap-soft rounded border px-1 py-0.5"
+              className="ap-hairline ap-register-evidence ap-soft rounded-lg border px-1 py-0.5"
               style={{ fontSize: TYPE.scale.xs }}
               data-testid="also-via-chip"
             >

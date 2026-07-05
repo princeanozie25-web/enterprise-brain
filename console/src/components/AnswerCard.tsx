@@ -18,7 +18,7 @@ export function AnswerCard({
   onOpenDoc: (docId: string) => void;
 }) {
   return (
-    <section className="ap-card rounded p-4" data-testid="answer-card">
+    <section className="ap-card rounded-lg p-4" data-testid="answer-card">
       <ProvenanceStrip envelope={envelope} />
       <div className="mt-3">
         {envelope.answer ? (
@@ -58,7 +58,7 @@ function renderWithCitations(text: string, onOpenDoc: (docId: string) => void) {
         key={key++}
         type="button"
         onClick={() => onOpenDoc(docId)}
-        className="ap-card ap-register-evidence ap-washable mx-0.5 inline-block rounded px-1 py-0 align-baseline"
+        className="ap-card ap-register-evidence ap-washable mx-0.5 inline-block rounded-lg px-1 py-0 align-baseline"
         style={{ fontSize: TYPE.scale.xs }}
         data-testid="citation-chip"
       >

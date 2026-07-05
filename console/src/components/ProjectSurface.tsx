@@ -13,7 +13,7 @@ type ProjectTab = "graph" | "workflow";
 function Chip({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
   return (
     <span
-      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded px-1.5 py-0.5`}
+      className={`ap-chip ${mono ? "ap-register-evidence" : "ap-register-chrome"} rounded-lg px-1.5 py-0.5`}
       style={{ fontSize: TYPE.scale.xs }}
     >
       {children}
@@ -45,10 +45,12 @@ function ProjectEntryState({
   testId: string;
   title: string;
 }) {
-  const carry = actor === null ? "?as=p060" : `?as=${encodeURIComponent(actor)}`;
+  // A2: no hardwired identity — with no actor the links carry no `?as`; the
+  // identity picker (the front door) catches identity-less arrivals.
+  const carry = actor === null ? "" : `?as=${encodeURIComponent(actor)}`;
   return (
     <main className="min-w-0 flex-1" data-testid={testId}>
-      <MotionSection className="ap-glass-elevated rounded-2xl p-4">
+      <MotionSection className="ap-hero rounded-2xl p-4">
         <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
           Workflow Command
         </p>
@@ -60,7 +62,7 @@ function ProjectEntryState({
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <MotionAnchor
-            className="ap-affordance-button ap-register-chrome rounded px-3 py-2"
+            className="ap-affordance-button ap-register-chrome rounded-lg px-3 py-2"
             data-testid="project-empty-work-identity-link"
             href={`/me${carry}`}
             style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -68,7 +70,7 @@ function ProjectEntryState({
             Open Work Identity
           </MotionAnchor>
           <MotionAnchor
-            className="ap-washable ap-register-chrome rounded border px-3 py-2"
+            className="ap-washable ap-register-chrome rounded-lg border px-3 py-2"
             data-testid="project-empty-operating-map-link"
             href={`/admin/graph${carry}`}
             style={{ borderColor: "var(--hairline)", fontSize: TYPE.scale.xs, fontWeight: 600 }}
@@ -183,7 +185,7 @@ export function ProjectSurface({
               {title}
             </h1>
           </div>
-          <div className="ap-glass-panel flex shrink-0 gap-1 rounded-full p-1" data-testid="project-tabs">
+          <div className="ap-card flex shrink-0 gap-1 rounded-full p-1" data-testid="project-tabs">
             <TabButton active={tab === "graph"} onClick={() => setTab("graph")}>
               Operating Map Trace
             </TabButton>
@@ -203,7 +205,7 @@ export function ProjectSurface({
       </header>
 
       {loading && (
-        <div className="ap-card rounded p-4" data-testid="project-loading">
+        <div className="ap-card rounded-lg p-4" data-testid="project-loading">
           <Skeleton lines={5} />
         </div>
       )}
@@ -238,7 +240,7 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`${active ? "ap-affordance-button" : "ap-washable ap-soft"} rounded px-2 py-1`}
+      className={`${active ? "ap-affordance-button" : "ap-washable ap-soft"} rounded-lg px-2 py-1`}
       style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
       aria-pressed={active}
       data-testid="project-tab"
@@ -270,7 +272,7 @@ function ProjectTraceView({
 
   return (
     <section className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr]" data-testid="project-graph-view">
-      <MotionArticle className="ap-glass-panel rounded-2xl p-4">
+      <MotionArticle className="ap-card rounded-2xl p-4">
         <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           Project Trace
         </h2>
@@ -289,7 +291,7 @@ function ProjectTraceView({
         </p>
       </MotionArticle>
 
-      <MotionArticle className="ap-glass-panel rounded-2xl p-4" delayIndex={1}>
+      <MotionArticle className="ap-card rounded-2xl p-4" delayIndex={1}>
         <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
           Departments
         </h2>

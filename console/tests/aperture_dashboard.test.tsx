@@ -579,7 +579,6 @@ describe("EmployeeDashboard", () => {
     expect(screen.getByTestId("dashboard-agent").textContent).toContain("Finance analysis assistant");
 
     const scope = screen.getByTestId("dashboard-scope");
-    expect(scope.textContent).toContain("permission preview");
     expect(scope.textContent).toContain("Role posture");
     expect(scope.textContent).toContain("Department head signal");
     expect(scope.textContent).toContain("Department context");
@@ -588,8 +587,9 @@ describe("EmployeeDashboard", () => {
     expect(scope.textContent).toContain("Project scope");
     expect(scope.textContent).toContain("Read grants");
     expect(scope.textContent).toContain("Surface limits");
-    expect(scope.textContent).toContain("Identity boundary");
-    expect(scope.textContent).toContain("Production identity binding");
+    // A4: the free-floating "Identity boundary" disclaimer card is gone —
+    // the page's single demo-status line is the shell notice.
+    expect(scope.textContent).not.toContain("Identity boundary");
 
     const roleExperience = screen.getByTestId("dashboard-role-experience");
     expect(roleExperience.textContent).toContain("Department head");
@@ -609,7 +609,9 @@ describe("EmployeeDashboard", () => {
     expect(settings.textContent).toContain("Connected Systems");
     expect(settings.textContent).toContain("Preferences");
     expect(settings.textContent).toContain("Agent Preferences");
-    expect(settings.textContent).toContain("Demo Identity Mode");
+    // A4: the demo-status line is no longer duplicated inside the settings
+    // drawer — the shell notice carries it once per page.
+    expect(settings.textContent).not.toContain("Demo Identity Mode");
     expect(screen.getAllByTestId("theme-toggle").length).toBeGreaterThan(0);
     const settingsSystems = screen.getByTestId("dashboard-connected-systems");
     expect(settingsSystems.textContent).toContain("Slack");

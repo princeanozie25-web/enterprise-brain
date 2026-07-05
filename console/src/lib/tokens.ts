@@ -175,6 +175,40 @@ export const AVATAR_FALLBACK_TINT = {
   border: DERIVED.hairline,
 } as const;
 
+/**
+ * THE GRAPH NEUTRAL RAMP (comprehension pass, B1/B4): department coding on the
+ * Company/Operating Map uses ONLY this sensitivity-safe neutral ramp —
+ * saturated color stays reserved for the sensitivity classes (and amber for
+ * the lit connection path). Eight tonal steps of the theme ink over the theme
+ * paper (CSS-var driven, so both themes resolve correctly). `surface` fills,
+ * `line` strokes. Departments are distinguished primarily by POSITION (their
+ * arc); the ramp is a quiet secondary cue, not an identity system.
+ */
+export const GRAPH_NEUTRAL_RAMP: ReadonlyArray<{ surface: string; line: string }> = [
+  { surface: "color-mix(in srgb, var(--ink) 6%, var(--paper))", line: "color-mix(in srgb, var(--ink) 34%, var(--paper))" },
+  { surface: "color-mix(in srgb, var(--ink) 8%, var(--paper))", line: "color-mix(in srgb, var(--ink) 38%, var(--paper))" },
+  { surface: "color-mix(in srgb, var(--ink) 10%, var(--paper))", line: "color-mix(in srgb, var(--ink) 42%, var(--paper))" },
+  { surface: "color-mix(in srgb, var(--ink) 12%, var(--paper))", line: "color-mix(in srgb, var(--ink) 46%, var(--paper))" },
+  { surface: "color-mix(in srgb, var(--ink) 14%, var(--paper))", line: "color-mix(in srgb, var(--ink) 50%, var(--paper))" },
+  { surface: "color-mix(in srgb, var(--ink) 16%, var(--paper))", line: "color-mix(in srgb, var(--ink) 54%, var(--paper))" },
+  { surface: "color-mix(in srgb, var(--ink) 18%, var(--paper))", line: "color-mix(in srgb, var(--ink) 58%, var(--paper))" },
+  { surface: "color-mix(in srgb, var(--ink) 20%, var(--paper))", line: "color-mix(in srgb, var(--ink) 62%, var(--paper))" },
+] as const;
+
+/** Deterministic ramp step for a department: by its index in the scoped
+ * payload's department order (stable per payload; no hashing, no hue). */
+export function graphRampStep(index: number): { surface: string; line: string } {
+  return GRAPH_NEUTRAL_RAMP[((index % GRAPH_NEUTRAL_RAMP.length) + GRAPH_NEUTRAL_RAMP.length) % GRAPH_NEUTRAL_RAMP.length];
+}
+
+/**
+ * Sensitivity badge ink (B4): the five badge tints are FIXED pale hues shared
+ * by both themes, so the label must NOT inherit the theme ink (near-white on
+ * dark collapsed to 1.0:1 against the pale tints). Badge text is pinned to the
+ * light-theme ink — ≥4.5:1 on every tint in BOTH themes by construction.
+ */
+export const SENSITIVITY_BADGE_INK = COLOR.ink;
+
 /** Type registers (bundled woff2; see src/fonts). */
 export const FONT = {
   /** chrome/data: UI, tables, labels, scope chips. */
@@ -247,22 +281,29 @@ export const GEOMETRY = {
   graphGhostOpacity: 0.1,
 } as const;
 
-/** MOTION BUDGET — tokens, not vibes. Nothing else animates. */
+/** MOTION BUDGET — tokens, not vibes. Nothing else animates.
+ * The budget (comprehension pass, B7): fades 120–180ms; the iris (≤240ms) is
+ * the ONE choreographed motion in the product; ONE hover-lift repo-wide
+ * (-2px over `lift` ease-out). */
 export const MOTION = {
   /** hover, chip reveal */
   fadeQuick: "140ms",
   /** panel/sheet enter */
   fadeView: "180ms",
+  /** the ONE hover-lift transition (B3): translateY(-2px), 150ms ease-out */
+  lift: "150ms",
   /** the lens transition — the ONE choreographed motion in the product */
   iris: "220ms",
   easeOut: "ease-out",
   irisEase: "cubic-bezier(0.4, 0, 0.2, 1)",
-  /** Framer Motion: calm enterprise micro-motion, in seconds. */
+  /** Framer Motion: calm enterprise micro-motion, in seconds. framerView sits
+   * at the top of the 120–180ms fade budget (was 360ms — over budget). */
   framerQuick: 0.16,
-  framerView: 0.36,
+  framerView: 0.18,
   framerStagger: 0.075,
   framerEnterY: 18,
-  framerHoverY: -7,
+  /** THE hover-lift (B3): one value repo-wide, shared with .ap-washable. */
+  framerHoverY: -2,
   framerTapScale: 0.975,
   framerEase: [0.16, 1, 0.3, 1] as const,
   /**
