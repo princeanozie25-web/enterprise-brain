@@ -27,8 +27,25 @@ export interface ScopeStatement {
   sites: string[];
 }
 
+/** K1: one ADMITTED claim — the sentence and the anchor that proves it
+ * (locator = "doc_id@byte_offset" in the cited document's full body). */
+export interface AnswerClaim {
+  doc_id: string;
+  locator: string;
+  text: string;
+}
+
+/** K1 drop-with-disclosure: the model's OWN draft claims, admitted vs
+ * removed by the verbatim-anchoring gate. Never about documents. */
+export interface GroundingCounts {
+  admitted: number;
+  refused: number;
+}
+
 export interface Answer {
   citations: string[];
+  /** K1, additive: admitted claims only. Absent on pre-grounding envelopes. */
+  claims?: AnswerClaim[];
   text: string;
 }
 
@@ -67,6 +84,12 @@ export interface AnswerEnvelope {
   demo_identity_mode: boolean;
   generation_applied: boolean;
   granted_context?: GrantedContextSummary;
+  /** K1, additive: present whenever the grounding gate ran — including the
+   * all-refused case where `answer` is omitted (the drop is disclosed). */
+  grounding?: GroundingCounts;
+  /** K1, additive: optional in the mirror so captured pre-grounding
+   * envelopes stay valid (ignore-don't-drop). */
+  grounding_applied?: boolean;
   index_version: string;
   judge_applied: boolean;
   principal_id: string;

@@ -512,15 +512,20 @@ export function Console({
           </MotionPanel>
 
           {/* A3: async outcomes are announced — answer arrival and the quiet
-              refusal both reach assistive tech without stealing focus. */}
+              refusal both reach assistive tech without stealing focus. K1:
+              the three generated-path states name anchoring (never semantic
+              verification — R-B) and the all-refused grounding state is its
+              own honest announcement. */}
           <p className="sr-only" role="status" aria-live="polite" data-testid="ask-live-status">
             {asking
               ? "Looking for an answer within your access."
               : envelope
                 ? envelope.answer
-                  ? `Answer ready, with ${envelope.results.length} source document${envelope.results.length === 1 ? "" : "s"}.`
+                  ? `Answer ready: ${(envelope.answer.claims ?? envelope.answer.citations).length} claim${(envelope.answer.claims ?? envelope.answer.citations).length === 1 ? "" : "s"}, each anchored to a source you can open. ${envelope.results.length} source document${envelope.results.length === 1 ? "" : "s"}.`
                   : envelope.results.length > 0
-                    ? `Found ${envelope.results.length} source document${envelope.results.length === 1 ? "" : "s"} within your access; no written answer was generated in this build.`
+                    ? envelope.grounding_applied
+                      ? `Found ${envelope.results.length} source document${envelope.results.length === 1 ? "" : "s"}; no claim survived grounding — nothing unverifiable was invented.`
+                      : `Found ${envelope.results.length} source document${envelope.results.length === 1 ? "" : "s"} within your access; no written answer was generated for this ask.`
                     : "Nothing within your access supports an answer, and nothing was invented."
                 : ""}
           </p>
@@ -548,6 +553,19 @@ export function Console({
                   />
                 </div>
                 <AnswerCard envelope={envelope} onOpenDoc={openDoc} />
+                {/* K1 drop-with-disclosure: removed draft claims get ONE
+                    quiet line — calm honesty, never error-styled. */}
+                {envelope.grounding && envelope.grounding.refused > 0 && (
+                  <p
+                    className="ap-register-chrome ap-soft px-1 italic"
+                    style={{ fontSize: TYPE.scale.xs }}
+                    data-testid="grounding-removed-line"
+                  >
+                    {envelope.grounding.refused === 1
+                      ? "1 draft claim was removed: not verbatim-supported by your sources."
+                      : `${envelope.grounding.refused} draft claims were removed: not verbatim-supported by your sources.`}
+                  </p>
+                )}
                 <MotionSection className="ap-card rounded-2xl p-3" delayIndex={1}>
                   <h2
                     className="ap-soft px-2 pb-1 pt-1 uppercase tracking-wide"

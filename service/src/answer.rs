@@ -1,6 +1,7 @@
 //! The answer pipeline. THE ORDER IS LAW:
 //! identity -> retrieval (M2b hybrid library path, degradation doctrine
-//! inherited) -> mosaic bound -> sealed context -> generate -> citation
+//! inherited) -> mosaic bound -> sealed context -> generate -> per-claim
+//! grounding (K1: verbatim anchoring, drop-with-disclosure) -> citation
 //! validation -> envelope.
 //!
 //! Deny by default at every step: an unknown principal gets the empty
@@ -10,7 +11,7 @@
 //! refused the same way. The mosaic bound discloses that it fired
 //! (`aggregation_bounded`) and never what it hid.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use anyhow::Context as _;
@@ -76,12 +77,38 @@ pub struct GrantedContextSummary {
     pub workflow: GrantedContextNode,
 }
 
-/// The validated answer: text whose every citation is inside the sealed
-/// context, plus the cited ids in order of first appearance.
+/// One ADMITTED claim: a rendered sentence and the anchor that proves it —
+/// `locator` = "doc_id@byte_offset", the real offset of the quote's first
+/// verbatim match in the cited document's FULL body. Refused claims never
+/// appear here (they are counted in [`GroundingCounts`], never rendered).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnswerClaim {
+    pub doc_id: String,
+    pub locator: String,
+    pub text: String,
+}
+
+/// Drop-with-disclosure (K1 ruling R-C): how many of the generator's OWN
+/// draft claims survived the grounding gate and how many were removed.
+/// These numbers describe the model's draft output, never any document —
+/// disclosing them is the honesty law, not a dark count.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroundingCounts {
+    pub admitted: u32,
+    pub refused: u32,
+}
+
+/// The validated answer: text composed ONLY of admitted (verbatim-anchored)
+/// claims, each followed by its [doc_id] citation; `citations` = the
+/// deduped, sorted admitted doc ids; `claims` = the admitted claims sorted
+/// by (doc_id, locator, text).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Answer {
     pub citations: Vec<String>,
+    pub claims: Vec<AnswerClaim>,
     pub text: String,
 }
 
@@ -135,6 +162,14 @@ pub struct AnswerEnvelope {
     pub generation_applied: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub granted_context: Option<GrantedContextSummary>,
+    /// Present whenever the grounding gate ran — INCLUDING the all-refused
+    /// case where `answer` is omitted, so the drop is always disclosed
+    /// (R-C). Counts the generator's own draft claims, nothing else.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grounding: Option<GroundingCounts>,
+    /// True whenever the grounding gate ran (same pattern as
+    /// judge_applied/generation_applied — false says "did not run", never why).
+    pub grounding_applied: bool,
     pub index_version: String,
     pub judge_applied: bool,
     pub principal_id: String,
@@ -156,6 +191,11 @@ pub struct AskTrace {
     /// Mosaic-bound removals (in-scope ids; never serialized).
     pub mosaic_removed: Vec<String>,
     pub generation_fault: bool,
+    /// K1 grounding instrumentation (G-6): parsed draft size and the
+    /// admit/refuse split. In-memory only, like everything else here.
+    pub draft_claims: u32,
+    pub grounding_admitted: u32,
+    pub grounding_refused: u32,
     pub usage_events: Vec<UsageEvent>,
 }
 
@@ -320,6 +360,15 @@ pub fn ask(
             "judged asks require the service to be configured with a judge model".to_string(),
         ));
     }
+    // K1 §4: a capability whose vector arm is absent is a 400 with a reason,
+    // never a 500 out of the engine's preflight bail. (With no model
+    // configured the checks above answer first; this closes the
+    // config-wired, vectors-absent curl hole.)
+    if (options.hybrid || options.judge) && state.engine.manifest.vectors.is_none() {
+        return Err(AskError::BadRequest(
+            "the index carries no vector arm in this build".to_string(),
+        ));
+    }
 
     // Unknown principal: the empty envelope. Deny by default; the shape is
     // identical to a known principal granted nothing.
@@ -330,6 +379,8 @@ pub fn ask(
             demo_identity_mode: true,
             generation_applied: false,
             granted_context: None,
+            grounding: None,
+            grounding_applied: false,
             index_version: state.engine.manifest.index_version.clone(),
             judge_applied: false,
             principal_id: principal_id.to_string(),
@@ -432,10 +483,16 @@ pub fn ask(
         .map_err(AskError::Internal)?;
     trace.sealed = sealed.clone();
 
-    // 5 + 6. Generate, then validate citations. Any failure on this side
-    // degrades to retrieval-only — never to less governance.
+    // 5 + 6. Generate -> STRICT parse -> per-claim grounding (K1) ->
+    // compose -> answer-level citation validation (the old gate, kept as a
+    // second lock). Any failure on this side degrades to retrieval-only —
+    // never to less governance. Refused claims are DROPPED WITH DISCLOSURE
+    // (the `grounding` counts); the whole answer is refused only when zero
+    // claims survive.
     let mut answer: Option<Answer> = None;
     let mut transient_failure = false;
+    let mut grounding_applied = false;
+    let mut grounding_counts: Option<GroundingCounts> = None;
     if let (Some(generator), false) = (&state.generator, sealed.is_empty()) {
         let outcome =
             generator.generate(query, &sealed, Duration::from_millis(GENERATION_TIMEOUT_MS));
@@ -454,20 +511,93 @@ pub fn ask(
             Err(_) => {
                 transient_failure = true;
             }
-            Ok(outcome) => {
-                let sealed_ids: BTreeSet<&str> = sealed.iter().map(|d| d.doc_id.as_str()).collect();
-                match validate_citations(&outcome.text, &sealed_ids) {
-                    Ok(citations) => {
-                        answer = Some(Answer {
-                            citations,
-                            text: outcome.text,
-                        });
+            Ok(outcome) => match crate::generate::parse_claims(&outcome.text) {
+                Err(_) => {
+                    // Format deviation: no salvage parsing (K1 §1).
+                    trace.generation_fault = true;
+                }
+                Ok(draft) => {
+                    trace.draft_claims = draft.len() as u32;
+                    // The ONE lookup grounding receives: sealed ids -> FULL
+                    // bodies. Built from the sealed context only, so no code
+                    // path can anchor against any other document (G-4).
+                    let sealed_bodies: BTreeMap<&str, &str> = sealed
+                        .iter()
+                        .map(|d| {
+                            let meta = state
+                                .docs
+                                .get(&d.doc_id)
+                                .expect("sealed ids originate from the verified corpus");
+                            (d.doc_id.as_str(), meta.body.as_str())
+                        })
+                        .collect();
+                    let verifier = crate::grounding::AnchorOnly;
+                    let mut admitted: Vec<(crate::grounding::Claim, crate::grounding::Anchor)> =
+                        Vec::new();
+                    let mut refused: u32 = 0;
+                    for c in draft {
+                        let claim = crate::grounding::Claim {
+                            text: c.text,
+                            doc_id: c.doc_id,
+                            quote: c.quote,
+                        };
+                        match crate::grounding::ground(claim, &sealed_bodies, &verifier) {
+                            crate::grounding::Grounded::Admitted { claim, anchor } => {
+                                admitted.push((claim, anchor));
+                            }
+                            crate::grounding::Grounded::Refused { .. } => refused += 1,
+                        }
                     }
-                    Err(_) => {
-                        trace.generation_fault = true;
+                    grounding_applied = true;
+                    trace.grounding_admitted = admitted.len() as u32;
+                    trace.grounding_refused = refused;
+                    grounding_counts = Some(GroundingCounts {
+                        admitted: admitted.len() as u32,
+                        refused,
+                    });
+                    if !admitted.is_empty() {
+                        let text = admitted
+                            .iter()
+                            .map(|(c, _)| format!("{} [{}]", c.text, c.doc_id))
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        // Belt and braces: the pre-K1 answer-level gate still
+                        // runs on the composed text.
+                        let sealed_ids: BTreeSet<&str> =
+                            sealed.iter().map(|d| d.doc_id.as_str()).collect();
+                        match validate_citations(&text, &sealed_ids) {
+                            Ok(_) => {
+                                let mut citations: Vec<String> =
+                                    admitted.iter().map(|(c, _)| c.doc_id.clone()).collect();
+                                citations.sort();
+                                citations.dedup();
+                                let mut claims: Vec<AnswerClaim> = admitted
+                                    .iter()
+                                    .map(|(c, a)| AnswerClaim {
+                                        doc_id: c.doc_id.clone(),
+                                        locator: a.locator.clone(),
+                                        text: c.text.clone(),
+                                    })
+                                    .collect();
+                                claims.sort_by(|x, y| {
+                                    x.doc_id
+                                        .cmp(&y.doc_id)
+                                        .then_with(|| x.locator.cmp(&y.locator))
+                                        .then_with(|| x.text.cmp(&y.text))
+                                });
+                                answer = Some(Answer {
+                                    citations,
+                                    claims,
+                                    text,
+                                });
+                            }
+                            Err(_) => {
+                                trace.generation_fault = true;
+                            }
+                        }
                     }
                 }
-            }
+            },
         }
     }
     let generation_applied = answer.is_some();
@@ -500,6 +630,8 @@ pub fn ask(
         demo_identity_mode: true,
         generation_applied,
         granted_context: granted_context_summary,
+        grounding: grounding_counts,
+        grounding_applied,
         index_version: retrieval_envelope.index_version.clone(),
         judge_applied: retrieval_envelope.judge_applied,
         principal_id: principal_id.to_string(),

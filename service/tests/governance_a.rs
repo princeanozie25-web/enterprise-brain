@@ -317,7 +317,9 @@ fn a2_citation_validation_fails_closed() {
         Err(CitationFault::Uncited)
     );
 
-    // Through the pipeline: a foreign citation refuses the WHOLE answer.
+    // Through the pipeline: a foreign citation is now a PER-CLAIM grounding
+    // refusal (K1) — its lone claim dies at the gate, so the answer is
+    // omitted, the drop is DISCLOSED, and it is not a format fault.
     let state = state_with(
         Some(Arc::new(MockGenerator::new(GenBehavior::ForeignCitation))),
         None,
@@ -331,7 +333,13 @@ fn a2_citation_validation_fails_closed() {
     );
     assert!(envelope.get("answer").is_none(), "answer refused entirely");
     assert_eq!(envelope["generation_applied"], Value::Bool(false));
-    assert!(trace.generation_fault, "fault counted");
+    assert_eq!(envelope["grounding_applied"], Value::Bool(true));
+    assert_eq!(envelope["grounding"]["admitted"], json!(0));
+    assert_eq!(envelope["grounding"]["refused"], json!(1));
+    assert!(
+        !trace.generation_fault,
+        "a grounding refusal is disclosed, not a format fault"
+    );
     assert!(
         !envelope["results"].as_array().expect("results").is_empty(),
         "retrieval-only response still serves results"
@@ -341,7 +349,7 @@ fn a2_citation_validation_fails_closed() {
         "the foreign id never reaches the envelope"
     );
 
-    // Zero citations: likewise refused.
+    // Free prose with no claim blocks: a format fault (K1 strict parse).
     let state = state_with(
         Some(Arc::new(MockGenerator::new(GenBehavior::Uncited))),
         None,
@@ -355,8 +363,13 @@ fn a2_citation_validation_fails_closed() {
     );
     assert!(envelope.get("answer").is_none());
     assert!(trace.generation_fault);
+    assert_eq!(
+        envelope["grounding_applied"],
+        Value::Bool(false),
+        "the gate never ran on an unparseable draft"
+    );
 
-    // Valid citations pass through.
+    // Valid grounded claims pass through.
     let state = state_with(
         Some(Arc::new(MockGenerator::new(GenBehavior::CiteEach))),
         None,
@@ -369,6 +382,7 @@ fn a2_citation_validation_fails_closed() {
         &AskOptions::default(),
     );
     assert_eq!(envelope["generation_applied"], Value::Bool(true));
+    assert_eq!(envelope["grounding_applied"], Value::Bool(true));
     assert!(!trace.generation_fault);
     let citations: Vec<&str> = envelope["answer"]["citations"]
         .as_array()
@@ -376,10 +390,19 @@ fn a2_citation_validation_fails_closed() {
         .iter()
         .map(|c| c.as_str().expect("citation"))
         .collect();
-    let sealed_ids: Vec<&str> = trace.sealed.iter().map(|d| d.doc_id.as_str()).collect();
+    let mut sealed_ids: Vec<&str> = trace.sealed.iter().map(|d| d.doc_id.as_str()).collect();
+    sealed_ids.sort_unstable();
     assert_eq!(
         citations, sealed_ids,
-        "CiteEach cites the sealed context in order"
+        "CiteEach cites the whole sealed context (citations are deduped + sorted)"
+    );
+    assert_eq!(
+        envelope["answer"]["claims"]
+            .as_array()
+            .expect("claims")
+            .len(),
+        trace.sealed.len(),
+        "one admitted claim per sealed doc"
     );
 
     // Generator outage: degrade, no fault.
@@ -781,15 +804,18 @@ fn a6_full_corpus_hybrid_service_pipeline_never_leaks() {
 // A-7 ENVELOPE RULES + REAL SCOPE STATEMENTS
 // ---------------------------------------------------------------------------
 
-const ENVELOPE_KEY_WHITELIST: [&str; 38] = [
+const ENVELOPE_KEY_WHITELIST: [&str; 45] = [
     "active",
+    "admitted",
     "aggregation_bounded",
     "answer",
     "approver_id",
     "band",
     "capability",
     "citations",
+    "claims",
     "demo_identity_mode",
+    "doc_id",
     "document_id",
     "effective_successor",
     "generation_applied",
@@ -797,15 +823,19 @@ const ENVELOPE_KEY_WHITELIST: [&str; 38] = [
     "grant_scope",
     "grant_status",
     "granted_context",
+    "grounding",
+    "grounding_applied",
     "groups",
     "id",
     "index_version",
     "initiative",
     "judge_applied",
+    "locator",
     "name",
     "principal_id",
     "query_hash",
     "reasons_ref",
+    "refused",
     "request_id",
     "results",
     "retrieval_mode",

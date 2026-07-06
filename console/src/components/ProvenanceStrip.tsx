@@ -31,6 +31,15 @@ export function ProvenanceStrip({ envelope }: { envelope: AnswerEnvelope }) {
       <Badge testid="badge-generation">
         {envelope.generation_applied ? "generation: applied" : "generation: skipped"}
       </Badge>
+      {/* K1: anchoring is the whole claim — ruling R-B forbids any stronger
+          wording on this surface. The counts are the model's own draft
+          claims, disclosed, in the same calm register as every other
+          honesty badge. */}
+      {envelope.grounding_applied && envelope.grounding && (
+        <Badge testid="badge-grounding">
+          {`grounding: anchored (${envelope.grounding.admitted} admitted · ${envelope.grounding.refused} removed)`}
+        </Badge>
+      )}
       {envelope.aggregation_bounded && (
         <Badge testid="badge-aggregation">aggregation rule applied</Badge>
       )}

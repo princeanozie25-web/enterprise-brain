@@ -21,6 +21,7 @@ pub mod diff;
 pub mod export;
 pub mod generate;
 pub mod graph;
+pub mod grounding;
 pub mod humanize;
 pub mod identity;
 pub mod lane;
