@@ -107,7 +107,14 @@ describe("Copy pass: locked-table extension — labels + subtitles render verbat
   }
 
   it("the under-claim phrases are gone from every source file", () => {
-    for (const stale of ["still being added", "in-progress slice"]) {
+    // The last two died when the Spend Ledger went live: STATE 3 copy is
+    // fetch-driven, never a standing claim of disconnection.
+    for (const stale of [
+      "still being added",
+      "in-progress slice",
+      "not connected in this UI surface",
+      "No ledger fixture",
+    ]) {
       const offenders = TSX.filter((f) => read(f).includes(stale)).map((f) => f.replace(SRC, "src"));
       expect(offenders).toEqual([]);
     }

@@ -38,12 +38,13 @@ const SURFACE_COPY: Record<
   },
   bursar: {
     context: "bursar",
-    eyebrow: "Preview — not connected",
-    heading: "Spend Ledger — preview (not connected)",
-    lead: "The Spend Ledger is a placeholder for the future governed-spend room.",
+    eyebrow: "Live, read-only",
+    heading: "Spend Ledger — live, read-only",
+    lead:
+      "The Spend Ledger reads the local spend producer over a loopback contract and renders what it reports.",
     note:
-      "No ledger data and no finance authority are connected in this build; your document access is separately permission-scoped on the server.",
-    cta: "Read-only preview. Not connected in this build.",
+      "Read-only by construction: this room renders spend; it never authorizes, issues, or mutates it. If the producer is not running, the room says so honestly instead of showing stale numbers. Your document access is separately permission-scoped on the server.",
+    cta: "Read-only. This room renders spend; it never authorizes it.",
   },
 };
 

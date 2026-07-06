@@ -4,6 +4,10 @@
 /** The Ask Brain service — loopback only, always. */
 export const SERVICE_URL = "http://127.0.0.1:8787";
 
+/** The Bursar spend producer — loopback only, always. Contract: ledger.v1.1;
+ * never imported, only fetched. */
+export const LEDGER_URL = "http://127.0.0.1:8088";
+
 /** Doc/sealed-context snippet cap (chars), mirrored from the service. */
 export const SNIPPET_CAP = 480;
 

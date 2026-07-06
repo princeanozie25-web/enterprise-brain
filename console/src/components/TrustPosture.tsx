@@ -9,7 +9,7 @@ const CONTEXT_COPY: Record<DemoIdentityContext, string> = {
   admin:
     "Admin-side routes are visible here for pilot review. Production admin authority is not connected in this build.",
   bursar:
-    "The Spend Ledger is an admin, finance, and executive-domain preview. Production authority and ledger.v1.1 data are not connected in this build.",
+    "Reads the local spend producer over a loopback contract (ledger.v1.1). Read-only: this room renders spend; it never authorizes it.",
   employee:
     "This Work Identity preview shows scoped work, requests, grants, and Ask context without creating restricted surface access.",
   standard:

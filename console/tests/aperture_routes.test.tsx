@@ -206,16 +206,20 @@ describe("route separation", () => {
     expect(document.querySelector("a[href='/admin/bursar']")).toBeNull();
   });
 
-  it("renders the Spend Ledger as an honest placeholder without fake spend data", () => {
+  it("renders the Spend Ledger as a live consumer that fails closed without a producer", async () => {
+    // stubRouteFetch has no /report/summary arm, so the ledger fetch lands on
+    // its 404 fallback -> the room's honest unavailable state, deterministically.
+    stubRouteFetch();
     render(<Console view="adminBursar" />);
 
     // Fail-closed: the admin-domain surface is gated behind an explicit,
-    // labelled preview opt-in and is never rendered by default.
+    // labelled opt-in and is never rendered by default.
     expect(screen.getByTestId("admin-preview-gate")).toBeTruthy();
     expect(screen.queryByTestId("bursar-surface")).toBeNull();
     fireEvent.click(screen.getByTestId("admin-preview-gate-reveal"));
 
     const surface = screen.getByTestId("bursar-surface");
+    await screen.findByTestId("bursar-unavailable");
     const text = surface.textContent ?? "";
     expect(text).toContain("Spend Ledger");
     expect(text).toContain("What AI assistance costs, and who authorized it.");
@@ -223,17 +227,20 @@ describe("route separation", () => {
     expect(text).toContain("Fail closed by default");
     expect(text).toContain("Audit before effect");
     expect(text).toContain("Reconcile every call");
-    expect(text).toContain("ledger.v1.1 expected");
-    expect(text).toContain("producer not connected in this UI surface");
-    expect(text).toContain("admin-side preview");
-    expect(text).toContain("finance authority pending");
+    // Contract panel reports live state, never hardcoded claims.
+    expect(text).toContain("schema ledger.v1.1");
+    expect(text).toContain("producer reachable");
+    expect(text).toContain("read-only report surface");
+    // STATE 3: honest unavailable — a finding, not a bug.
+    expect(text).toContain("Ledger unavailable — the spend producer is not running.");
+    expect(screen.getByTestId("bursar-retry")).toBeTruthy();
     // A4: the demo-status line lives on the SHELL notice (one per page),
     // not inside the Spend Ledger surface.
     const shellNotice = screen.getByTestId("shell-demo-identity-mode").textContent ?? "";
     expect(shellNotice).toContain("Demo Identity Mode");
     expect(shellNotice).toContain("Production identity is not connected");
-    expect(text).toContain("No ledger fixture is connected in this workspace yet.");
     expect(text).toContain("Same console: the answer, and the governed spend it cost");
+    // No fabricated figures in the unavailable state, ever.
     expect(text).not.toMatch(/supplier|invoice|procurement|duplicate payment|savings opportunity/i);
     expect(text).not.toMatch(/spend total|total spend|model call total|token total|total tokens/i);
     expect(text).not.toMatch(/budget used|cost chart|ledger row|savings/i);
