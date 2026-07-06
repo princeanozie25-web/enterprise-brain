@@ -209,6 +209,18 @@ export function graphRampStep(index: number): { surface: string; line: string } 
  */
 export const SENSITIVITY_BADGE_INK = COLOR.ink;
 
+/**
+ * RADIUS MICRO-TOKENS (graph-presence pass, B4). The surface radius law stays
+ * {8, 16, 9999} — `glyph` exists ONLY for SVG GLYPH INTERIORS (icon-scale
+ * rects inside graph nodes, e.g. the ~14-20px agent square), where an 8px
+ * corner would misdraw the mark. It is NOT a surface radius: no card, chip,
+ * panel, button, or any HTML element may use it. The radius-law test allows
+ * exactly this token inside SVG and nothing else.
+ */
+export const RADIUS = {
+  glyph: 3,
+} as const;
+
 /** Type registers (bundled woff2; see src/fonts). */
 export const FONT = {
   /** chrome/data: UI, tables, labels, scope chips. */
@@ -276,8 +288,9 @@ export const GEOMETRY = {
   graphLodReveal: 1.7,
   /** Label legibility: a paper halo (stroke painted under the fill). */
   graphLabelHalo: 3,
-  /** Hover de-emphasis (~20%) and focus-mode ghost (deeper). */
-  graphDimOpacity: 0.2,
+  /** Ego-focus de-emphasis (A2: non-connected rests at 15%) and focus-mode
+   * ghost (deeper). */
+  graphDimOpacity: 0.15,
   graphGhostOpacity: 0.1,
 } as const;
 

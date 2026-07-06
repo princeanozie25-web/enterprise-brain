@@ -54,6 +54,15 @@ export function DemoIdentityNotice({
       <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
         {CONTEXT_COPY[context]}
       </p>
+      {/* B5 (council D3): the one surprising 200 is pre-explained — calm
+          register, one line, never error-styled. */}
+      <p
+        className="ap-soft mt-2"
+        style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
+        data-testid="view-as-disclosure"
+      >
+        In demo mode, any identity may view-as any other — every view-as is audited before render.
+      </p>
       {!compact && (
         <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
           The architecture is designed for enterprise IAM, SSO, SCIM, RBAC/ABAC, audit, and policy enforcement. This build does not claim those integrations are live.

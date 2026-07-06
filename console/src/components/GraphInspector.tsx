@@ -6,7 +6,7 @@ import type { AccessRequestRecord, AccessTarget } from "@/lib/api";
 import type { SelectedNode } from "./OrgGraph";
 import { TYPE } from "@/lib/tokens";
 import { Skeleton } from "./Skeleton";
-import { graphRelationshipRows, type GraphRelationshipRow } from "./graphDisplay";
+import { graphRelationshipRows, peoplePlural, type GraphRelationshipRow } from "./graphDisplay";
 
 function Chip({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
   return (
@@ -181,7 +181,7 @@ export function GraphInspector({
         <div className="space-y-2" data-testid="inspector-department">
           <Heading>Department</Heading>
           <div className="flex flex-wrap gap-1.5">
-            <Chip>{graph.people.filter((p) => p.department_id === node.id).length} people</Chip>
+            <Chip>{peoplePlural(graph.people.filter((p) => p.department_id === node.id).length)}</Chip>
             {graph.people
               .filter((p) => p.department_id === node.id && p.ring === "anchor")
               .map((p) => (
@@ -208,7 +208,7 @@ export function GraphInspector({
         <div className="space-y-3" data-testid="inspector-project">
           <div className="flex flex-wrap gap-1.5">
             <Chip mono>{selectedProject.id}</Chip>
-            <Chip>{selectedProject.people} people</Chip>
+            <Chip>{peoplePlural(selectedProject.people)}</Chip>
             <Chip>{selectedProject.departments.length} departments</Chip>
           </div>
           <div>

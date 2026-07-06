@@ -108,9 +108,11 @@ export function GuidedJourney({
             <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
               Guided path
             </p>
-            <h2 className="ap-register-chrome mt-0.5" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+            {/* B2: wayfinding furniture, not a section — a styled label so
+                the room's h1 stays the first heading on every route. */}
+            <p className="ap-register-chrome mt-0.5" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
               What to do next
-            </h2>
+            </p>
           </div>
           <nav className="flex max-w-full gap-1 overflow-x-auto pb-1" aria-label="Compact product path">
             {visibleSteps.map((step, index) => {
@@ -173,9 +175,10 @@ export function GuidedJourney({
           <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
             Guided path
           </p>
-          <h2 className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
+          {/* B2: wayfinding furniture, not a section (see the compact rail). */}
+          <p className="ap-register-chrome mt-1" style={{ fontSize: TYPE.scale.sm, fontWeight: 600 }}>
             From identity to governed answers
-          </h2>
+          </p>
         </div>
         <p className="ap-soft max-w-2xl" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
           {selectionCopy}

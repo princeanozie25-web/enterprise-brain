@@ -18,12 +18,14 @@ export function IdentityRail({
   return (
     <div className="flex h-full flex-col gap-3" data-testid="identity-rail">
       <div className="ap-card rounded-lg p-3" data-testid="scope-panel">
-        <h2
+        {/* B2: the rail is wayfinding furniture, not a document section — a
+            styled label, so the room's h1 stays the first heading. */}
+        <p
           className="ap-soft uppercase tracking-wide"
           style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
         >
           What I can see
-        </h2>
+        </p>
         {principal === null ? (
           <p className="ap-soft mt-2" style={{ fontSize: TYPE.scale.sm }} data-testid="rail-empty-state">
             Choose a Work Identity to see granted scope.

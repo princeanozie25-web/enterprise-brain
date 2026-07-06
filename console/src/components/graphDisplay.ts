@@ -1,5 +1,11 @@
 import type { GraphEdge, GraphResponse } from "@/lib/api";
 
+/** A3: the one pluralize helper for people counts in the graph room —
+ * "1 person" / "14 people", never "1 people". */
+export function peoplePlural(count: number): string {
+  return count === 1 ? "1 person" : `${count} people`;
+}
+
 export type GraphNodeMeta = {
   id: string;
   kind: "organization" | "department" | "person" | "agent" | "system" | "project" | "unknown";

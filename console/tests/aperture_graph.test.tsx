@@ -97,8 +97,13 @@ function renderGraph(overrides: Partial<React.ComponentProps<typeof OrgGraph>> =
 function personNode(id: string): HTMLElement {
   return screen.getAllByTestId("graph-person").find((el) => el.getAttribute("data-id") === id)!;
 }
-function defaultRenderedEdges(graph: GraphResponse): number {
-  return graph.edges.filter((edge) => edge.kind !== "works_on" && edge.kind !== "involves_department").length;
+/** A2 rest law: only structural person→department edges render at rest. */
+function restEdges(graph: GraphResponse): number {
+  const people = new Set(graph.people.map((p) => p.id));
+  const depts = new Set(graph.departments.map((d) => d.id));
+  return graph.edges.filter(
+    (edge) => edge.kind === "member_of" && people.has(edge.from) && depts.has(edge.to),
+  ).length;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,18 +111,21 @@ function defaultRenderedEdges(graph: GraphResponse): number {
 // ---------------------------------------------------------------------------
 
 describe("U-33: the graph renders core, hubs, agents, sources, and all people", () => {
-  it("renders every baseline ring and keeps project nodes hidden by default", () => {
+  it("renders every tier, payload-linked projects included, at the A2 rest state", () => {
     const { container } = renderGraph();
     expect(screen.getByTestId("org-graph")).toBeTruthy();
     expect(screen.getByTestId("graph-center")).toBeTruthy();
     expect(screen.getAllByTestId("graph-dept").length).toBe(GRAPH.departments.length);
     expect(screen.getAllByTestId("graph-tool").length).toBe(GRAPH.tools.length);
     expect(screen.getAllByTestId("graph-source").length).toBe(GRAPH.sources.length);
-    expect(screen.queryAllByTestId("graph-project").length).toBe(0);
+    // A1: projects the payload LINKS render at the 140px tier (cap31 is
+    // linked by works_on/involves_department edges).
+    expect(screen.getAllByTestId("graph-project").length).toBe(1);
     const people = screen.getAllByTestId("graph-person");
     expect(people.length).toBe(GRAPH.people.length);
     expect(people.filter((p) => p.getAttribute("data-ring") === "anchor").length).toBe(2);
-    expect(screen.getAllByTestId("graph-edge").length).toBe(defaultRenderedEdges(GRAPH));
+    // A2 rest: structural person→department edges only.
+    expect(screen.getAllByTestId("graph-edge").length).toBe(restEdges(GRAPH));
     expect(screen.getAllByTestId("person-avatar-img").length).toBe(GRAPH.people.length);
     expect(screen.queryByTestId("graph-signal-ring")).toBeNull();
     expect(screen.queryByTestId("graph-permission-ring")).toBeNull();
@@ -264,8 +272,8 @@ describe("U-39 (T-B8): every rendered graph node maps to a real payload entity",
   });
 });
 
-describe("U-39b (T-B2): the graph is keyboard-operable", () => {
-  it("nodes are tab stops; Enter activates; Escape returns focus to the graph root", () => {
+describe("U-39b (T-B2, rewritten to the A5 cluster law): the graph is keyboard-operable", () => {
+  it("nodes are tab stops; Enter activates; Escape climbs a tier (member → hub → root)", () => {
     const onSelectNode = vi.fn();
     renderGraph({ onSelectNode });
     const node = personNode("p061");
@@ -274,18 +282,52 @@ describe("U-39b (T-B2): the graph is keyboard-operable", () => {
     node.focus();
     fireEvent.keyDown(node, { key: "Enter" });
     expect(onSelectNode).toHaveBeenCalledWith({ id: "p061", kind: "human", label: "Ana Flores" });
+    // Member → its OWN hub.
     fireEvent.keyDown(node, { key: "Escape" });
+    const finance = screen.getAllByTestId("graph-dept").find((d) => d.getAttribute("data-dept") === "Finance")!;
+    expect(document.activeElement).toBe(finance);
+    // Hub → the graph root.
+    fireEvent.keyDown(finance, { key: "Escape" });
     expect(document.activeElement).toBe(screen.getByTestId("org-graph"));
   });
 
-  it("arrow keys traverse the ring order", () => {
+  it("arrow keys traverse WITHIN the current tier (hubs among hubs, members among siblings)", () => {
     renderGraph();
-    const center = screen.getByTestId("graph-center");
-    center.focus();
-    fireEvent.keyDown(center, { key: "ArrowRight" });
-    // The next stop after the center is the first department hub.
+    // Hub tier: Finance → IT.
     const finance = screen.getAllByTestId("graph-dept").find((d) => d.getAttribute("data-dept") === "Finance")!;
-    expect(document.activeElement).toBe(finance);
+    finance.focus();
+    fireEvent.keyDown(finance, { key: "ArrowRight" });
+    const it_ = screen.getAllByTestId("graph-dept").find((d) => d.getAttribute("data-dept") === "IT")!;
+    expect(document.activeElement).toBe(it_);
+    // Member tier: arrows stay INSIDE the Finance fan (anchor p060 → member
+    // p061 → wraps back to p060), never crossing into IT's members.
+    const p060 = personNode("p060");
+    p060.focus();
+    fireEvent.keyDown(p060, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(personNode("p061"));
+    fireEvent.keyDown(personNode("p061"), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(personNode("p060"));
+  });
+
+  it("tab order is the cluster order: center → hub → its members → next hub → ring 2", () => {
+    renderGraph();
+    // DOM order IS tab order for tabindex=0 stops.
+    const stops = Array.from(
+      document.querySelectorAll('[tabindex="0"][data-id], [tabindex="0"][data-testid="graph-center"]'),
+    ).map((el) => el.getAttribute("data-id"));
+    const centerIdx = stops.indexOf("org");
+    const financeIdx = stops.indexOf("Finance");
+    const p060Idx = stops.indexOf("p060");
+    const p061Idx = stops.indexOf("p061");
+    const itIdx = stops.indexOf("IT");
+    const p074Idx = stops.indexOf("p074");
+    const docstoreIdx = stops.indexOf("docstore");
+    expect(centerIdx).toBeLessThan(financeIdx);
+    expect(financeIdx).toBeLessThan(p060Idx);
+    expect(p060Idx).toBeLessThan(p061Idx);
+    expect(p061Idx).toBeLessThan(itIdx);
+    expect(itIdx).toBeLessThan(p074Idx);
+    expect(p074Idx).toBeLessThan(docstoreIdx);
   });
 });
 
@@ -315,18 +357,41 @@ describe("U-40 (cluster rule): past the threshold the ring collapses to honest d
 // U-41 EDGES + U-42 SOURCES
 // ---------------------------------------------------------------------------
 
-describe("U-41: edges are curved paths ranked by kind", () => {
-  it("renders every default edge as a quadratic path carrying its kind, incl. system_of", () => {
+describe("U-41 (rewritten to the A2 staged-edge law): rest is structural; focus lights the payload set", () => {
+  it("at rest, only structural person→hub edges render (1px, 35%)", () => {
     renderGraph();
     const edges = screen.getAllByTestId("graph-edge");
-    expect(edges.length).toBe(defaultRenderedEdges(GRAPH));
+    expect(edges.length).toBe(restEdges(GRAPH));
     for (const e of edges) {
-      expect(e.tagName.toLowerCase()).toBe("path");
-      expect(e.getAttribute("d") ?? "").toMatch(/^M.*Q/);
+      expect(e.getAttribute("data-structural")).toBe("true");
+      expect(e.getAttribute("data-kind")).toBe("member_of");
+      expect(e.getAttribute("stroke-width")).toBe("1");
+      expect(e.getAttribute("stroke-opacity")).toBe("0.35");
     }
-    const kinds = new Set(edges.map((e) => e.getAttribute("data-kind")));
-    for (const k of ["reports_to", "member_of", "owns_agent", "system_of"]) {
-      expect(kinds.has(k)).toBe(true);
+  });
+
+  it("a persisted selection lights that node's FULL payload edge set at 1.5px/100%", () => {
+    renderGraph({ selectedId: "p060" });
+    const edges = screen.getAllByTestId("graph-edge");
+    // p060's payload set: member_of Finance, reports_to (from p061),
+    // owns_agent, works_on cap31 — plus the other structural rest edges.
+    const lit = edges.filter((e) => e.getAttribute("data-lit") === "true");
+    const litKinds = new Set(lit.map((e) => e.getAttribute("data-kind")));
+    for (const k of ["member_of", "reports_to", "owns_agent", "works_on"]) {
+      expect(litKinds.has(k)).toBe(true);
+    }
+    for (const e of lit) {
+      expect(e.getAttribute("stroke-width")).toBe("1.5");
+      expect(e.getAttribute("stroke-opacity")).toBe("1");
+    }
+    // Chords are quadratic; structural spokes are straight lines.
+    const chord = lit.find((e) => e.getAttribute("data-kind") === "works_on")!;
+    expect(chord.getAttribute("d") ?? "").toMatch(/^M.*Q/);
+    // Non-connected structural edges dim to 15% — never vanish.
+    const dimmed = edges.filter((e) => e.getAttribute("data-lit") === "false");
+    expect(dimmed.length).toBeGreaterThan(0);
+    for (const e of dimmed) {
+      expect(e.getAttribute("stroke-opacity")).toBe("0.15");
     }
   });
 });
@@ -368,18 +433,23 @@ describe("U-44: search lights matches and dims the rest", () => {
   });
 });
 
-describe("U-44b: project/capability traces reveal only when relevant", () => {
-  it("reveals a real capability through search and emits a project selection", () => {
+describe("U-44b: project/capability traces light on focus (A2), never at rest", () => {
+  it("a linked project renders; SELECTING it lights its works_on/involves_department chords", () => {
     const onSelectNode = vi.fn();
-    renderGraph({ query: "Access Review", onSelectNode });
+    const { rerender } = renderGraph({ onSelectNode });
     const project = screen.getByTestId("graph-project");
     expect(project.getAttribute("data-id")).toBe("cap31");
     expect(within(project).getByTestId("graph-project-label").textContent).toBe("Access Review 31");
-    const kinds = new Set(screen.getAllByTestId("graph-edge").map((edge) => edge.getAttribute("data-kind")));
-    expect(kinds.has("works_on")).toBe(true);
-    expect(kinds.has("involves_department")).toBe(true);
+    // At rest the chords are staged away.
+    let kinds = new Set(screen.getAllByTestId("graph-edge").map((edge) => edge.getAttribute("data-kind")));
+    expect(kinds.has("works_on")).toBe(false);
     fireEvent.click(project);
     expect(onSelectNode).toHaveBeenCalledWith({ id: "cap31", kind: "project", label: "Capability: Access Review 31" });
+    // Selection persists the ego: the project's full payload edge set lights.
+    rerender(<OrgGraph graph={GRAPH} onSelectNode={onSelectNode} onFocusDept={() => {}} selectedId="cap31" />);
+    kinds = new Set(screen.getAllByTestId("graph-edge").map((edge) => edge.getAttribute("data-kind")));
+    expect(kinds.has("works_on")).toBe(true);
+    expect(kinds.has("involves_department")).toBe(true);
   });
 
   it("selecting a capability traces assigned people and involved departments", () => {

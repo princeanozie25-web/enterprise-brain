@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-import { SENSITIVITY_SCALE, SENSITIVITY_BADGE_INK, MOTION } from "@/lib/tokens";
+import { SENSITIVITY_SCALE, SENSITIVITY_BADGE_INK, MOTION, RADIUS } from "@/lib/tokens";
 import { SensitivityBadge } from "@/components/SensitivityBadge";
 import { DocInspector } from "@/components/DocInspector";
 
@@ -169,6 +169,25 @@ describe("T-B3 / T-B7: radius law {8,16,9999} and a single hover-lift", () => {
       }
     }
     expect(bad).toEqual([]);
+  });
+  it("SVG rx values are the law radii or the ONE documented glyph micro-token (B4)", () => {
+    // The surface law stays {8,16,9999}. RADIUS.glyph (3px) exists ONLY for
+    // SVG glyph interiors — every literal rx is 8/16, and the sole other rx
+    // is the token reference, never a bare 3.
+    const bad: string[] = [];
+    for (const f of TSX) {
+      for (const m of read(f).matchAll(/\brx=\{?["']?([A-Za-z0-9._]+)["']?\}?/g)) {
+        const value = m[1];
+        if (!["8", "16", "9999", "RADIUS.glyph"].includes(value)) {
+          bad.push(`${f.replace(SRC, "src")}: rx=${value}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+    // The micro-token itself is pinned and documented in tokens.ts.
+    expect(RADIUS.glyph).toBe(3);
+    const tokens = read(join(SRC, "lib", "tokens.ts"));
+    expect(tokens).toContain("SVG GLYPH INTERIORS");
   });
   it("the one hover-lift value is -2px, shared by CSS and framer", () => {
     expect(MOTION.framerHoverY).toBe(-2);

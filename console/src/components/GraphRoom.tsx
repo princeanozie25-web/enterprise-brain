@@ -226,6 +226,15 @@ export function GraphRoom({
             {adminPreview ? "Enterprise Brain / Operating Map" : "Enterprise Brain"} / Connections{" "}
             ({connectionCount.toLocaleString("en-US")})
           </span>
+          {/* A2 honesty rule: chords stage on focus, but the disclosed total
+              never shrinks — the map must not claim fewer relationships.
+              Named only when a map is actually drawn (nothing can take focus
+              in the empty/loading states). */}
+          {graph !== null && graph.edges.length > 0 && (
+            <span className="block truncate" data-testid="graph-connections-sublabel">
+              shown on focus
+            </span>
+          )}
           {adminPreview && (
             <span className="block truncate" data-testid="admin-graph-preview-banner">
               Demo Identity Mode: this Operating Map is scoped to your Work Identity — only your slice of the company is shown (structural visibility, enforced server-side).
@@ -291,6 +300,8 @@ export function GraphRoom({
 
       {authPending ? (
         <div className="grid h-full place-items-center px-6 pt-16" data-testid="graph-authenticating">
+          {/* B2: the surface keeps its one h1 even mid-authentication. */}
+          <h1 className="sr-only">Operating Map</h1>
           <div className="ap-card w-full max-w-xl rounded-lg p-4">
             <Skeleton lines={6} />
           </div>
@@ -305,6 +316,7 @@ export function GraphRoom({
         </div>
       ) : loading ? (
         <div className="grid h-full place-items-center px-6 pt-16">
+          <h1 className="sr-only">Operating Map</h1>
           <div className="ap-card w-full max-w-xl rounded-lg p-4">
             <Skeleton lines={6} />
           </div>
@@ -343,6 +355,11 @@ export function GraphRoom({
             />
           </section>
 
+          {/* B2 heading order: the audit panel carries the room's h1, so it
+              precedes the hidden rail (h2) in DOM — both are fixed-position,
+              visuals unchanged. */}
+          <GraphAuditPanel actor={actor} graph={graph} selected={selected} />
+
           <div style={hiddenRailStyle}>
             <GraphSidebar
               orgName={graph.center.label}
@@ -355,8 +372,6 @@ export function GraphRoom({
               onFocusDept={setFocusDept}
             />
           </div>
-
-          <GraphAuditPanel actor={actor} graph={graph} selected={selected} />
 
           {accessAvailable && (
             <AccessRequestRail
@@ -427,9 +442,10 @@ function GraphAuditPanel({
           <p className="ap-soft uppercase tracking-wide" style={{ fontSize: TYPE.scale.xs, fontWeight: 700 }}>
             Audited view
           </p>
-          <h2 className="ap-register-chrome mt-0.5 truncate" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
+          {/* B2: the room's ONE h1 — the audit panel names the surface. */}
+          <h1 className="ap-register-chrome mt-0.5 truncate" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
             Operating Map
-          </h2>
+          </h1>
           <p className="ap-soft mt-0.5" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
             The organization as your access renders it.
           </p>
@@ -717,12 +733,14 @@ function GraphEmpty({
         ))}
         <circle cx={32} cy={32} r={10} fill={COLOR.ink} opacity={0.55} />
       </svg>
-      <p
+      {/* B2: the empty states carry the room's one h1 (the same pattern as
+          the dashboard's "Choose a Work Identity" heading). */}
+      <h1
         className="ap-register-chrome"
         style={{ fontFamily: FONT.chrome, fontSize: TYPE.scale.sm, fontWeight: 600 }}
       >
         {headline}
-      </p>
+      </h1>
       <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, maxWidth: 300, lineHeight: TYPE.line.body }}>
         {sub}
       </p>

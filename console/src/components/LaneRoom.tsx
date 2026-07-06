@@ -199,10 +199,37 @@ export function LaneRoom({ actor }: { actor: string | null }) {
   }, [ordered]);
 
   if (actor === null) {
+    // B3: this branch IS the statically exported lane.html (no identity at
+    // prerender time), so it carries the room's real heading structure —
+    // h1 + section h2 present pre-hydration, not a bare sentence.
     return (
-      <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="lane-room-empty">
-        Choose a Work Identity to begin.
-      </p>
+      <div data-testid="lane-room-empty">
+        <div className="mb-3 min-w-0">
+          <h1
+            className="ap-register-chrome"
+            style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
+          >
+            Review Queue
+          </h1>
+          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+            Items waiting for a human decision.
+          </p>
+        </div>
+        <p className="ap-soft py-2" style={{ fontSize: TYPE.scale.sm }}>
+          Choose a Work Identity to begin.
+        </p>
+        <section className="ap-card mb-4 rounded-lg p-3">
+          <h2
+            className="ap-soft px-1 pb-1 uppercase tracking-wide"
+            style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+          >
+            Inbox — proposals awaiting your decision
+          </h2>
+          <p className="ap-soft px-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            The inbox fills from the selected identity&apos;s scope.
+          </p>
+        </section>
+      </div>
     );
   }
 

@@ -245,10 +245,25 @@ export function LensRoom({
   }, []);
 
   if (actor === null) {
+    // B2: the identity-less state (the prerendered shell) keeps the room's
+    // real masthead — one h1 per routed surface, present pre-hydration.
     return (
-      <p className="ap-soft py-8" style={{ fontSize: TYPE.scale.sm }} data-testid="lens-room-empty">
-        Choose a Work Identity to begin.
-      </p>
+      <div data-testid="lens-room-empty">
+        <div className="mb-3 min-w-0">
+          <h1
+            className="ap-register-chrome"
+            style={{ fontSize: TYPE.scale.lg, lineHeight: TYPE.line.display, fontWeight: 600 }}
+          >
+            My Access
+          </h1>
+          <p className="ap-soft mt-1" style={{ fontSize: TYPE.scale.xs }}>
+            What you can see, and the reason you can see it.
+          </p>
+        </div>
+        <p className="ap-soft py-2" style={{ fontSize: TYPE.scale.sm }}>
+          Choose a Work Identity to begin.
+        </p>
+      </div>
     );
   }
 

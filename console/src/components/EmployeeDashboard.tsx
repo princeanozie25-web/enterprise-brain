@@ -15,7 +15,7 @@ import type {
   RoleScopeSummary,
   WorkflowItem,
 } from "@/lib/api";
-import { TYPE } from "@/lib/tokens";
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { useModalDialogFocus } from "./A11yDialog";
 import { MotionAnchor, MotionArticle, MotionSection } from "./MotionPrimitives";
 import { PersonAvatar } from "./PersonAvatar";
@@ -924,7 +924,7 @@ function DashboardPanelTabs({
             {/* Side-panel glyph: marks this as a control that OPENS a panel,
                 not a route tab that swaps content in place (no-affordance contract). */}
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-              <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+              <rect x="2.5" y="3" width="11" height="10" rx={RADIUS.glyph} />
               <line x1="10" y1="3" x2="10" y2="13" />
             </svg>
             {tab.label}
