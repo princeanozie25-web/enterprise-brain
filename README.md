@@ -73,16 +73,17 @@ running product:
 
 | A finance head | An identity with no access |
 | --- | --- |
-| ![The Operating Map as Felix Osei, a finance head: 19 named people clustered around their department hubs, 142 relationship records disclosed — chords draw on focus — his slice of the company, drawn from real org data](console/docs/screenshots/s3-map-p060.png) | ![The Operating Map as Zara Castillo, who holds no access: zero connections and an empty-state card — "No organizational view in your scope" — not a blurred map](console/docs/screenshots/s4-map-pvoid.png) |
+| ![The Operating Map as Freya Fernandes, a warehouse operations head: 34 named people ringing the org core in department arcs, 257 relationship records disclosed — chords draw on focus — her slice of the company, drawn from real org data](console/docs/screenshots/s3-map-p060.png) | ![The Operating Map as Zara Castillo, who holds no access: zero connections and an empty-state card — "No organizational view in your scope" — not a blurred map](console/docs/screenshots/s4-map-pvoid.png) |
 
-Felix Osei (a finance head) sees his slice: 19 named people clustered around
-their department hubs, all 142 of his relationship records disclosed in the
-masthead (relationship chords draw when a node takes focus — the map never
-claims fewer connections than it discloses). Zara Castillo (no access) sees
-an honest empty map — zero nodes, no blur, no silhouettes. The difference is
-enforced on the server, per identity, before anything is retrieved or drawn;
-the page only ever receives what that identity may see. Scope-proven on a
-synthetic company (see [The proof](#the-proof)), not certified secure.
+Freya Fernandes (a warehouse operations head) sees her slice: 34 named people
+ringing the org core in department arcs, all 257 of her relationship records
+disclosed in the masthead (relationship chords draw when a node takes focus —
+the map never claims fewer connections than it discloses). Zara Castillo (no
+access) sees an honest empty map — zero nodes, no blur, no silhouettes. The
+difference is enforced on the server, per identity, before anything is
+retrieved or drawn; the page only ever receives what that identity may see.
+Scope-proven on a synthetic company (see [The proof](#the-proof)), not
+certified secure.
 
 ## How it works
 

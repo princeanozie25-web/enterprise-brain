@@ -7,6 +7,7 @@ import type {
   AnswerEnvelope,
   DocCard,
   GrantedContextSummary,
+  RoleScopeSummary,
   ScopeStatement,
 } from "@/lib/api";
 import { DERIVED, TYPE } from "@/lib/tokens";
@@ -30,6 +31,8 @@ import { ResultsList } from "./ResultsList";
 import { Skeleton } from "./Skeleton";
 import { DemoIdentityNotice } from "./TrustPosture";
 import { RoomBoundary } from "./RoomBoundary";
+import { ThemeToggle } from "./ThemeToggle";
+import { useModalDialogFocus } from "./A11yDialog";
 import iris from "./LensBar.module.css";
 import * as session from "@/lib/session";
 
@@ -72,6 +75,12 @@ export function Console({
   // loads gate on this so nothing fetches before the session bearer exists.
   const [sessionFor, setSessionFor] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeStatement | null>(null);
+  // Showcase-1 Track A: the identity's derived role posture (GET /me/scope) —
+  // the EXISTING signal that drives admin affordances (isExecutiveCandidate).
+  // It gates NAV VISIBILITY only; the server remains the boundary and every
+  // route stays enforced exactly as today. No new authorization logic.
+  const [roleScope, setRoleScope] = useState<RoleScopeSummary | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [query, setQuery] = useState("");
   // Ask request modes. Both stay OFF: the toggles that set them are rendered
   // DISABLED (see BROAD_SEARCH_AVAILABLE / VERIFIED_ANSWERS_AVAILABLE) because
@@ -127,6 +136,7 @@ export function Console({
     setGrantContext(null);
     setGrantContextUnavailable(false);
     setEntrySubject(null);
+    setSettingsOpen(false);
   }, []);
 
   // K3 Track 2 — SESSION EXPIRY. When any seam call 401s, the session layer
@@ -274,6 +284,28 @@ export function Console({
     };
   }, [principal, sessionFor]);
 
+  // Track A: read the identity's derived role posture to decide which NAV
+  // doors are visible. Reads the same GET /me/scope the AdminPreviewGate and
+  // dashboard already consume; 404 -> null (no posture) -> employee doors only.
+  useEffect(() => {
+    if (principal === null || sessionFor !== principal) {
+      setRoleScope(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .getRoleScope(principal)
+      .then((response) => {
+        if (!cancelled) setRoleScope(response);
+      })
+      .catch(() => {
+        if (!cancelled) setRoleScope(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [principal, sessionFor]);
+
   const submitAsk = useCallback(async () => {
     const grantOptions =
       grantContext === null
@@ -344,6 +376,23 @@ export function Console({
   // shell still renders immediately against `principal`; its data effects gate
   // on sessionFor separately.
   const activePrincipal = sessionFor === principal ? principal : null;
+  // Track A: the three-door law. Admin-class identities (the existing derived
+  // signal — executive/super-admin candidate; the only per-identity admin
+  // posture the model ever emits) additionally see the operations doors.
+  // Everyone else sees exactly Home / Ask / Projects.
+  const isAdminClass =
+    roleScope?.derived_level === "executive_candidate" ||
+    roleScope?.derived_level === "super_admin_candidate";
+  // The admin doors (Operating Map, Spend Ledger, Company Map, Review Queue)
+  // show for an admin-class identity from anywhere, and always on one of those
+  // admin surfaces itself (you are already on it; the server gates the room via
+  // AdminPreviewGate regardless of who deep-linked it).
+  const showAdminDoors =
+    isAdminClass ||
+    view === "adminGraph" ||
+    view === "adminBursar" ||
+    view === "atlas" ||
+    view === "lane";
 
   return (
     <div className="min-h-screen">
@@ -355,7 +404,10 @@ export function Console({
           names never render. */}
       <nav className="ap-nav border-x-0 border-t-0" aria-label="Product surfaces" data-testid="view-switcher">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-1.5">
+          {/* THE THREE-DOOR LAW (Track A): every identity sees Home / Ask /
+              Projects. Nothing else in the base nav. */}
           <ViewDoor label="Home" href="/me" active={view === "me"} principal={principal} testId="view-door-me" />
+          <ViewDoor label="Ask" href="/ask" active={view === "ask"} principal={principal} />
           <ViewDoor
             label="Projects"
             href="/project"
@@ -363,32 +415,54 @@ export function Console({
             principal={principal}
             testId="view-door-project"
           />
-          <ViewDoor label="Ask" href="/ask" active={view === "ask"} principal={principal} />
-          <ViewDoor
-            label="Operating Map"
-            href="/admin/graph"
-            active={view === "adminGraph"}
-            principal={principal}
-            testId="view-door-admin-graph"
-          />
-          {(view === "adminBursar" || view === "adminGraph") && (
-            <ViewDoor
-              label="Spend Ledger"
-              href="/admin/bursar"
-              active={view === "adminBursar"}
-              principal={principal}
-              testId="view-door-bursar"
-            />
+
+          {/* Admin-class identities additionally see the operations doors.
+              Gated on the existing derived role signal — NAV VISIBILITY ONLY;
+              the server enforces every route exactly as today, and a non-admin
+              deep-linking an admin route gets today's AdminPreviewGate. */}
+          {showAdminDoors && (
+            <span className="flex flex-wrap items-center gap-2" data-testid="admin-doors">
+              <ViewDoor
+                label="Operating Map"
+                href="/admin/graph"
+                active={view === "adminGraph"}
+                principal={principal}
+                testId="view-door-admin-graph"
+              />
+              <ViewDoor
+                label="Spend Ledger"
+                href="/admin/bursar"
+                active={view === "adminBursar"}
+                principal={principal}
+                testId="view-door-bursar"
+              />
+              <ViewDoor label="Company Map" href="/atlas" active={view === "atlas"} principal={principal} testId="view-door-atlas" />
+              <ViewDoor label="Review Queue" href="/lane" active={view === "lane"} principal={principal} testId="view-door-lane" />
+            </span>
           )}
-          <ViewDoor label="My Access" href="/lens" active={view === "lens"} principal={principal} testId="view-door-lens" />
-          <ViewDoor label="Company Map" href="/atlas" active={view === "atlas"} principal={principal} testId="view-door-atlas" />
-          <ViewDoor label="Review Queue" href="/lane" active={view === "lane"} principal={principal} testId="view-door-lane" />
+
+          {/* Settings: My Access + Appearance + Identity live behind the gear. */}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="ap-washable ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-0.5"
+            style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+            aria-label="Settings"
+            aria-haspopup="dialog"
+            data-testid="settings-open"
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <circle cx={12} cy={12} r={3} />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Settings
+          </button>
         </div>
       </nav>
 
       {showGuidedJourney && (
         <div className="mx-auto max-w-6xl px-4 pt-4">
-          <GuidedJourney adminLinks={view === "adminBursar"} current={journeySurface} principal={principal} />
+          <GuidedJourney adminLinks={isAdminClass || view === "adminBursar"} current={journeySurface} principal={principal} />
         </div>
       )}
 
@@ -611,6 +685,16 @@ export function Console({
         </RoomBoundary>
       </div>
 
+      {/* Track A settings drawer is mounted AFTER the #main surface so the
+          surface's own <h1> always precedes the drawer's <h2>/<h3> in reading
+          order — the heading-discipline law holds when the drawer is open.
+          It is position:fixed, so DOM order never affects its visual place. */}
+      <SettingsDrawer
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        principal={principal}
+      />
+
       <DocInspector
         open={inspector.open}
         loading={inspector.loading}
@@ -827,5 +911,106 @@ function ViewDoor({
     >
       {label}
     </a>
+  );
+}
+
+/**
+ * Track A settings drawer: My Access, Appearance (theme), and Identity live
+ * here behind the shell's gear — off the three-door nav. Uses the shared
+ * A11yDialog primitive (focus trap, Escape, focus-return); the demo banner and
+ * scope masthead stay structural in the shell behind it.
+ */
+function SettingsDrawer({
+  open,
+  onClose,
+  principal,
+}: {
+  open: boolean;
+  onClose: () => void;
+  principal: string | null;
+}) {
+  const { dialogRef, onKeyDown } = useModalDialogFocus({ open, onClose });
+  if (!open) return null;
+  const carry = principal === null ? "" : `?as=${encodeURIComponent(principal)}`;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex justify-end"
+      data-testid="settings-drawer-overlay"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      {/* Overlay scrim — the ONE place glass is allowed (overlay-only law). */}
+      <div className="ap-glass-scrim absolute inset-0" aria-hidden="true" />
+      <aside
+        ref={dialogRef as React.RefObject<HTMLElement>}
+        onKeyDown={onKeyDown}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        tabIndex={-1}
+        className="ap-elevated relative flex h-full w-full max-w-sm flex-col gap-4 overflow-y-auto p-5"
+        data-testid="settings-drawer"
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="ap-register-chrome" style={{ fontSize: TYPE.scale.md, fontWeight: 700 }}>
+            Settings
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ap-washable rounded-lg px-2 py-1"
+            style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+            aria-label="Close settings"
+            data-testid="settings-close"
+          >
+            Close
+          </button>
+        </div>
+
+        <section className="space-y-1.5" data-testid="settings-my-access">
+          <h3 className="ap-soft uppercase tracking-wide" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+            My Access
+          </h3>
+          <p className="ap-soft" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}>
+            What you can see, and the reason you can see it.
+          </p>
+          <a
+            href={`/lens${carry}`}
+            className="ap-affordance-button ap-register-chrome inline-block rounded-lg px-3 py-2"
+            style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}
+            data-testid="settings-my-access-link"
+          >
+            Open My Access
+          </a>
+        </section>
+
+        <section className="space-y-1.5" data-testid="settings-appearance">
+          <h3 className="ap-soft uppercase tracking-wide" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+            Appearance
+          </h3>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+          </div>
+        </section>
+
+        <section className="space-y-1.5" data-testid="settings-identity">
+          <h3 className="ap-soft uppercase tracking-wide" style={{ fontSize: TYPE.scale.xs, fontWeight: 600 }}>
+            Identity
+          </h3>
+          <p className="ap-register-evidence ap-soft" style={{ fontSize: TYPE.scale.xs }}>
+            {principal === null ? "No Work Identity selected" : `Acting as ${principal}`}
+          </p>
+          <a
+            href="/"
+            className="ap-washable ap-register-chrome inline-block rounded-lg border px-3 py-2"
+            style={{ borderColor: "var(--hairline)", fontSize: TYPE.scale.xs, fontWeight: 600 }}
+            data-testid="settings-switch-identity"
+          >
+            Switch on the front door
+          </a>
+        </section>
+      </aside>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import * as api from "@/lib/api";
 import type { AccessRequestRecord, AccessTarget, GraphResponse, NodeSummary, OrgStats } from "@/lib/api";
 import { COLOR, DERIVED, FONT, TYPE } from "@/lib/tokens";
@@ -60,6 +60,11 @@ export function GraphRoom({
   const [focusDept, setFocusDept] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [hiddenKinds, setHiddenKinds] = useState<string[]>([]);
+  // Showcase-1 B1: the fullscreen-container mode expands the map to the
+  // viewport by clearing the side panels; Escape exits (focus returns to the
+  // trigger). A calm display toggle — no browser Fullscreen API, no new deps.
+  const [mapExpanded, setMapExpanded] = useState(false);
+  const fullscreenBtnRef = useRef<HTMLButtonElement | null>(null);
   const [accessAvailable, setAccessAvailable] = useState(false);
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessRequests, setAccessRequests] = useState<AccessRequestRecord[]>([]);
@@ -163,6 +168,19 @@ export function GraphRoom({
       cancelled = true;
     };
   }, [actor, selected]);
+
+  // B1: Escape exits the fullscreen-container mode and returns focus.
+  useEffect(() => {
+    if (!mapExpanded) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMapExpanded(false);
+        fullscreenBtnRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mapExpanded]);
 
   const enterLens = (id: string) => {
     if (actor !== null) window.location.href = lensHref(actor, id);
@@ -279,6 +297,25 @@ export function GraphRoom({
         </div>
         <div className="flex min-w-0 items-center justify-end gap-2">
           <ThemeToggle compact />
+          <button
+            ref={fullscreenBtnRef}
+            type="button"
+            onClick={() => setMapExpanded((v) => !v)}
+            className="ap-card ap-washable grid rounded-full"
+            style={{ width: 30, height: 30, placeItems: "center" }}
+            aria-pressed={mapExpanded}
+            aria-label={mapExpanded ? "Exit fullscreen map" : "Expand map to fullscreen"}
+            title={mapExpanded ? "Exit fullscreen (Esc)" : "Expand map"}
+            data-testid="graph-fullscreen"
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {mapExpanded ? (
+                <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
+              ) : (
+                <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" />
+              )}
+            </svg>
+          </button>
           <span
             className="ap-card ap-register-chrome inline-flex items-center gap-2 rounded-full px-3 py-1"
             style={{ fontSize: TYPE.scale.xs }}
@@ -373,7 +410,10 @@ export function GraphRoom({
             />
           </div>
 
-          {accessAvailable && (
+          {/* B1 + honesty spine: fullscreen clears the access-request rail for
+              an unobstructed map, but the audit panel (the scope masthead) and
+              the demo banner stay structural — they never hide. */}
+          {accessAvailable && !mapExpanded && (
             <AccessRequestRail
               graph={graph}
               loading={accessLoading}
@@ -403,7 +443,7 @@ export function GraphRoom({
             </MotionPanel>
           )}
 
-          <Legend systems={graph.sources.length} agents={graph.tools.length} projects={graph.projects.length} people={graph.people.length} />
+          <Legend systems={graph.sources.length} agents={graph.tools.length} people={graph.people.length} />
         </>
       ) : null}
     </div>
@@ -517,10 +557,12 @@ function GraphAuditPanel({
   );
 }
 
-function Legend({ systems, agents, projects, people }: { systems: number; agents: number; projects: number; people: number }) {
+function Legend({ systems, agents, people }: { systems: number; agents: number; people: number }) {
   const itemStyle = { fontSize: TYPE.scale.xs - 2 };
-  // B4: the legend keys are NEUTRAL (amber belongs to the lit connection path
-  // alone; the affordance dot marks systems, matching their render).
+  // Showcase-1 B6: every count is payload-derived. The amber dot names the
+  // honest signals-unavailable state; the grey dot names the focus-staging.
+  // The reference's permissions-unavailable row is BANNED — permissions are
+  // the ENFORCED product; a legend row that lies fails the build.
   const dot = (background: string, square = false) => (
     <span
       aria-hidden="true"
@@ -537,17 +579,21 @@ function Legend({ systems, agents, projects, people }: { systems: number; agents
     <MotionAside
       className="ap-card fixed bottom-4 left-5 z-20 flex max-w-[calc(100vw-40px)] flex-wrap items-center gap-3 rounded-full px-3 py-2"
       aria-label="Graph legend"
+      data-testid="graph-legend"
     >
-      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
-        {dot(C.affordance)} systems {systems}
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle} data-testid="legend-signals">
+        {dot(C.warm)} signals unavailable
       </span>
-      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle} data-testid="legend-focus">
+        {dot(C.inkSoft)} connections shown on focus
+      </span>
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle} data-testid="legend-software">
+        {dot(C.affordance)} software {systems}
+      </span>
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle} data-testid="legend-agents">
         {dot(C.inkSoft, true)} agents {agents}
       </span>
-      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
-        {dot(C.hairline, true)} projects {projects}
-      </span>
-      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle}>
+      <span className="ap-soft inline-flex items-center gap-1.5" style={itemStyle} data-testid="legend-people">
         {dot(C.ink)} people {people}
       </span>
     </MotionAside>

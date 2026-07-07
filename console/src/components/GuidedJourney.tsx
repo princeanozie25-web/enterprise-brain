@@ -58,6 +58,9 @@ function journeySteps(principal: string | null): JourneyStep[] {
       surface: "ask" as const,
     },
     {
+      // Track A re-homing: the Operating Map is an admin door — the employee
+      // journey never points at it.
+      adminOnly: true,
       detail: "Inspect the company relationships this identity can see.",
       href: `/admin/graph${query}`,
       key: "operating-map",
@@ -87,7 +90,10 @@ export function GuidedJourney({
   testId?: string;
 }) {
   const steps = journeySteps(principal);
-  const showAdminSteps = adminLinks || current === "home" || current === "bursar";
+  // Track A: admin steps show only when the caller is admin-class (adminLinks)
+  // or when already on an admin surface (bursar) — an employee on Home never
+  // sees an admin door in the journey.
+  const showAdminSteps = adminLinks || current === "bursar";
   const visibleSteps = steps.filter((step) => !step.adminOnly || showAdminSteps);
   const compact = current !== "home" && current !== "bursar";
   const selectionCopy =

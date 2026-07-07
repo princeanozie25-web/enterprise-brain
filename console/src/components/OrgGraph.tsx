@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { select } from "d3-selection";
 import { zoom as d3zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
-import type { GraphEdge, GraphPerson, GraphProject, GraphResponse } from "@/lib/api";
-import { FONT, GEOMETRY, RADIUS, TYPE, graphRampStep } from "@/lib/tokens";
+import type { GraphEdge, GraphPerson, GraphResponse } from "@/lib/api";
+import { DEPARTMENT_PASTEL, FONT, GEOMETRY, GRAPH_STAGE, RADIUS, TYPE, departmentPastelMap } from "@/lib/tokens";
 import { peoplePlural } from "./graphDisplay";
 import { PersonAvatar } from "./PersonAvatar";
 
@@ -13,82 +13,69 @@ export type GraphNodeKind = "org" | "department" | "human" | "agent" | "source" 
 export type SelectedNode = { id: string; kind: GraphNodeKind; label: string };
 
 type DeptArc = { start: number; end: number; center: number; count: number };
-type MemberSlot = { angle: number; orbit: number; hubId: string };
 type Layout = {
   pos: Map<string, Pos>;
   ang: Map<string, number>;
   hubAngle: Map<string, number>;
   deptArcs: Map<string, DeptArc>;
-  memberSlot: Map<string, MemberSlot>;
-  /** Departments whose people render as an honest cluster CHIP instead of a
-   * fan: every department past the 40-person threshold, plus any single
-   * department whose fan would need a third orbit row — member rows may
-   * never reach through ring 2 (the tier law), so arcs shrink, rows
-   * overflow ONCE, and past that the chip is the honest representation. */
-  chipDepts: Set<string>;
   bound: number;
 };
 
 /**
- * THE LAYOUT LAW (graph-presence pass, A1) — radial department clustering:
- * - CENTER: the organization node, 56px.
- * - RING 1: department hubs at 240px, evenly distributed, 48px circles,
- *   name + member count beneath (13px/500).
- * - MEMBER CLUSTERS: each person (36px) orbits its OWN hub at 96px, fanned
- *   in an arc facing outward from center (span ∝ member count, max 300°);
- *   ≥24px between sibling node edges; 8px cluster-to-cluster padding —
- *   arcs shrink (and overflow to a deterministic second orbit row at +60px)
- *   before hubs ever move. The overflow row is a resolved conflict, flagged
- *   in the closeout: >9 members cannot satisfy both the 24px gap and the
- *   300° cap on a single 96px orbit.
- * - PROJECTS: 24px nodes at 140px, ONLY those the payload links via edges —
- *   unlinked projects stay a masthead count, never invented placement.
- * - RING 2: systems/sources at 420px, 28px nodes, resting at 80% opacity.
- *   AGENTS are a payload kind this law does not tier (flagged): they ride
- *   the same periphery ring with their existing icon treatment.
- * - Depth = scale + opacity only. No blur, no glass, no new colors. The
- *   whole layout scales to fit (viewBox = computed bounding radius).
- * Every rendered node maps to a REAL payload entity; every rendered edge
- * exists in the payload (F6 law, re-pinned). Departments are coded ONLY by
- * the sensitivity-safe NEUTRAL RAMP; amber marks the lit connection path
- * and nothing else; selection/focus rings are the interactive ink-blue.
+ * SHOWCASE-1 (Track B) — THE REFERENCE OPERATING MAP. The admin Operating
+ * Map's rest-state composition, rebuilt to the owner's reference:
+ * - CENTER: the organization, a 64px glowing core.
+ * - HUB RING (210px): one pastel tile per payload department (the department
+ *   pastel family — an owner-ratified amendment to the reserved-color law;
+ *   saturated amber/red stay EXCLUSIVELY sensitivity/signal).
+ * - THE PEOPLE RIM (430px): every payload person is an 8px dot, grouped into
+ *   contiguous department arcs (sorted by department, then name); each group
+ *   is embraced by a 3px pastel arc stroke (448px). Department heads (payload
+ *   ring=="anchor") are PROMOTED to a 26px avatar at 452px.
+ * - MID-FIELD: sources (22px) between hub gaps at ~300px; agents (18px glyph)
+ *   adjacent to their owning department's hub.
+ * - Center→hub edges: dotted amber — the honest "signals unavailable" state
+ *   (live activity signals are not wired in this build; the dotted amber says
+ *   so). Rim spokes (person→center): 0.5px white at 12% — barely-there radial
+ *   texture. THE ONE DELIBERATE AMENDMENT to GP's rest-edge law for THIS
+ *   surface: at 100+ people the fabric reads as texture, not a hairball. Each
+ *   spoke corresponds 1:1 to a real member_of payload edge (F6 holds — only
+ *   its endpoint is stylized to the center), flagged in the closeout.
+ * The GP interaction laws survive underneath: hover/focus/selection lights the
+ * ego's true payload edge set at 1.5px/100%, everything else dims to 15%;
+ * selection persists until Escape/click-away; ≤200ms; dead under reduced
+ * motion. Keyboard: center → hubs → heads → arc members → mid-field; sr-only
+ * mirror regrouped per department. p_void: whitespace + masthead. No blur, no
+ * glass — the glow is radial-gradient fills + opacity.
  */
 const STAGE = {
-  /** Center org node: 56px square. */
-  coreSize: 56,
-  /** Ring 1: department hubs. */
-  hubRing: 240,
-  hubRadius: 24,
-  /** Member fans. */
-  memberOrbit: 96,
-  memberRowGap: 60,
-  personNode: 36,
-  memberGap: 24,
-  clusterPad: 8,
-  fanMaxSpan: (300 * Math.PI) / 180,
-  /** Projects (payload-linked only). */
-  projectRing: 140,
-  projectSize: 12,
-  /** Ring 2: systems of record (+ the unplaced agent kind, periphery). */
-  sourceRing: 420,
-  sourceRadius: 14,
-  agentSize: 7,
-  /** Ring 2 rests at 80% opacity (depth via opacity, never blur). */
-  ring2RestOpacity: 0.8,
-  /** Cluster chips (>40 people): a quiet rounded-lg chip per department. */
-  clusterWidth: 148,
-  clusterHeight: 44,
+  coreSize: 64,
+  hubRing: 210,
+  hubTile: 52,
+  hubRadius: 26,
+  sourceRing: 300,
+  sourceRadius: 11,
+  agentRing: 250,
+  agentSize: 9,
+  peopleRim: 430,
+  personDot: 8,
+  arcRing: 448,
+  arcStroke: 3,
+  arcPadDeg: 6,
+  headRing: 452,
+  headAvatar: 26,
+  /** A small angular gap between adjacent department arcs (radians). */
+  deptGap: (10 * Math.PI) / 180,
   /** Label breathing room inside the computed bounding radius. */
-  boundMargin: 84,
+  boundMargin: 96,
 } as const;
 
-/** The people tier collapses to department clusters past this count. */
-export const PEOPLE_CLUSTER_THRESHOLD = 40;
-
-/** A2: structural edges rest at 1px/35%; the focused node's edge set lights
- * at 1.5px/100%; everything non-connected dims to 15% (GEOMETRY token). */
-const EDGE_REST = { width: 1, opacity: 0.35 } as const;
+/** Rest edges (GP): the person→center rim spokes are the barely-there texture;
+ * the ego's payload edge set lights at 1.5px/100%; non-connected dims to 15%. */
 const EDGE_LIT = { width: 1.5, opacity: 1 } as const;
+const RIM_SPOKE = { width: 0.5, opacity: 0.12 } as const;
+/** Center→hub dotted-amber: the "signals unavailable" honesty state. */
+const HUB_EDGE = { width: 1.25, opacity: 0.55 } as const;
 
 const C = {
   ink: "var(--ink)",
@@ -101,8 +88,6 @@ const C = {
 };
 
 function polar(angle: number, radius: number, cx = 0, cy = 0): Pos {
-  // Rounded to 0.01px: stable SVG attributes (never scientific notation)
-  // with sub-pixel accuracy the layout laws' ±1px tolerances don't feel.
   return {
     x: Math.round((cx + radius * Math.cos(angle)) * 100) / 100,
     y: Math.round((cy + radius * Math.sin(angle)) * 100) / 100,
@@ -110,10 +95,7 @@ function polar(angle: number, radius: number, cx = 0, cy = 0): Pos {
 }
 
 function shortMark(label: string): string {
-  const words = label
-    .replace(/&/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
+  const words = label.replace(/&/g, " ").split(/\s+/).filter(Boolean);
   if (words.length === 0) return "?";
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return (words[0][0] + words[words.length - 1][0]).toUpperCase();
@@ -123,66 +105,22 @@ function monogram(name: string): string {
   return shortMark(name).slice(0, 2);
 }
 
-function compactProjectLabel(label: string): string {
-  const clean = label.replace(/^Capability:\s*/i, "");
-  return clean.length > 34 ? `${clean.slice(0, 31)}...` : clean;
+/** Members of a department, sorted heads-first then by name — the arc order. */
+function sortedMembers(list: GraphPerson[]): GraphPerson[] {
+  return [...list].sort((a, b) =>
+    a.ring === b.ring
+      ? a.display_name.localeCompare(b.display_name)
+      : a.ring === "anchor"
+        ? -1
+        : 1,
+  );
 }
-
-/** Minimum angular step (radians) between sibling centers on an orbit of
- * radius `r`, so node EDGES keep the 24px law: chord ≥ node + gap = 60px. */
-function minStep(r: number): number {
-  const chord = STAGE.personNode + STAGE.memberGap;
-  return 2 * Math.asin(Math.min(1, chord / 2 / r));
-}
-
-/** The lateral half-extent one cluster may occupy before it crosses the
- * midline to its neighbor (8px padding, split): shrink arcs, never hubs. */
-function lateralLimit(hubCount: number): number {
-  if (hubCount <= 1) return Number.POSITIVE_INFINITY;
-  const neighborDistance = 2 * STAGE.hubRing * Math.sin(Math.PI / hubCount);
-  return neighborDistance / 2 - STAGE.personNode / 2 - STAGE.clusterPad / 2;
-}
-
-/** A wrapped fan may not intrude on the projects band: members keep this
- * distance from the CENTER (projects ring + node + label room). */
-const INNER_CLEARANCE = STAGE.projectRing + STAGE.projectSize + 32;
-
-/** Span cap for an orbit row: the 300° law, shrunk when the row would
- * collide with a neighbor cluster OR wrap into the projects band — arcs
- * shrink (then overflow to the next row); hubs never move. */
-function rowSpanCap(orbit: number, hubCount: number, hasInnerTier: boolean): number {
-  let cap = STAGE.fanMaxSpan;
-  const limit = lateralLimit(hubCount);
-  if (orbit > limit) {
-    cap = Math.min(cap, 2 * Math.asin(Math.max(0, Math.min(1, limit / orbit))));
-  }
-  if (hasInnerTier) {
-    // dist(center, member)² = hubRing² + orbit² + 2·hubRing·orbit·cos(θ),
-    // θ measured from the outward direction; keep dist ≥ INNER_CLEARANCE.
-    const cosLimit =
-      (INNER_CLEARANCE * INNER_CLEARANCE - STAGE.hubRing * STAGE.hubRing - orbit * orbit) /
-      (2 * STAGE.hubRing * orbit);
-    if (cosLimit > -1 && cosLimit < 1) {
-      cap = Math.min(cap, 2 * Math.acos(cosLimit));
-    }
-  }
-  return cap;
-}
-
-/** Member fans may use at most two orbit rows (96, 156): the outermost
- * member tip (240+156+18 = 414) stays inside ring 2 (420). A third row
- * would cross it, so a fan that cannot seat everyone in two rows becomes
- * a chip instead. */
-const MEMBER_ROWS_MAX = 2;
 
 function computeLayout(graph: GraphResponse): Layout {
   const pos = new Map<string, Pos>();
   const ang = new Map<string, number>();
   const hubAngle = new Map<string, number>();
   const deptArcs = new Map<string, DeptArc>();
-  const memberSlot = new Map<string, MemberSlot>();
-  const chipDepts = new Set<string>();
-  const clustered = graph.people.length > PEOPLE_CLUSTER_THRESHOLD;
   pos.set(graph.center.id, { x: 0, y: 0 });
 
   const peopleByDept = new Map<string, GraphPerson[]>();
@@ -192,118 +130,73 @@ function computeLayout(graph: GraphResponse): Layout {
     peopleByDept.set(person.department_id, list);
   }
 
-  // RING 1 — hubs evenly distributed, starting at 12 o'clock.
+  // HUB RING — one hub per department, evenly distributed from 12 o'clock.
   const hubCount = Math.max(graph.departments.length, 1);
-  let maxMemberReach = 0;
   graph.departments.forEach((dept, index) => {
     const angle = -Math.PI / 2 + (index / hubCount) * 2 * Math.PI;
     hubAngle.set(dept.id, angle);
     pos.set(dept.id, polar(angle, STAGE.hubRing));
   });
 
-  // Projects are placed only when the payload links them (edges); the
-  // member fans need to know whether that inner tier exists at all.
-  const linked = new Set<string>();
-  for (const edge of graph.edges) {
-    linked.add(edge.from);
-    linked.add(edge.to);
-  }
-  const linkedProjects = graph.projects.filter((project) => linked.has(project.id));
-
-  // MEMBER FANS — outward-facing, min-gap spacing, deterministic row
-  // overflow. A department that cannot seat its members within the two
-  // lawful rows (or any department in a >40-person world) renders the
-  // honest cluster chip instead — geometry is computed ONLY for what
-  // actually draws, so the scale-to-fit bound is never inflated by
-  // invisible nodes.
-  const hasInnerTier = linkedProjects.length > 0;
-  const rowCapacity = (row: number): number => {
-    const orbit = STAGE.memberOrbit + row * STAGE.memberRowGap;
-    const step = minStep(orbit);
-    const cap = rowSpanCap(orbit, hubCount, hasInnerTier);
-    return Math.max(1, Math.floor(cap / step) + 1);
-  };
-  const fanCapacity = Array.from({ length: MEMBER_ROWS_MAX }, (_, row) => rowCapacity(row)).reduce(
-    (a, b) => a + b,
-    0,
-  );
-
+  // THE PEOPLE RIM — contiguous department arcs; each department's angular
+  // SPAN is proportional to its member count so dense departments read wider.
+  // People are evenly spaced within their department's span, in arc order.
+  const totalPeople = Math.max(graph.people.length, 1);
+  const usable = 2 * Math.PI - graph.departments.length * STAGE.deptGap;
+  let cursor = -Math.PI / 2 - usable / 2 - (graph.departments.length * STAGE.deptGap) / 2;
   for (const dept of graph.departments) {
-    const list = [...(peopleByDept.get(dept.id) ?? [])].sort((a, b) =>
-      a.ring === b.ring ? a.id.localeCompare(b.id) : a.ring === "anchor" ? -1 : 1,
-    );
-    const hubA = hubAngle.get(dept.id) ?? -Math.PI / 2;
-    const hubPos = pos.get(dept.id)!;
-    deptArcs.set(dept.id, { start: hubA, end: hubA, center: hubA, count: list.length });
-
-    if (clustered || list.length > fanCapacity) {
-      if (list.length > 0) chipDepts.add(dept.id);
-      if (list.length > 0) {
-        maxMemberReach = Math.max(
-          maxMemberReach,
-          STAGE.hubRing + STAGE.memberOrbit + STAGE.clusterHeight / 2,
-        );
-      }
-      continue;
-    }
-
-    let placed = 0;
-    let row = 0;
-    let fanStart = hubA;
-    let fanEnd = hubA;
-    while (placed < list.length) {
-      const orbit = STAGE.memberOrbit + row * STAGE.memberRowGap;
-      const step = minStep(orbit);
-      const capacity = rowCapacity(row);
-      const rowMembers = list.slice(placed, placed + capacity);
-      const span = (rowMembers.length - 1) * step;
-      rowMembers.forEach((person, i) => {
-        const angle = rowMembers.length === 1 ? hubA : hubA - span / 2 + i * step;
-        const p = polar(angle, orbit, hubPos.x, hubPos.y);
-        pos.set(person.id, p);
-        ang.set(person.id, angle);
-        memberSlot.set(person.id, { angle, orbit, hubId: dept.id });
-        fanStart = Math.min(fanStart, angle);
-        fanEnd = Math.max(fanEnd, angle);
-      });
-      maxMemberReach = Math.max(maxMemberReach, STAGE.hubRing + orbit + STAGE.personNode / 2);
-      placed += rowMembers.length;
-      row += 1;
-    }
-    deptArcs.set(dept.id, { start: fanStart, end: fanEnd, center: hubA, count: list.length });
+    const members = sortedMembers(peopleByDept.get(dept.id) ?? []);
+    const span = usable * (Math.max(members.length, 0.6) / totalPeople);
+    const start = cursor + STAGE.deptGap / 2;
+    const end = start + span;
+    const center = (start + end) / 2;
+    deptArcs.set(dept.id, { start, end, center, count: members.length });
+    members.forEach((person, i) => {
+      const frac = members.length <= 1 ? 0.5 : i / (members.length - 1);
+      // Keep dots off the exact arc endpoints so the embrace stroke reads.
+      const pad = span * 0.08;
+      const angle = members.length === 1 ? center : start + pad + frac * (span - 2 * pad);
+      pos.set(person.id, polar(angle, STAGE.peopleRim));
+      ang.set(person.id, angle);
+    });
+    cursor = end + STAGE.deptGap / 2;
   }
 
-  // PROJECTS — only those the payload links via edges (no invented placement).
-  linkedProjects.forEach((project, index) => {
-    const angle = -Math.PI / 2 + (index / Math.max(linkedProjects.length, 1)) * 2 * Math.PI;
-    pos.set(project.id, polar(angle, STAGE.projectRing));
-    ang.set(project.id, angle);
+  // MID-FIELD sources — distributed in the hub GAPS (offset half a step).
+  graph.sources.forEach((source, index) => {
+    const angle =
+      -Math.PI / 2 + ((index + 0.5) / Math.max(graph.sources.length, 1)) * 2 * Math.PI;
+    pos.set(source.id, polar(angle, STAGE.sourceRing));
+    ang.set(source.id, angle);
   });
 
-  // RING 2 — systems of record + the unplaced agent kind (periphery),
-  // evenly interleaved from 12 o'clock.
-  const ring2: Array<{ id: string }> = [...graph.sources, ...graph.tools];
-  ring2.forEach((item, index) => {
-    const angle = -Math.PI / 2 + (index / Math.max(ring2.length, 1)) * 2 * Math.PI;
-    pos.set(item.id, polar(angle, STAGE.sourceRing));
-    ang.set(item.id, angle);
+  // Agents — adjacent to the owning department's hub (fanned if several).
+  const agentsSeen = new Map<string, number>();
+  graph.tools.forEach((tool, index) => {
+    const base = tool.department_id ? hubAngle.get(tool.department_id) : undefined;
+    const seen = tool.department_id ? agentsSeen.get(tool.department_id) ?? 0 : index;
+    if (tool.department_id) agentsSeen.set(tool.department_id, seen + 1);
+    const angle =
+      base !== undefined
+        ? base + (seen % 2 === 0 ? 1 : -1) * 0.12 * Math.ceil((seen + 1) / 2)
+        : -Math.PI / 2 + (index / Math.max(graph.tools.length, 1)) * 2 * Math.PI;
+    pos.set(tool.id, polar(angle, STAGE.agentRing));
+    ang.set(tool.id, angle);
   });
 
-  // Scale-to-fit: the bounding radius covers the widest tier that actually
-  // DRAWS, plus label room; the viewBox derives from it, so nothing ever
-  // clips and nothing invisible inflates the frame.
-  const bound =
-    Math.max(
-      ring2.length > 0 ? STAGE.sourceRing + STAGE.sourceRadius : 0,
-      maxMemberReach,
-      STAGE.hubRing + STAGE.hubRadius,
-      linkedProjects.length > 0 ? STAGE.projectRing + STAGE.projectSize : 0,
-    ) + STAGE.boundMargin;
-
-  return { pos, ang, hubAngle, deptArcs, memberSlot, chipDepts, bound };
+  const bound = STAGE.headRing + STAGE.headAvatar + STAGE.boundMargin;
+  return { pos, ang, hubAngle, deptArcs, bound };
 }
 
-function edgePath(from: Pos, to: Pos, curve: number): string {
+/** An SVG arc path from `start` to `end` at `radius` (clockwise, ≤2π). */
+function arcPath(radius: number, start: number, end: number): string {
+  const a0 = polar(start, radius);
+  const a1 = polar(end, radius);
+  const large = end - start > Math.PI ? 1 : 0;
+  return `M${a0.x},${a0.y}A${radius},${radius} 0 ${large} 1 ${a1.x},${a1.y}`;
+}
+
+function chordPath(from: Pos, to: Pos, curve: number): string {
   if (curve === 0) return `M${from.x},${from.y}L${to.x},${to.y}`;
   const mx = (from.x + to.x) / 2;
   const my = (from.y + to.y) / 2;
@@ -313,7 +206,7 @@ function edgePath(from: Pos, to: Pos, curve: number): string {
   return `M${from.x},${from.y}Q${mx + (-dy / len) * curve},${my + (dx / len) * curve} ${to.x},${to.y}`;
 }
 
-/** Edge KIND rides dash pattern, never extra hue. */
+/** Edge KIND rides dash pattern, never extra hue (unchanged from GP). */
 const EDGE_DASH: Record<string, string | undefined> = {
   reports_to: undefined,
   member_of: undefined,
@@ -343,10 +236,7 @@ export function OrgGraph({
   hiddenKinds?: string[];
   reducedMotion?: boolean;
 }) {
-  const { pos, ang, hubAngle, deptArcs, memberSlot, chipDepts, bound } = useMemo(
-    () => computeLayout(graph),
-    [graph],
-  );
+  const { pos, ang, hubAngle, deptArcs, bound } = useMemo(() => computeLayout(graph), [graph]);
   const [hover, setHover] = useState<string | null>(null);
   const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -357,14 +247,38 @@ export function OrgGraph({
   const peopleById = useMemo(() => new Map(graph.people.map((p) => [p.id, p])), [graph.people]);
   const toolsById = useMemo(() => new Map(graph.tools.map((t) => [t.id, t])), [graph.tools]);
   const sourcesById = useMemo(() => new Map(graph.sources.map((s) => [s.id, s])), [graph.sources]);
-  const projectsById = useMemo(() => new Map(graph.projects.map((p) => [p.id, p])), [graph.projects]);
   const deptById = useMemo(() => new Map(graph.departments.map((d) => [d.id, d])), [graph.departments]);
-  const deptIndex = useMemo(
-    () => new Map(graph.departments.map((d, index) => [d.id, index])),
-    [graph.departments],
-  );
-  const rampOf = (deptId: string | null | undefined) =>
-    graphRampStep(deptId != null ? deptIndex.get(deptId) ?? 0 : 0);
+
+  /** Track B: the department pastel family, deterministically assigned. */
+  const pastelOf = useMemo(() => {
+    const map = departmentPastelMap(graph.departments.map((d) => d.label));
+    return (deptId: string | null | undefined): string => {
+      const label = deptId != null ? deptById.get(deptId)?.label : undefined;
+      return (label && map.get(label)) || DEPARTMENT_PASTEL[DEPARTMENT_PASTEL.length - 1].hex;
+    };
+  }, [graph.departments, deptById]);
+
+  const membersByDept = useMemo(() => {
+    const map = new Map<string, GraphPerson[]>();
+    for (const dept of graph.departments) map.set(dept.id, []);
+    for (const person of graph.people) {
+      const list = map.get(person.department_id) ?? [];
+      list.push(person);
+      map.set(person.department_id, list);
+    }
+    for (const [k, v] of map) map.set(k, sortedMembers(v));
+    return map;
+  }, [graph.departments, graph.people]);
+
+  /** The head (promoted avatar) per department: the payload anchor. */
+  const headByDept = useMemo(() => {
+    const map = new Map<string, GraphPerson>();
+    for (const dept of graph.departments) {
+      const head = (membersByDept.get(dept.id) ?? []).find((p) => p.ring === "anchor");
+      if (head) map.set(dept.id, head);
+    }
+    return map;
+  }, [graph.departments, membersByDept]);
 
   const neighbors = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -375,21 +289,6 @@ export function OrgGraph({
     for (const edge of graph.edges) link(edge.from, edge.to);
     return map;
   }, [graph.edges]);
-
-  /** Members per hub, sorted exactly as the layout placed them. */
-  const membersByDept = useMemo(() => {
-    const map = new Map<string, GraphPerson[]>();
-    for (const dept of graph.departments) map.set(dept.id, []);
-    const sorted = [...graph.people].sort((a, b) =>
-      a.ring === b.ring ? a.id.localeCompare(b.id) : a.ring === "anchor" ? -1 : 1,
-    );
-    for (const person of sorted) {
-      const list = map.get(person.department_id) ?? [];
-      list.push(person);
-      map.set(person.department_id, list);
-    }
-    return map;
-  }, [graph.departments, graph.people]);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -417,8 +316,8 @@ export function OrgGraph({
       if (focusDept !== null) {
         const angle = hubAngle.get(focusDept);
         if (angle === undefined) return;
-        const focusK = 1.7;
-        const frame = polar(angle, STAGE.hubRing + STAGE.memberOrbit / 2);
+        const focusK = 1.5;
+        const frame = polar(angle, (STAGE.hubRing + STAGE.peopleRim) / 2);
         const t = zoomIdentity.translate(-focusK * frame.x, -focusK * frame.y).scale(focusK);
         select(svg).call(zoomRef.current.transform, t);
       } else {
@@ -435,9 +334,6 @@ export function OrgGraph({
   const lab = (px: number) => px / k;
   const at = (id: string): Pos => pos.get(id) ?? { x: 0, y: 0 };
 
-  /** A4: the ONE new choreographed motion — the focus/dim transition,
-   * 180ms ease-out (≤200ms law), fired only by user action, DEAD under
-   * prefers-reduced-motion (instant state swap, no tween). */
   const nodeTransition = reducedMotion ? undefined : "opacity 180ms ease-out";
   const edgeTransition = reducedMotion
     ? undefined
@@ -458,18 +354,6 @@ export function OrgGraph({
     if (tool) return tool.label.toLowerCase().includes(q) || tool.id.toLowerCase().includes(q);
     const source = sourcesById.get(id);
     if (source) return source.label.toLowerCase().includes(q) || source.id.toLowerCase().includes(q);
-    const project = projectsById.get(id);
-    if (project) {
-      return [
-        project.id,
-        project.label,
-        project.workflow_name,
-        project.initiative_name,
-        project.strategy_name,
-        ...project.departments,
-        ...Object.keys(project.status_counts),
-      ].some((value) => value.toLowerCase().includes(q));
-    }
     const dept = deptById.get(id);
     if (dept) return dept.label.toLowerCase().includes(q) || dept.id.toLowerCase().includes(q);
     return id.toLowerCase().includes(q);
@@ -478,18 +362,12 @@ export function OrgGraph({
   const inDept = (id: string): boolean =>
     id === focusDept ||
     peopleById.get(id)?.department_id === focusDept ||
-    toolsById.get(id)?.department_id === focusDept ||
-    (focusDept !== null && (projectsById.get(id)?.departments.includes(focusDept) ?? false));
+    toolsById.get(id)?.department_id === focusDept;
 
-  /** A2: the EGO — hover mirrors keyboard focus (onFocus sets hover); a
-   * selection persists the ego until Escape or click-away, for EVERY node
-   * kind (the center included — its edge set is the org's spine). A chip's
-   * synthetic `cluster:X` id resolves to its department, so the neighbors
-   * map (payload-keyed) always has an answer and the chip itself stays
-   * emphasized. */
+  /** GP ego: hover mirrors keyboard focus; a selection persists the ego until
+   * Escape/click-away, for EVERY node kind (the center included). */
   const rawEgo = hover ?? selectedId;
-  const ego =
-    rawEgo !== null && rawEgo.startsWith("cluster:") ? rawEgo.slice("cluster:".length) : rawEgo;
+  const ego = rawEgo;
   const egoNeighbors = ego !== null ? neighbors.get(ego) : undefined;
   const traceRelated = (id: string): boolean =>
     ego !== null && (id === ego || (egoNeighbors?.has(id) ?? false));
@@ -504,18 +382,15 @@ export function OrgGraph({
     if (!dimming || emphasized(id)) return 1;
     return focusDept !== null ? GEOMETRY.graphGhostOpacity : GEOMETRY.graphDimOpacity;
   };
-  /** Ring 2 rests at 80%; dimming laws still apply beneath it. */
-  const ring2Op = (id: string): number => Math.min(op(id), dimming && emphasized(id) ? 1 : STAGE.ring2RestOpacity);
 
-  const projectVisible = (project: GraphProject): boolean =>
-    !hidden.has("projects") && pos.has(project.id);
-
-  /** A2 staged edges: structural person→hub edges are the REST state; every
-   * other payload edge (a relationship chord) draws only when the ego's
-   * edge set lights it (or in department focus). Totals stay honest in the
-   * masthead — the map never claims fewer relationships than it disclosed. */
-  const isStructural = (edge: GraphEdge): boolean =>
+  /** GP staged edges: at REST only the person→center rim spokes (member_of,
+   * textural) and the center→hub dotted-amber signals draw; every relationship
+   * chord lights ONLY on the ego's focus (or department focus). The masthead
+   * keeps the full payload edge count — the map never claims fewer. */
+  const isRimSpoke = (edge: GraphEdge): boolean =>
     edge.kind === "member_of" && peopleById.has(edge.from) && deptById.has(edge.to);
+  const isHubEdge = (edge: GraphEdge): boolean =>
+    edge.kind === "member_of" && deptById.has(edge.from) && edge.to === graph.center.id;
   const touchesEgo = (edge: GraphEdge): boolean =>
     ego !== null && (edge.from === ego || edge.to === ego);
   const litInFocusDept = (edge: GraphEdge): boolean =>
@@ -536,57 +411,45 @@ export function OrgGraph({
     }
   };
 
-  /** A person renders only when their department fans out; a chip-dept
-   * member has no position, so their edges must not draw either. */
-  const personUnfanned = (id: string): boolean => peopleById.has(id) && !memberSlot.has(id);
   const edgeHidden = (edge: GraphEdge): boolean =>
-    personUnfanned(edge.from) ||
-    personUnfanned(edge.to) ||
     (hidden.has("people") && (peopleById.has(edge.from) || peopleById.has(edge.to))) ||
     (hidden.has("agents") && (toolsById.has(edge.from) || toolsById.has(edge.to))) ||
-    (hidden.has("sources") && (sourcesById.has(edge.from) || sourcesById.has(edge.to))) ||
-    (projectsById.has(edge.from) && !projectVisible(projectsById.get(edge.from)!)) ||
-    (projectsById.has(edge.to) && !projectVisible(projectsById.get(edge.to)!));
+    (hidden.has("sources") && (sourcesById.has(edge.from) || sourcesById.has(edge.to)));
 
   // -------------------------------------------------------------------------
-  // KEYBOARD OPERABILITY (A5 / WCAG 2.1.1): tab order IS the cluster order —
-  // center → each hub → its members → next hub → ring 2 → projects (the DOM
-  // renders in that order). Arrow keys traverse WITHIN the current tier;
-  // Escape climbs a tier (member → hub → root) and releases a persisted
-  // selection. Focus mirrors hover, so the A2 ego visuals double as the
-  // focus cue on top of the standard focus ring.
+  // KEYBOARD (GP / WCAG 2.1.1): tab order = center → hubs → heads → arc
+  // members → mid-field (sources+agents). Arrows traverse WITHIN a tier;
+  // Escape climbs (member → its hub → root) and releases a persisted selection.
   // -------------------------------------------------------------------------
-  const visibleProjects = graph.projects.filter(projectVisible);
   const tiers: string[][] = useMemo(() => {
     const hubTier = graph.departments.map((d) => d.id);
-    // The people tier honors the People filter in BOTH representations:
-    // hiding people removes fans AND chips alike (no silent no-op).
+    const headTier = graph.departments
+      .map((d) => headByDept.get(d.id)?.id)
+      .filter((id): id is string => id !== undefined);
+    // Heads live in the head tier ONLY; the member tier is the department's
+    // non-anchor dots (the head is not a member-tier dot, so arrows within an
+    // arc traverse the members without ejecting at — and getting trapped on —
+    // the head).
     const memberTiers: string[][] = hidden.has("people")
       ? []
       : graph.departments.map((d) =>
-          chipDepts.has(d.id)
-            ? [`cluster:${d.id}`]
-            : (membersByDept.get(d.id) ?? []).map((p) => p.id),
+          (membersByDept.get(d.id) ?? []).filter((p) => p.ring !== "anchor").map((p) => p.id),
         );
-    const ring2Tier = [
+    const midTier = [
       ...(hidden.has("sources") ? [] : graph.sources.map((s) => s.id)),
       ...(hidden.has("agents") ? [] : graph.tools.map((t) => t.id)),
     ];
-    const projectTier = visibleProjects.map((p) => p.id);
-    return [[graph.center.id], hubTier, ...memberTiers, ring2Tier, projectTier].filter(
+    return [[graph.center.id], hubTier, headTier, ...memberTiers, midTier].filter(
       (tier) => tier.length > 0,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, hidden, chipDepts, membersByDept, visibleProjects.length]);
+  }, [graph, hidden, membersByDept, headByDept]);
 
   const tierOf = (id: string): string[] | undefined => tiers.find((tier) => tier.includes(id));
-
   const registerNode = (id: string) => (el: SVGGElement | null) => {
     if (el) nodeRefs.current.set(id, el);
     else nodeRefs.current.delete(id);
   };
-
-  /** Arrows: circular traversal WITHIN the node's tier (A5). */
   const moveFocus = (fromId: string, delta: 1 | -1) => {
     const tier = tierOf(fromId);
     if (!tier) return;
@@ -594,21 +457,16 @@ export function OrgGraph({
     const next = tier[(index + delta + tier.length) % tier.length];
     nodeRefs.current.get(next)?.focus();
   };
-
-  /** Escape: release a persisted selection, then climb a tier —
-   * member → its hub; everything else → the graph root. */
   const escapeFrom = (id: string) => {
     if (selectedId !== null) onSelectNode(null);
-    const slot = memberSlot.get(id);
-    const clusterDept = id.startsWith("cluster:") ? id.slice("cluster:".length) : null;
-    const hubId = slot?.hubId ?? clusterDept;
-    if (hubId !== null && hubId !== undefined && nodeRefs.current.has(hubId)) {
+    const person = peopleById.get(id);
+    const hubId = person?.department_id ?? toolsById.get(id)?.department_id ?? null;
+    if (hubId !== null && nodeRefs.current.has(hubId)) {
       nodeRefs.current.get(hubId)?.focus();
     } else {
       rootRef.current?.focus();
     }
   };
-
   const nodeKeyProps = (id: string, ariaLabel: string, activate: () => void) => ({
     ref: registerNode(id),
     tabIndex: 0,
@@ -632,33 +490,16 @@ export function OrgGraph({
       }
     },
   });
-
-  /** A2: click-away on the stage background releases a persisted selection. */
   const onStageClick = (event: React.MouseEvent<SVGSVGElement>) => {
     if (event.target === event.currentTarget && selectedId !== null) {
       onSelectNode(null);
     }
   };
 
-  // Radial member label placement: names stay 13px/500 (the label law), fanned
-  // outward from the hub along each member's own direction so sibling names
-  // do not stack.
-  const memberLabel = (personId: string) => {
-    const slot = memberSlot.get(personId);
-    const direction = slot?.angle ?? ang.get(personId) ?? 0;
-    // Overflow-row labels sit further out along their own radial so the two
-    // rows' names never share a screen position on the fan's flanks.
-    const rowBump = slot && slot.orbit > STAGE.memberOrbit ? lab(14) : 0;
-    const offset = STAGE.personNode / 2 + lab(10) + rowBump;
-    const lx = Math.cos(direction) * offset;
-    const ly = Math.sin(direction) * offset;
-    const anchor: "start" | "end" | "middle" =
-      Math.cos(direction) > 0.34 ? "start" : Math.cos(direction) < -0.34 ? "end" : "middle";
-    const dy = anchor === "middle" ? (Math.sin(direction) >= 0 ? lab(14) : -lab(8)) : lab(4);
-    return { lx, ly: ly + dy, anchor };
-  };
-
-  const renderPerson = (person: GraphPerson) => {
+  // -------------------------------------------------------------------------
+  // RENDER HELPERS
+  // -------------------------------------------------------------------------
+  const renderPersonDot = (person: GraphPerson) => {
     const point = at(person.id);
     const active =
       hover === person.id ||
@@ -666,11 +507,10 @@ export function OrgGraph({
       traceRelated(person.id) ||
       matches(person.id) ||
       (focusDept !== null && person.department_id === focusDept);
-    const size = STAGE.personNode;
-    const ramp = rampOf(person.department_id);
+    const pastel = pastelOf(person.department_id);
     const deptLabel = deptById.get(person.department_id)?.label ?? person.department_id;
     const activate = () => onSelectNode({ id: person.id, kind: "human", label: person.display_name });
-    const label = memberLabel(person.id);
+    const r = active ? STAGE.personDot / 2 + 2 : STAGE.personDot / 2;
     return (
       <g
         key={person.id}
@@ -687,124 +527,110 @@ export function OrgGraph({
         {...nodeKeyProps(person.id, `${person.display_name}, ${person.title}, ${deptLabel}`, activate)}
       >
         <title>{`${person.display_name}, ${person.title}`}</title>
-        <circle r={size / 2 + 3} fill={C.paper} stroke={ramp.line} strokeWidth={1.2} />
-        {person.is_self ? (
+        <circle r={r} fill={pastel} fillOpacity={0.9} stroke={C.paper} strokeWidth={0.5} strokeOpacity={0.3} />
+        {(active || person.is_self) && (
           <circle
-            r={size / 2 + 7}
+            r={r + 3}
             fill="none"
-            stroke={C.affordance}
-            strokeWidth={2}
-            data-testid="graph-self-marker"
+            stroke={person.is_self ? C.affordance : C.affordance}
+            strokeWidth={person.is_self ? 2 : 1.5}
+            strokeOpacity={0.9}
+            data-testid={person.is_self ? "graph-self-marker" : undefined}
           />
-        ) : null}
+        )}
+        {active && (
+          <text
+            y={-r - lab(6)}
+            textAnchor="middle"
+            fill={GRAPH_STAGE.label}
+            paintOrder="stroke"
+            stroke={GRAPH_STAGE.canvasEdge}
+            strokeWidth={GEOMETRY.graphLabelHalo}
+            style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), fontWeight: 500 }}
+            data-testid="graph-person-name"
+          >
+            {person.display_name}
+          </text>
+        )}
+      </g>
+    );
+  };
+
+  const renderHead = (deptId: string) => {
+    const head = headByDept.get(deptId);
+    if (!head || hidden.has("people")) return null;
+    const arc = deptArcs.get(deptId);
+    const direction = arc?.center ?? hubAngle.get(deptId) ?? 0;
+    const point = polar(direction, STAGE.headRing);
+    const size = STAGE.headAvatar;
+    const pastel = pastelOf(deptId);
+    const active =
+      hover === head.id || selectedId === head.id || traceRelated(head.id) || matches(head.id);
+    const anchor: "start" | "end" | "middle" =
+      Math.cos(direction) > 0.34 ? "start" : Math.cos(direction) < -0.34 ? "end" : "middle";
+    const activate = () => onSelectNode({ id: head.id, kind: "human", label: head.display_name });
+    const lx = Math.cos(direction) * (size / 2 + lab(6));
+    const ly = Math.sin(direction) * (size / 2 + lab(6));
+    return (
+      <g
+        key={`head:${head.id}`}
+        transform={`translate(${point.x},${point.y})`}
+        opacity={op(head.id)}
+        style={{ cursor: "pointer", transition: nodeTransition }}
+        onMouseEnter={() => setHover(head.id)}
+        onMouseLeave={() => setHover(null)}
+        onClick={activate}
+        data-testid="graph-head"
+        data-id={head.id}
+        data-self={head.is_self ? "true" : "false"}
+        {...nodeKeyProps(head.id, `${head.display_name}, ${head.title}, ${deptById.get(deptId)?.label ?? deptId} head`, activate)}
+      >
+        <title>{`${head.display_name}, ${head.title}`}</title>
+        <circle r={size / 2 + 3} fill={C.paper} stroke={pastel} strokeWidth={1.5} />
+        {head.is_self && (
+          <circle r={size / 2 + 7} fill="none" stroke={C.affordance} strokeWidth={2} data-testid="graph-self-marker" />
+        )}
         <foreignObject x={-size / 2} y={-size / 2} width={size} height={size}>
           <PersonAvatar
-            principalId={person.id}
-            displayName={person.display_name}
+            principalId={head.id}
+            displayName={head.display_name}
             size={size}
-            tint={{ background: ramp.surface, border: ramp.line }}
+            tint={{ background: `color-mix(in srgb, ${pastel} 26%, var(--paper))`, border: pastel }}
           />
         </foreignObject>
         <circle
           r={size / 2 + 7}
           fill="none"
           stroke={C.affordance}
-          strokeWidth={selectedId === person.id || active ? 2 : 0}
-          strokeOpacity={selectedId === person.id || active ? 0.9 : 0}
+          strokeWidth={active || selectedId === head.id ? 2 : 0}
+          strokeOpacity={active || selectedId === head.id ? 0.9 : 0}
         />
-        {/* The full name, ALWAYS: 13px/500 (the label law), fanned outward. */}
-        <g transform={`translate(${label.lx},${label.ly})`}>
+        <g transform={`translate(${lx},${ly})`}>
           <text
-            textAnchor={label.anchor}
+            textAnchor={anchor}
             dominantBaseline="middle"
-            fill={C.ink}
+            fill={GRAPH_STAGE.label}
             paintOrder="stroke"
-            stroke={C.paper}
+            stroke={GRAPH_STAGE.canvasEdge}
             strokeWidth={GEOMETRY.graphLabelHalo}
-            style={{
-              fontFamily: FONT.chrome,
-              fontSize: lab(TYPE.scale.xs),
-              fontWeight: 500,
-            }}
-            data-testid="graph-person-name"
+            style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 1), fontWeight: 600 }}
+            data-testid="graph-head-name"
           >
-            {person.display_name}
+            {head.display_name}
           </text>
-          {person.ring === "anchor" || active ? (
-            <text
-              y={lab(13)}
-              textAnchor={label.anchor}
-              dominantBaseline="middle"
-              fill={C.inkSoft}
-              paintOrder="stroke"
-              stroke={C.paper}
-              strokeWidth={GEOMETRY.graphLabelHalo}
-              style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 2) }}
-              data-testid="graph-person-title"
-            >
-              {person.title}
-            </text>
-          ) : null}
+          <text
+            y={lab(12)}
+            textAnchor={anchor}
+            dominantBaseline="middle"
+            fill={GRAPH_STAGE.labelSoft}
+            paintOrder="stroke"
+            stroke={GRAPH_STAGE.canvasEdge}
+            strokeWidth={GEOMETRY.graphLabelHalo}
+            style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3) }}
+          >
+            {head.title}
+          </text>
         </g>
-      </g>
-    );
-  };
-
-  const renderClusterChip = (deptId: string) => {
-    const dept = deptById.get(deptId);
-    const arc = deptArcs.get(deptId);
-    if (!dept || !arc || arc.count === 0) return null;
-    const hubPos = at(deptId);
-    const direction = hubAngle.get(deptId) ?? 0;
-    const point = polar(direction, STAGE.memberOrbit, hubPos.x, hubPos.y);
-    const ramp = rampOf(deptId);
-    const clusterId = `cluster:${deptId}`;
-    const active = focusDept === deptId || hover === clusterId || matches(deptId);
-    const activate = () => {
-      onFocusDept(focusDept === deptId ? null : deptId);
-      onSelectNode({ id: deptId, kind: "department", label: dept.label });
-    };
-    return (
-      <g
-        key={clusterId}
-        transform={`translate(${point.x},${point.y})`}
-        opacity={op(deptId)}
-        style={{ cursor: "pointer", transition: nodeTransition }}
-        onMouseEnter={() => setHover(clusterId)}
-        onMouseLeave={() => setHover(null)}
-        onClick={activate}
-        data-testid="graph-people-cluster"
-        data-id={deptId}
-        data-count={arc.count}
-        {...nodeKeyProps(clusterId, `${dept.label}: ${peoplePlural(arc.count)} in scope`, activate)}
-      >
-        <title>{`${dept.label}: ${peoplePlural(arc.count)} in scope`}</title>
-        <rect
-          x={-STAGE.clusterWidth / 2}
-          y={-STAGE.clusterHeight / 2}
-          width={STAGE.clusterWidth}
-          height={STAGE.clusterHeight}
-          rx={16}
-          fill={ramp.surface}
-          stroke={active ? C.affordance : ramp.line}
-          strokeWidth={active ? 2 : 1.2}
-        />
-        <text
-          y={-4}
-          textAnchor="middle"
-          fill={C.ink}
-          style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), fontWeight: 600 }}
-        >
-          {dept.label}
-        </text>
-        <text
-          y={lab(13)}
-          textAnchor="middle"
-          fill={C.inkSoft}
-          style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 2), fontWeight: 500 }}
-        >
-          {`${peoplePlural(arc.count)} in scope`}
-        </text>
       </g>
     );
   };
@@ -832,9 +658,7 @@ export function OrgGraph({
         </svg>
       </button>
 
-      {/* The visually-hidden mirror (A5 / WCAG 4.1.2), REGROUPED by
-          department: one list per hub, then ring 2, then projects — the same
-          rendered nodes as plain text, real entities only. */}
+      {/* SR mirror (WCAG 4.1.2), regrouped per department: one list per hub. */}
       <div className="sr-only" data-testid="graph-sr-mirror">
         <p>{graph.center.label} — organization</p>
         {graph.departments.map((dept) => {
@@ -844,12 +668,11 @@ export function OrgGraph({
               <li>
                 {dept.label} — department — {peoplePlural(count)} in scope
               </li>
-              {/* The mirror is textual, so it names every member even when
-                  the visual collapses that department to a chip. */}
               {!hidden.has("people") &&
                 (membersByDept.get(dept.id) ?? []).map((person) => (
                   <li key={person.id}>
                     {person.display_name} — {person.title}
+                    {person.ring === "anchor" ? " — head" : ""}
                   </li>
                 ))}
             </ul>
@@ -863,15 +686,6 @@ export function OrgGraph({
               graph.tools.map((tool) => <li key={tool.id}>{tool.label} — agent</li>)}
           </ul>
         )}
-        {visibleProjects.length > 0 && (
-          <ul aria-label="Projects">
-            {visibleProjects.map((project) => (
-              <li key={project.id}>
-                {compactProjectLabel(project.label)} — project — {peoplePlural(project.people)}
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
 
       <svg
@@ -883,72 +697,120 @@ export function OrgGraph({
         aria-label="Organization graph"
         onClick={onStageClick}
       >
+        <defs>
+          {/* The stage: a deep-navy radial field. No blur — radial-gradient
+              fills + opacity only (the no-filter law holds). */}
+          <radialGradient id="og-canvas" cx="50%" cy="50%" r="72%">
+            <stop offset="0%" stopColor={GRAPH_STAGE.canvasCenter} />
+            <stop offset="100%" stopColor={GRAPH_STAGE.canvasEdge} />
+          </radialGradient>
+          <radialGradient id="og-core-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={GRAPH_STAGE.coreGlow} stopOpacity={0.55} />
+            <stop offset="100%" stopColor={GRAPH_STAGE.coreGlow} stopOpacity={0} />
+          </radialGradient>
+          <radialGradient id="og-vignette" cx="50%" cy="50%" r="72%">
+            <stop offset="60%" stopColor={GRAPH_STAGE.vignette} stopOpacity={0} />
+            <stop offset="100%" stopColor={GRAPH_STAGE.vignette} stopOpacity={0.35} />
+          </radialGradient>
+        </defs>
+
+        {/* Canvas + vignette fill the whole viewBox. */}
+        <rect x={-bound} y={-bound} width={bound * 2} height={bound * 2} fill="url(#og-canvas)" data-testid="graph-canvas" />
+        <rect x={-bound} y={-bound} width={bound * 2} height={bound * 2} fill="url(#og-vignette)" pointerEvents="none" />
+
         <g transform={transform.toString()} data-testid="graph-scene">
+          {/* Rim spokes (person→center): the barely-there radial texture. Each
+              is a real member_of payload edge, drawn to center for fabric. */}
+          {!hidden.has("people") && (
+            <g data-testid="graph-rim-spokes" pointerEvents="none">
+              {graph.edges.map((edge, index) => {
+                if (!isRimSpoke(edge) || edgeHidden(edge)) return null;
+                const person = at(edge.from);
+                const lit = touchesEgo(edge) || litInFocusDept(edge);
+                return (
+                  <line
+                    key={`spoke-${edge.from}-${index}`}
+                    x1={person.x}
+                    y1={person.y}
+                    x2={0}
+                    y2={0}
+                    stroke={lit ? C.warm : GRAPH_STAGE.rimSpoke}
+                    strokeWidth={lit ? EDGE_LIT.width : RIM_SPOKE.width}
+                    strokeOpacity={lit ? EDGE_LIT.opacity : dimming && !emphasized(edge.from) ? 0.04 : RIM_SPOKE.opacity}
+                    style={{ transition: edgeTransition }}
+                    data-testid="graph-rim-spoke"
+                    data-kind="member_of"
+                    data-lit={lit ? "true" : "false"}
+                  />
+                );
+              })}
+            </g>
+          )}
+
+          {/* Relationship chords + hub edges. At rest ONLY the dotted-amber
+              center→hub "signals unavailable" edges draw; chords light on the
+              ego's focus. */}
           <g data-testid="graph-edges">
             {graph.edges.map((edge, index) => {
-              if (edgeHidden(edge)) return null;
-              const structural = isStructural(edge);
+              if (edgeHidden(edge) || isRimSpoke(edge)) return null;
+              const hubEdge = isHubEdge(edge);
               const lit = touchesEgo(edge) || litInFocusDept(edge);
-              // A2: chords exist ONLY on focus; structural edges are the
-              // rest state, dimming (never vanishing) when an ego lights.
-              if (!structural && !lit) return null;
+              if (!hubEdge && !lit) return null;
               const from = at(edge.from);
               const to = at(edge.to);
               const dx = to.x - from.x;
               const dy = to.y - from.y;
-              const curve = structural
-                ? 0
-                : (edge.from < edge.to ? 1 : -1) * Math.min(Math.hypot(dx, dy) * 0.08, 44);
+              const curve = hubEdge ? 0 : (edge.from < edge.to ? 1 : -1) * Math.min(Math.hypot(dx, dy) * 0.08, 44);
               const dimmed = dimming && !lit;
               return (
                 <path
                   key={`${edge.from}-${edge.kind}-${edge.to}-${index}`}
-                  d={edgePath(from, to, curve)}
+                  d={chordPath(from, to, curve)}
                   fill="none"
-                  stroke={lit ? C.warm : C.inkSoft}
-                  strokeWidth={lit ? EDGE_LIT.width : EDGE_REST.width}
-                  strokeOpacity={
-                    lit ? EDGE_LIT.opacity : dimmed ? GEOMETRY.graphDimOpacity : EDGE_REST.opacity
-                  }
-                  strokeDasharray={EDGE_DASH[edge.kind]}
+                  stroke={lit ? C.warm : C.warm}
+                  strokeWidth={lit ? EDGE_LIT.width : HUB_EDGE.width}
+                  strokeOpacity={lit ? EDGE_LIT.opacity : dimmed ? GEOMETRY.graphDimOpacity : HUB_EDGE.opacity}
+                  strokeDasharray={hubEdge ? "1 5" : EDGE_DASH[edge.kind]}
                   strokeLinecap="round"
                   style={{ transition: edgeTransition }}
                   data-testid="graph-edge"
                   data-kind={edge.kind}
                   data-from={edge.from}
                   data-to={edge.to}
-                  data-structural={structural ? "true" : "false"}
+                  data-hub={hubEdge ? "true" : "false"}
                   data-lit={lit ? "true" : "false"}
                 />
               );
             })}
           </g>
 
-          <g data-testid="graph-rings" opacity={focusDept !== null ? 0.42 : 1}>
-            {[STAGE.projectRing, STAGE.hubRing, STAGE.sourceRing].map((radius) => (
-              <circle
-                key={radius}
-                cx={0}
-                cy={0}
-                r={radius}
-                fill="none"
-                stroke={C.hairline}
-                strokeWidth={1}
-                strokeDasharray="1 10"
-                strokeLinecap="round"
-                strokeOpacity={0.72}
-              />
-            ))}
+          {/* Department arc strokes — each group embraced by its pastel. */}
+          <g data-testid="graph-dept-arcs">
+            {graph.departments.map((dept) => {
+              const arc = deptArcs.get(dept.id);
+              if (!arc || arc.count === 0) return null;
+              const pad = (STAGE.arcPadDeg * Math.PI) / 180;
+              return (
+                <path
+                  key={dept.id}
+                  d={arcPath(STAGE.arcRing, arc.start + pad, arc.end - pad)}
+                  fill="none"
+                  stroke={pastelOf(dept.id)}
+                  strokeWidth={STAGE.arcStroke}
+                  strokeOpacity={focusDept === null || focusDept === dept.id ? 0.65 : 0.12}
+                  strokeLinecap="round"
+                  data-testid="graph-dept-arc"
+                  data-dept={dept.id}
+                />
+              );
+            })}
           </g>
 
-          {/* CENTER — first tab stop (A5). */}
+          {/* CENTER — glowing organization core (first tab stop). */}
           {(() => {
-            const point = at(graph.center.id);
+            const active = selectedId === graph.center.id || traceRelated(graph.center.id) || hover === graph.center.id;
             const half = STAGE.coreSize / 2;
-            const active =
-              selectedId === graph.center.id || traceRelated(graph.center.id) || hover === graph.center.id;
-            const activate = () =>
-              onSelectNode({ id: graph.center.id, kind: "org", label: graph.center.label });
+            const activate = () => onSelectNode({ id: graph.center.id, kind: "org", label: graph.center.label });
             return (
               <g
                 data-testid="graph-center"
@@ -961,125 +823,136 @@ export function OrgGraph({
                 {...nodeKeyProps(graph.center.id, `${graph.center.label}, organization`, activate)}
               >
                 <title>{graph.center.label}</title>
-                <rect
-                  x={point.x - half}
-                  y={point.y - half}
-                  width={STAGE.coreSize}
-                  height={STAGE.coreSize}
-                  rx={8}
-                  fill={C.paper}
-                  stroke={active ? C.affordance : C.hairline}
-                  strokeWidth={active ? 2 : 1.4}
+                <circle r={half * 2.4} fill="url(#og-core-glow)" pointerEvents="none" />
+                <circle r={half} fill={GRAPH_STAGE.canvasCenter} stroke={active ? C.affordance : GRAPH_STAGE.coreGlow} strokeWidth={active ? 2.5 : 1.5} strokeOpacity={0.9} />
+                <path
+                  d="M-10 6h20M-6 6v-10h12v10M-14 12h28v6h-28z"
+                  fill="none"
+                  stroke={GRAPH_STAGE.coreGlow}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.92}
                 />
                 <text
-                  x={point.x}
-                  y={point.y + half * 0.34}
+                  y={half + lab(20)}
                   textAnchor="middle"
-                  fill={C.ink}
-                  style={{ fontFamily: FONT.chrome, fontSize: half * 0.78, fontWeight: 800 }}
+                  fill={GRAPH_STAGE.label}
+                  paintOrder="stroke"
+                  stroke={GRAPH_STAGE.canvasEdge}
+                  strokeWidth={GEOMETRY.graphLabelHalo}
+                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.sm), fontWeight: 600 }}
                   data-testid="graph-center-mark"
                 >
-                  {monogram(graph.center.label)}
+                  {graph.center.label}
                 </text>
                 <text
-                  x={point.x}
-                  y={point.y + half + lab(20)}
+                  y={half + lab(34)}
                   textAnchor="middle"
-                  fill={C.ink}
+                  fill={GRAPH_STAGE.labelSoft}
                   paintOrder="stroke"
-                  stroke={C.paper}
+                  stroke={GRAPH_STAGE.canvasEdge}
                   strokeWidth={GEOMETRY.graphLabelHalo}
-                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), fontWeight: 700 }}
+                  style={{ fontFamily: FONT.evidence, fontSize: lab(TYPE.scale.xs - 2) }}
                 >
-                  {graph.center.label}
+                  live graph payload
+                </text>
+                <text
+                  x={0}
+                  y={-half - lab(2)}
+                  textAnchor="middle"
+                  fill={GRAPH_STAGE.coreGlow}
+                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), fontWeight: 800, opacity: 0 }}
+                >
+                  {monogram(graph.center.label)}
                 </text>
               </g>
             );
           })()}
 
-          {/* RING 1 + MEMBER FANS — cluster order: each hub, then its
-              members (A5 tab order = DOM order). */}
+          {/* DEPARTMENT HUBS — pastel tiles, name + count beneath. */}
           {graph.departments.map((dept) => {
             const point = at(dept.id);
-            const ramp = rampOf(dept.id);
+            const pastel = pastelOf(dept.id);
             const count = deptArcs.get(dept.id)?.count ?? 0;
             const active =
-              focusDept === dept.id ||
-              selectedId === dept.id ||
-              traceRelated(dept.id) ||
-              hover === dept.id ||
-              matches(dept.id);
+              focusDept === dept.id || selectedId === dept.id || traceRelated(dept.id) || hover === dept.id || matches(dept.id);
+            const half = STAGE.hubTile / 2;
             const activate = () => {
               onFocusDept(focusDept === dept.id ? null : dept.id);
               onSelectNode({ id: dept.id, kind: "department", label: dept.label });
             };
             return (
-              <g key={dept.id}>
-                <g
-                  transform={`translate(${point.x},${point.y})`}
-                  opacity={op(dept.id)}
-                  style={{ cursor: "pointer", transition: nodeTransition }}
-                  onMouseEnter={() => setHover(dept.id)}
-                  onMouseLeave={() => setHover(null)}
-                  onClick={activate}
-                  data-testid="graph-dept"
-                  data-id={dept.id}
-                  data-dept={dept.id}
-                  {...nodeKeyProps(dept.id, `${dept.label} department, ${peoplePlural(count)} in scope`, activate)}
+              <g
+                key={dept.id}
+                transform={`translate(${point.x},${point.y})`}
+                opacity={op(dept.id)}
+                style={{ cursor: "pointer", transition: nodeTransition }}
+                onMouseEnter={() => setHover(dept.id)}
+                onMouseLeave={() => setHover(null)}
+                onClick={activate}
+                data-testid="graph-dept"
+                data-id={dept.id}
+                data-dept={dept.id}
+                {...nodeKeyProps(dept.id, `${dept.label} department, ${peoplePlural(count)} in scope`, activate)}
+              >
+                <title>{`${dept.label} department`}</title>
+                <rect
+                  x={-half}
+                  y={-half}
+                  width={STAGE.hubTile}
+                  height={STAGE.hubTile}
+                  rx={16}
+                  fill={`color-mix(in srgb, ${pastel} 22%, ${GRAPH_STAGE.canvasCenter})`}
+                  stroke={pastel}
+                  strokeWidth={2}
+                  strokeOpacity={0.85}
+                />
+                <path
+                  d="M-9 5h18M-5 5v-9h10v9M-13 10h26v6h-26z"
+                  fill="none"
+                  stroke={pastel}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.95}
+                />
+                <circle
+                  r={half + 6}
+                  fill="none"
+                  stroke={active ? C.affordance : pastel}
+                  strokeWidth={active ? 2 : 0}
+                  strokeOpacity={active ? 0.9 : 0}
+                />
+                <text
+                  y={half + lab(16)}
+                  textAnchor="middle"
+                  fill={GRAPH_STAGE.label}
+                  paintOrder="stroke"
+                  stroke={GRAPH_STAGE.canvasEdge}
+                  strokeWidth={GEOMETRY.graphLabelHalo}
+                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), fontWeight: 600 }}
+                  data-testid="graph-dept-label"
                 >
-                  <title>{`${dept.label} department`}</title>
-                  <circle r={STAGE.hubRadius} fill={ramp.surface} stroke={ramp.line} strokeWidth={1.6} />
-                  <path
-                    d="M-7 4h14M-4 4v-7h8v7M-10 8h20v5h-20z"
-                    fill="none"
-                    stroke={C.ink}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={0.86}
-                  />
-                  <circle
-                    r={STAGE.hubRadius + 7}
-                    fill="none"
-                    stroke={active ? C.affordance : C.hairline}
-                    strokeWidth={active ? 2 : 1}
-                    strokeOpacity={active ? 0.9 : 0}
-                  />
-                  <text
-                    y={STAGE.hubRadius + lab(18)}
-                    textAnchor="middle"
-                    fill={C.ink}
-                    paintOrder="stroke"
-                    stroke={C.paper}
-                    strokeWidth={GEOMETRY.graphLabelHalo}
-                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs), fontWeight: 500 }}
-                    data-testid="graph-dept-label"
-                  >
-                    {dept.label}
-                  </text>
-                  <text
-                    y={STAGE.hubRadius + lab(31)}
-                    textAnchor="middle"
-                    fill={C.inkSoft}
-                    paintOrder="stroke"
-                    stroke={C.paper}
-                    strokeWidth={GEOMETRY.graphLabelHalo}
-                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3), fontWeight: 500 }}
-                    data-testid="graph-dept-count"
-                  >
-                    {peoplePlural(count)}
-                  </text>
-                </g>
-                {!hidden.has("people") &&
-                  (chipDepts.has(dept.id)
-                    ? renderClusterChip(dept.id)
-                    : (membersByDept.get(dept.id) ?? []).map(renderPerson))}
+                  {dept.label}
+                </text>
+                <text
+                  y={half + lab(29)}
+                  textAnchor="middle"
+                  fill={GRAPH_STAGE.labelSoft}
+                  paintOrder="stroke"
+                  stroke={GRAPH_STAGE.canvasEdge}
+                  strokeWidth={GEOMETRY.graphLabelHalo}
+                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3), fontWeight: 500 }}
+                  data-testid="graph-dept-count"
+                >
+                  {peoplePlural(count)}
+                </text>
               </g>
             );
           })}
 
-          {/* RING 2 — systems of record + the unplaced agent kind, resting
-              at 80% opacity (depth = scale + opacity only). */}
+          {/* MID-FIELD sources — labeled circles between hub gaps. */}
           {!hidden.has("sources") &&
             graph.sources.map((source) => {
               const point = at(source.id);
@@ -1090,7 +963,7 @@ export function OrgGraph({
                 <g
                   key={source.id}
                   transform={`translate(${point.x},${point.y})`}
-                  opacity={active ? 1 : ring2Op(source.id)}
+                  opacity={op(source.id)}
                   style={{ cursor: "pointer", transition: nodeTransition }}
                   onMouseEnter={() => setHover(source.id)}
                   onMouseLeave={() => setHover(null)}
@@ -1100,28 +973,28 @@ export function OrgGraph({
                   {...nodeKeyProps(source.id, `${source.label}, system of record`, activate)}
                 >
                   <circle
-                    r={STAGE.sourceRadius + 5}
-                    fill={C.paper}
-                    stroke={active ? C.affordance : C.hairline}
+                    r={STAGE.sourceRadius + 4}
+                    fill={GRAPH_STAGE.canvasCenter}
+                    stroke={active ? C.affordance : C.affordance}
                     strokeWidth={active ? 2 : 1}
-                    strokeOpacity={active ? 0.88 : 0.75}
+                    strokeOpacity={active ? 0.9 : 0.6}
                   />
-                  <circle r={STAGE.sourceRadius} fill={C.affordance} stroke={C.paper} strokeWidth={1} strokeOpacity={0.3} />
+                  <circle r={STAGE.sourceRadius} fill={C.affordance} fillOpacity={0.85} stroke={GRAPH_STAGE.canvasCenter} strokeWidth={1} />
                   <text
                     y={0.5}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fill={C.paper}
+                    fill={GRAPH_STAGE.canvasEdge}
                     style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 4), fontWeight: 800 }}
                   >
                     {shortMark(source.label)}
                   </text>
                   <text
-                    y={STAGE.sourceRadius + lab(14)}
+                    y={STAGE.sourceRadius + lab(13)}
                     textAnchor="middle"
-                    fill={C.inkSoft}
+                    fill={GRAPH_STAGE.labelSoft}
                     paintOrder="stroke"
-                    stroke={C.paper}
+                    stroke={GRAPH_STAGE.canvasEdge}
                     strokeWidth={GEOMETRY.graphLabelHalo}
                     style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 2) }}
                   >
@@ -1131,18 +1004,19 @@ export function OrgGraph({
               );
             })}
 
+          {/* Agents — glyph squares adjacent to their department hub. */}
           {!hidden.has("agents") &&
             graph.tools.map((tool) => {
               const point = at(tool.id);
-              const ramp = rampOf(tool.department_id);
+              const pastel = pastelOf(tool.department_id);
               const active = selectedId === tool.id || traceRelated(tool.id) || hover === tool.id || matches(tool.id);
-              const size = active || focusDept === tool.department_id ? STAGE.agentSize + 2 : STAGE.agentSize;
+              const size = active ? STAGE.agentSize + 2 : STAGE.agentSize;
               const activate = () => onSelectNode({ id: tool.id, kind: "agent", label: tool.label });
               return (
                 <g
                   key={tool.id}
                   transform={`translate(${point.x},${point.y})`}
-                  opacity={active ? 1 : ring2Op(tool.id)}
+                  opacity={op(tool.id)}
                   style={{ cursor: "pointer", transition: nodeTransition }}
                   onMouseEnter={() => setHover(tool.id)}
                   onMouseLeave={() => setHover(null)}
@@ -1153,132 +1027,41 @@ export function OrgGraph({
                   {...nodeKeyProps(tool.id, `${tool.label}, agent`, activate)}
                 >
                   <title>{tool.label}</title>
-                  <rect
-                    x={-size}
-                    y={-size}
-                    width={size * 2}
-                    height={size * 2}
-                    rx={RADIUS.glyph}
-                    fill={ramp.line}
-                    stroke={C.paper}
-                    strokeWidth={1}
-                    strokeOpacity={0.42}
-                  />
+                  <rect x={-size} y={-size} width={size * 2} height={size * 2} rx={RADIUS.glyph} fill={pastel} stroke={GRAPH_STAGE.canvasCenter} strokeWidth={1} strokeOpacity={0.5} />
                   <text
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fill={C.paper}
+                    fill={GRAPH_STAGE.canvasCenter}
                     style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3), fontWeight: 800 }}
                   >
                     A
                   </text>
                   <text
-                    y={size + lab(13)}
+                    y={size + lab(12)}
                     textAnchor="middle"
-                    fill={C.inkSoft}
+                    fill={GRAPH_STAGE.labelSoft}
                     paintOrder="stroke"
-                    stroke={C.paper}
+                    stroke={GRAPH_STAGE.canvasEdge}
                     strokeWidth={GEOMETRY.graphLabelHalo}
-                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 2) }}
+                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3) }}
                     data-testid="graph-tool-label"
                   >
                     {tool.label}
                   </text>
-                  <circle
-                    r={size + 5}
-                    fill="none"
-                    stroke={C.affordance}
-                    strokeWidth={active ? 2 : 0}
-                    strokeOpacity={active ? 0.86 : 0}
-                  />
+                  <circle r={size + 4} fill="none" stroke={C.affordance} strokeWidth={active ? 2 : 0} strokeOpacity={active ? 0.86 : 0} />
                 </g>
               );
             })}
 
-          {/* PROJECTS — payload-linked only, 24px, between center and ring 1. */}
-          {visibleProjects.map((project) => {
-            const point = at(project.id);
-            const angle = ang.get(project.id) ?? 0;
-            const ramp = rampOf(project.primary_department_id);
-            const active =
-              selectedId === project.id || traceRelated(project.id) || hover === project.id || matches(project.id);
-            const size = active ? STAGE.projectSize + 2 : STAGE.projectSize;
-            const labelRadius = size + lab(12);
-            const lx = labelRadius * Math.cos(angle);
-            const ly = labelRadius * Math.sin(angle);
-            const anchorFor = Math.cos(angle) > 0.34 ? "start" : Math.cos(angle) < -0.34 ? "end" : "middle";
-            const activate = () => onSelectNode({ id: project.id, kind: "project", label: project.label });
-            return (
-              <g
-                key={project.id}
-                transform={`translate(${point.x},${point.y})`}
-                opacity={op(project.id)}
-                style={{ cursor: "pointer", transition: nodeTransition }}
-                onMouseEnter={() => setHover(project.id)}
-                onMouseLeave={() => setHover(null)}
-                onClick={activate}
-                data-testid="graph-project"
-                data-id={project.id}
-                {...nodeKeyProps(
-                  project.id,
-                  `${compactProjectLabel(project.label)}, project, ${peoplePlural(project.people)}`,
-                  activate,
-                )}
-              >
-                <title>{`${project.label} - ${peoplePlural(project.people)} - ${project.workflow_name}`}</title>
-                <path
-                  d={`M0 ${-size}L${size} 0L0 ${size}L${-size} 0Z`}
-                  fill={ramp.surface}
-                  stroke={active ? C.affordance : ramp.line}
-                  strokeWidth={active ? 2 : 1.1}
-                  strokeOpacity={active ? 0.94 : 0.74}
-                />
-                <text
-                  y={0.5}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fill={C.ink}
-                  style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 4), fontWeight: 800 }}
-                >
-                  {project.people}
-                </text>
-                <circle
-                  r={size + 6}
-                  fill="none"
-                  stroke={C.affordance}
-                  strokeWidth={active ? 2 : 0}
-                  strokeOpacity={active ? 0.84 : 0}
-                />
-                <g transform={`translate(${lx},${ly})`}>
-                  <text
-                    textAnchor={anchorFor}
-                    dominantBaseline="middle"
-                    fill={C.ink}
-                    paintOrder="stroke"
-                    stroke={C.paper}
-                    strokeWidth={GEOMETRY.graphLabelHalo}
-                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 1), fontWeight: 700 }}
-                    data-testid="graph-project-label"
-                  >
-                    {compactProjectLabel(project.label)}
-                  </text>
-                  <text
-                    y={lab(12)}
-                    textAnchor={anchorFor}
-                    dominantBaseline="middle"
-                    fill={C.inkSoft}
-                    paintOrder="stroke"
-                    stroke={C.paper}
-                    strokeWidth={GEOMETRY.graphLabelHalo}
-                    style={{ fontFamily: FONT.chrome, fontSize: lab(TYPE.scale.xs - 3) }}
-                    data-testid="graph-project-workflow"
-                  >
-                    {compactProjectLabel(project.workflow_name.replace(/^Workflow:\s*/i, ""))}
-                  </text>
-                </g>
-              </g>
-            );
-          })}
+          {/* THE PEOPLE RIM — every payload MEMBER, an 8px dot in its arc. The
+              department heads are NOT drawn here; they are promoted to avatars
+              below (one node per person, so a head is one tab stop, announced
+              once, with a single self-marker). */}
+          {!hidden.has("people") &&
+            graph.people.filter((p) => p.ring !== "anchor").map(renderPersonDot)}
+
+          {/* Promoted department heads. */}
+          {graph.departments.map((dept) => renderHead(dept.id))}
         </g>
       </svg>
     </div>

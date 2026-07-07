@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import type { GraphResponse, NodeSummary, RoleScopeSummary } from "@/lib/api";
 import { Console } from "@/components/Console";
@@ -163,26 +163,31 @@ describe("route separation", () => {
     expect(screen.getByTestId("root-home").textContent ?? "").not.toMatch(/derived-only|derived only|SOC2|SOC 2|ISO27001|ISO 27001|certified|certification|live SSO|live IAM/i);
   });
 
-  it("keeps product navigation split across daily, project, ask, and admin-domain surfaces", () => {
+  it("THE THREE-DOOR LAW: a standard identity sees exactly Home / Ask / Projects; admin doors and My Access are not in the nav", () => {
     render(<Console view="me" />);
 
     expect(screen.getByTestId("view-door-me").getAttribute("aria-current")).toBe("page");
-    // A1: the locked vocabulary — /me is Home; lens/atlas carry plain names.
+    // A1: the locked vocabulary — /me is Home; Ask + Projects complete the trio.
     expect(screen.getByTestId("view-door-me").textContent).toBe("Home");
-    expect(screen.getByTestId("view-door-lens").textContent).toBe("My Access");
-    expect(screen.getByTestId("view-door-atlas").textContent).toBe("Company Map");
-    expect(screen.getByTestId("view-door-lane").textContent).toBe("Review Queue");
+    expect(screen.getByTestId("view-door-ask").getAttribute("href")).toBe("/ask");
     expect(screen.getByTestId("view-door-project").getAttribute("href")).toBe("/project");
     expect(screen.getByTestId("view-door-project").textContent).toBe("Projects");
-    expect(screen.getByTestId("view-door-ask").getAttribute("href")).toBe("/ask");
-    expect(screen.getByTestId("view-door-admin-graph").getAttribute("href")).toBe("/admin/graph");
-    expect(screen.getByTestId("view-door-admin-graph").textContent).toBe("Operating Map");
+    // No admin group and no My Access door for a standard identity.
+    expect(screen.queryByTestId("admin-doors")).toBeNull();
+    expect(screen.queryByTestId("view-door-admin-graph")).toBeNull();
     expect(screen.queryByTestId("view-door-bursar")).toBeNull();
-    expect(screen.queryByTestId("admin-preview-badge")).toBeNull();
+    expect(screen.queryByTestId("view-door-atlas")).toBeNull();
+    expect(screen.queryByTestId("view-door-lane")).toBeNull();
+    expect(screen.queryByTestId("view-door-lens")).toBeNull();
     // A4: the shell notice is THE single demo-status line — on /me too.
     expect(screen.getByTestId("shell-demo-identity-mode")).toBeTruthy();
-    expect(screen.getByTestId("theme-toggle").textContent).toContain("Light mode");
-    fireEvent.click(screen.getByTestId("theme-toggle"));
+    // My Access + Appearance (theme) live behind the settings gear.
+    fireEvent.click(screen.getByTestId("settings-open"));
+    const drawer = screen.getByTestId("settings-drawer");
+    expect(screen.getByTestId("settings-my-access-link").getAttribute("href")).toBe("/lens");
+    const themeToggle = within(drawer).getByTestId("theme-toggle");
+    expect(themeToggle.textContent).toContain("Light mode");
+    fireEvent.click(themeToggle);
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(localStorage.getItem("ap-theme")).toBe("light");
   });
@@ -280,6 +285,6 @@ describe("route separation", () => {
     expect(screen.getByTestId("graph-relationship-summary").textContent).toContain("Keyboard-readable rows");
     expect(screen.getByTestId("view-door-admin-graph").getAttribute("aria-current")).toBe("page");
     expect(screen.getByTestId("graph-room").textContent ?? "").not.toMatch(/derived-only|derived only|SOC2|SOC 2|ISO27001|ISO 27001|certified|certification|live SSO|live IAM/i);
-    expect(screen.getByTestId("graph-room").textContent ?? "").not.toMatch(/Bursar|supplier|invoice|spend total|token total|ledger row|signals unavailable|permissions unavailable/i);
+    expect(screen.getByTestId("graph-room").textContent ?? "").not.toMatch(/Bursar|supplier|invoice|spend total|token total|ledger row|permissions unavailable/i);
   });
 });

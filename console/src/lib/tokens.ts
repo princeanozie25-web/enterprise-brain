@@ -202,6 +202,87 @@ export function graphRampStep(index: number): { surface: string; line: string } 
 }
 
 /**
+ * SHOWCASE-1 (Track B): THE DEPARTMENT PASTEL FAMILY — an owner-ratified
+ * AMENDMENT to the reserved-color law. These eight pastels are DEPARTMENT
+ * IDENTITY colors on the admin Operating Map ONLY. Saturated amber/red remain
+ * EXCLUSIVELY sensitivity + signal (amber = the lit connection / signals-
+ * unavailable state); these pastels never touch a sensitivity surface. Each
+ * clears 3:1 against the deep-navy canvas for its ring/arc/dot (non-text) use;
+ * node labels stay in the standard text inks. Declared here so U-6 sees every
+ * hue centrally.
+ */
+export const DEPARTMENT_PASTEL: ReadonlyArray<{ hex: string; keywords: string[] }> = [
+  { hex: "#E8A0BF", keywords: ["hr", "people"] }, // People & HR
+  { hex: "#E7C86E", keywords: ["finance"] }, // Finance
+  { hex: "#9DC7A0", keywords: ["quality", "compliance"] }, // Quality & Compliance
+  { hex: "#7FA8E8", keywords: ["sales", "account"] }, // Sales & Accounts
+  { hex: "#B7A6E3", keywords: ["executive"] }, // Executive
+  { hex: "#E8A76E", keywords: ["operations", "warehouse"] }, // Operations
+  { hex: "#8FBFA8", keywords: ["logistics", "pharmacy"] }, // Logistics
+  { hex: "#7EC8D8", keywords: ["it", "security"] }, // IT & Security
+];
+
+/**
+ * Deterministic department → pastel assignment. Labels are matched to the
+ * family by keyword (semantic intent) in SORTED label order so the result is
+ * stable per payload; a label matching no family keyword takes the next
+ * unused pastel in palette order. Every department gets a distinct pastel
+ * (8 pastels, ≤8 departments in the corpus).
+ */
+export function departmentPastelMap(labels: string[]): Map<string, string> {
+  const used = new Set<number>();
+  const out = new Map<string, string>();
+  const sorted = [...labels].sort((a, b) => a.localeCompare(b));
+  // First pass: keyword-matched (semantic) assignment.
+  for (const label of sorted) {
+    const lower = label.toLowerCase();
+    const idx = DEPARTMENT_PASTEL.findIndex(
+      (p, i) => !used.has(i) && p.keywords.some((k) => lower.includes(k)),
+    );
+    if (idx >= 0) {
+      used.add(idx);
+      out.set(label, DEPARTMENT_PASTEL[idx].hex);
+    }
+  }
+  // Second pass: any unmatched label takes the next unused pastel.
+  for (const label of sorted) {
+    if (out.has(label)) continue;
+    const idx = DEPARTMENT_PASTEL.findIndex((_, i) => !used.has(i));
+    const use = idx >= 0 ? idx : 0;
+    used.add(use);
+    out.set(label, DEPARTMENT_PASTEL[use].hex);
+  }
+  return out;
+}
+
+/**
+ * SHOWCASE-1 (Track B): the Operating Map STAGE — a deep-navy radial field.
+ * The reference's glow is radial-gradient fills + opacity, NEVER a blur filter
+ * (the no-filter law holds). Declared here so U-6 sees the canvas hues.
+ */
+export const GRAPH_STAGE = {
+  /** Radial field: center → edge. */
+  canvasCenter: "#0D1526",
+  canvasEdge: "#0A0F1E",
+  /** The org core's soft blue glow (radial-gradient core → transparent). */
+  coreGlow: "#6EA8FE",
+  /** The rim's barely-there radial texture (person→center spokes). */
+  rimSpoke: "#FFFFFF",
+  /** The edge vignette — pure black at low opacity (a darkening wash, no hue). */
+  vignette: "#000000",
+  /**
+   * MAP LABEL INK — pinned light-on-navy. The stage is fixed deep-navy in BOTH
+   * app themes, so node labels must NOT inherit the theme ink (in light theme
+   * var(--ink) is dark navy-charcoal → ~1.2:1 dark-on-navy, effectively
+   * invisible). We reuse the DARK-theme inks (off-white / cool grey) — already
+   * in the reserved palette, so U-6 sees no new hue — and pair them with the
+   * navy canvasEdge halo for ≥4.5:1 in every theme by construction.
+   */
+  label: DARK.ink,
+  labelSoft: DARK.inkSoft,
+} as const;
+
+/**
  * Sensitivity badge ink (B4): the five badge tints are FIXED pale hues shared
  * by both themes, so the label must NOT inherit the theme ink (near-white on
  * dark collapsed to 1.0:1 against the pale tints). Badge text is pinned to the

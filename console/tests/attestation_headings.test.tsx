@@ -10,7 +10,7 @@
  */
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { Console } from "@/components/Console";
 import { ProductHome } from "@/components/ProductHome";
@@ -134,6 +134,17 @@ describe("B2: one h1 and no skipped heading levels on every routed surface", () 
     render(<BursarSurface />);
     await waitFor(() => expect(screen.getByTestId("bursar-unavailable")).toBeTruthy());
     assertHeadingDiscipline("/admin/bursar (ledger)");
+  });
+
+  it("the Settings drawer keeps heading discipline when OPEN (Track A's new shell modal)", () => {
+    // The gear drawer is a brand-new modal with its own h2 + three h3 sections.
+    // It is mounted AFTER the #main surface, so the surface's h1 still comes
+    // first and the levels stay [1,2,3,3,3] — no skip, one h1 — even open.
+    stubQuietFetch();
+    render(<Console view="ask" />);
+    fireEvent.click(screen.getByTestId("settings-open"));
+    expect(screen.getByTestId("settings-drawer")).toBeTruthy();
+    assertHeadingDiscipline("/ask + open settings drawer");
   });
 });
 

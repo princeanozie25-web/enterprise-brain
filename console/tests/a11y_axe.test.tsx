@@ -173,6 +173,15 @@ for (const theme of THEMES) {
       await expectNoViolations(container, `my-access/${theme}`);
     });
 
+    it(`the OPEN Settings drawer (Track A's shell modal) has zero violations [${theme}]`, async () => {
+      setTheme(theme);
+      vi.stubGlobal("fetch", vi.fn(async () => new Response('{"demo_identity_mode":true}', { status: 404 })));
+      const { container } = render(<Console view="ask" />);
+      fireEvent.click(screen.getByTestId("settings-open"));
+      expect(screen.getByTestId("settings-drawer")).toBeTruthy();
+      await expectNoViolations(container, `settings-drawer/${theme}`);
+    });
+
     it(`Spend Ledger (honest STATE 3) has zero violations [${theme}]`, async () => {
       setTheme(theme);
       stubUnavailableLedger();

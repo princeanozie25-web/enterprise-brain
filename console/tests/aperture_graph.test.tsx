@@ -9,7 +9,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 
 import type { GraphResponse, NodeSummary, OrgStats } from "@/lib/api";
 import { GEOMETRY } from "@/lib/tokens";
-import { OrgGraph, PEOPLE_CLUSTER_THRESHOLD } from "@/components/OrgGraph";
+import { OrgGraph } from "@/components/OrgGraph";
 import { GraphRoom, lensHref } from "@/components/GraphRoom";
 import { GraphSidebar } from "@/components/GraphSidebar";
 import { GraphInspector } from "@/components/GraphInspector";
@@ -106,111 +106,238 @@ function restEdges(graph: GraphResponse): number {
   ).length;
 }
 
-// ---------------------------------------------------------------------------
-// U-33 STRUCTURE — the concentric rings, all real entities
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// SHOWCASE-1 (Track B) — THE REFERENCE OPERATING MAP. The OrgGraph rebuild.
+// These supersede the graph-presence radial-cluster suite (U-33..U-45): the
+// rest-state is now the deep-navy rim map — hubs, department arcs, an 8px
+// people rim, promoted heads, dotted-amber hub edges, rim-spoke texture. The
+// GP interaction laws survive and are re-pinned below.
+// ===========================================================================
 
-describe("U-33: the graph renders core, hubs, agents, sources, and all people", () => {
-  it("renders every tier, payload-linked projects included, at the A2 rest state", () => {
-    const { container } = renderGraph();
+describe("REF-1: the map renders center, hubs, sources, agents, and every person once", () => {
+  it("renders one node per payload entity — members are rim dots, heads are promoted, NO duplicates, NO project nodes", () => {
+    renderGraph();
+    const members = GRAPH.people.filter((p) => p.ring !== "anchor");
+    const heads = GRAPH.people.filter((p) => p.ring === "anchor");
     expect(screen.getByTestId("org-graph")).toBeTruthy();
     expect(screen.getByTestId("graph-center")).toBeTruthy();
+    expect(screen.getByTestId("graph-canvas")).toBeTruthy();
     expect(screen.getAllByTestId("graph-dept").length).toBe(GRAPH.departments.length);
-    expect(screen.getAllByTestId("graph-tool").length).toBe(GRAPH.tools.length);
     expect(screen.getAllByTestId("graph-source").length).toBe(GRAPH.sources.length);
-    // A1: projects the payload LINKS render at the 140px tier (cap31 is
-    // linked by works_on/involves_department edges).
-    expect(screen.getAllByTestId("graph-project").length).toBe(1);
-    const people = screen.getAllByTestId("graph-person");
-    expect(people.length).toBe(GRAPH.people.length);
-    expect(people.filter((p) => p.getAttribute("data-ring") === "anchor").length).toBe(2);
-    // A2 rest: structural person→department edges only.
-    expect(screen.getAllByTestId("graph-edge").length).toBe(restEdges(GRAPH));
-    expect(screen.getAllByTestId("person-avatar-img").length).toBe(GRAPH.people.length);
-    expect(screen.queryByTestId("graph-signal-ring")).toBeNull();
-    expect(screen.queryByTestId("graph-permission-ring")).toBeNull();
-    expect(container.textContent ?? "").not.toMatch(/signals unavailable|permissions unavailable/i);
+    expect(screen.getAllByTestId("graph-tool").length).toBe(GRAPH.tools.length);
+    // A head is drawn ONCE (as a promoted avatar), never also as a rim dot.
+    expect(screen.getAllByTestId("graph-person").length).toBe(members.length);
+    expect(screen.getAllByTestId("graph-head").length).toBe(heads.length);
+    // No person id is both a dot AND a head (no duplicate tab stop / marker).
+    const dotIds = screen.getAllByTestId("graph-person").map((el) => el.getAttribute("data-id"));
+    const headIds = screen.getAllByTestId("graph-head").map((el) => el.getAttribute("data-id"));
+    expect(dotIds.filter((id) => headIds.includes(id))).toEqual([]);
+    expect(screen.queryAllByTestId("graph-project").length).toBe(0);
+    expect(screen.getAllByTestId("graph-dept-arc").length).toBe(GRAPH.departments.length);
   });
 });
 
-// ---------------------------------------------------------------------------
-// U-34 ANCHOR LABELS vs MEMBER HOVER-REVEAL
-// ---------------------------------------------------------------------------
-
-describe("U-34 (ring law): every rendered person carries their full name, always", () => {
-  it("names anchors AND members without hover or zoom — no monogram caterpillar", () => {
+describe("REF-2: heads are promoted; members are dots (name on focus, not always)", () => {
+  it("each department's anchor renders a promoted head with an always-on name", () => {
     renderGraph();
-    for (const [id, name] of [
-      ["p060", "Felix Osei"],
-      ["p061", "Ana Flores"],
-      ["p074", "Yuki Moreau"],
-      ["p075", "Mei Kim"],
-    ] as const) {
-      expect(within(personNode(id)).getByTestId("graph-person-name").textContent).toBe(name);
+    const heads = screen.getAllByTestId("graph-head");
+    expect(heads.length).toBe(2);
+    const headNames = heads.map((h) => within(h).getByTestId("graph-head-name").textContent);
+    expect(headNames).toContain("Felix Osei");
+    expect(headNames).toContain("Yuki Moreau");
+    expect(within(personNode("p061")).queryByTestId("graph-person-name")).toBeNull();
+  });
+});
+
+describe("REF-3: the layout law — hub ring 210, people rim 430, arc ring 448", () => {
+  it("places hubs, people, and arcs at the reference radii", () => {
+    renderGraph();
+    const dist = (el: HTMLElement) => {
+      const m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(el.getAttribute("transform") ?? "");
+      return m ? Math.hypot(Number(m[1]), Number(m[2])) : NaN;
+    };
+    for (const d of GRAPH.departments) {
+      const hub = screen.getAllByTestId("graph-dept").find((x) => x.getAttribute("data-id") === d.id)!;
+      expect(Math.abs(dist(hub) - 210)).toBeLessThanOrEqual(1);
+    }
+    // Members ride the 430 rim; heads are promoted off it (452), so only the
+    // non-anchor dots are checked here.
+    for (const person of GRAPH.people.filter((p) => p.ring !== "anchor")) {
+      expect(Math.abs(dist(personNode(person.id)) - 430)).toBeLessThanOrEqual(1);
+    }
+    for (const arc of screen.getAllByTestId("graph-dept-arc")) {
+      expect(arc.getAttribute("d")).toMatch(/A448,448/);
     }
   });
 });
 
-// ---------------------------------------------------------------------------
-// U-35 SELECTION + FOCUS + CROSS-LENS ROUTE
-// ---------------------------------------------------------------------------
-
-describe("U-35: clicking selects; a hub enters focus; the lens route is audited", () => {
-  it("emits the selected node for a person and focus+select for a hub", () => {
-    const onSelectNode = vi.fn();
-    const onFocusDept = vi.fn();
-    renderGraph({ onSelectNode, onFocusDept });
-
-    fireEvent.click(personNode("p074"));
-    expect(onSelectNode).toHaveBeenCalledWith({ id: "p074", kind: "human", label: "Yuki Moreau" });
-
-    const hub = screen.getAllByTestId("graph-dept").find((d) => d.getAttribute("data-dept") === "Finance")!;
-    fireEvent.click(hub);
-    expect(onFocusDept).toHaveBeenCalledWith("Finance");
-    expect(onSelectNode).toHaveBeenCalledWith({ id: "Finance", kind: "department", label: "Finance" });
-
-    // The cross-lens route the inspector navigates to (actor stays, subject set).
-    expect(lensHref("p060", "p074")).toBe("/lens?as=p060&subject=p074");
+describe("REF-4: departments ride the pastel family; center is the glowing core", () => {
+  it("arc strokes carry a pastel hex (never a sensitivity hue); the core glows, no blur", () => {
+    const { container } = renderGraph();
+    const arc = screen.getAllByTestId("graph-dept-arc")[0];
+    const stroke = arc.getAttribute("stroke") ?? "";
+    expect(stroke).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    expect(stroke).not.toMatch(/#0072B2|#009E73|#E69F00|#D55E00|#CC79A7/i);
+    expect(container.querySelector("#og-core-glow")).toBeTruthy();
+    expect(container.querySelector("filter")).toBeNull();
   });
 });
 
-// ---------------------------------------------------------------------------
-// U-36 HONEST DARK
-// ---------------------------------------------------------------------------
+describe("REF-5 (GP ego, adapted): rest is rim spokes + dotted-amber hub edges; focus lights the payload set", () => {
+  it("at rest, chords are staged away; hub edges + rim spokes carry the texture", () => {
+    renderGraph();
+    const spokes = screen.getAllByTestId("graph-rim-spoke");
+    expect(spokes.length).toBe(GRAPH.people.length);
+    for (const s of spokes) {
+      expect(s.getAttribute("data-kind")).toBe("member_of");
+      expect(s.getAttribute("stroke-width")).toBe("0.5");
+    }
+    const edges = screen.getAllByTestId("graph-edge");
+    for (const e of edges) {
+      expect(e.getAttribute("data-hub")).toBe("true");
+      expect(e.getAttribute("stroke-dasharray")).toBe("1 5");
+    }
+    const kinds = new Set(edges.map((e) => e.getAttribute("data-kind")));
+    expect(kinds.has("reports_to")).toBe(false);
+    expect(kinds.has("works_on")).toBe(false);
+  });
 
-describe("U-36: a minimal world is a small graph, never padded", () => {
-  it("renders the small graph with no ghost nodes and no +N hidden", () => {
+  it("selecting a node lights its full payload edge set at 1.5px/100%; others dim to 15%", () => {
+    renderGraph({ selectedId: "p060" });
+    const lit = screen.getAllByTestId("graph-edge").filter((e) => e.getAttribute("data-lit") === "true");
+    const litKinds = new Set(lit.map((e) => e.getAttribute("data-kind")));
+    for (const kind of ["reports_to", "owns_agent", "works_on"]) {
+      expect(litKinds.has(kind)).toBe(true);
+    }
+    for (const e of lit) {
+      expect(e.getAttribute("stroke-width")).toBe("1.5");
+      expect(e.getAttribute("stroke-opacity")).toBe("1");
+    }
+    expect(personNode("p075").getAttribute("opacity")).toBe(String(GEOMETRY.graphDimOpacity));
+  });
+});
+
+describe("REF-6: self marker, minimal world, keyboard, and F6 re-pin", () => {
+  it("marks the actor's own node 'you are here'", () => {
+    renderGraph();
+    const p060Head = screen.getAllByTestId("graph-head").find((h) => h.getAttribute("data-id") === "p060")!;
+    expect(within(p060Head).getByTestId("graph-self-marker")).toBeTruthy();
+  });
+
+  it("a minimal one-person world stays small — no padding, no ghosts", () => {
     const { container } = render(<OrgGraph graph={MINIMAL} onSelectNode={() => {}} onFocusDept={() => {}} />);
     expect(screen.getAllByTestId("graph-person").length).toBe(1);
     expect(screen.getAllByTestId("graph-dept").length).toBe(1);
     expect(screen.queryAllByTestId("graph-source").length).toBe(0);
-    expect(screen.queryAllByTestId("graph-tool").length).toBe(0);
-    expect(screen.queryByTestId("graph-ghost")).toBeNull();
     expect(container.textContent ?? "").not.toMatch(/\+\d+\b/);
-    expect(container.textContent ?? "").not.toMatch(/hidden|more/i);
+  });
+
+  it("p_void-shaped world: whitespace + no nodes", () => {
+    const empty: GraphResponse = { ...GRAPH, people: [], departments: [], tools: [], sources: [], projects: [], edges: [] };
+    render(<OrgGraph graph={empty} onSelectNode={() => {}} onFocusDept={() => {}} />);
+    expect(screen.queryAllByTestId("graph-person").length).toBe(0);
+    expect(screen.queryAllByTestId("graph-dept").length).toBe(0);
+    expect(screen.queryAllByTestId("graph-edge").length).toBe(0);
+  });
+
+  it("is keyboard-operable: nodes are tab stops, Enter activates, Escape climbs to the hub", () => {
+    const onSelectNode = vi.fn();
+    renderGraph({ onSelectNode });
+    const node = personNode("p061");
+    expect(node.getAttribute("tabindex")).toBe("0");
+    expect(node.getAttribute("role")).toBe("button");
+    node.focus();
+    fireEvent.keyDown(node, { key: "Enter" });
+    expect(onSelectNode).toHaveBeenCalledWith({ id: "p061", kind: "human", label: "Ana Flores" });
+    fireEvent.keyDown(node, { key: "Escape" });
+    const finance = screen.getAllByTestId("graph-dept").find((d) => d.getAttribute("data-dept") === "Finance")!;
+    expect(document.activeElement).toBe(finance);
+  });
+
+  it("F6 re-pin: every rendered data-id and every rendered edge maps to the payload", () => {
+    const { container } = renderGraph({ selectedId: "p060" });
+    const payloadIds = new Set<string>([
+      GRAPH.center.id,
+      ...GRAPH.departments.map((d) => d.id),
+      ...GRAPH.people.map((p) => p.id),
+      ...GRAPH.tools.map((t) => t.id),
+      ...GRAPH.sources.map((s) => s.id),
+    ]);
+    for (const el of Array.from(container.querySelectorAll("[data-id]"))) {
+      expect(payloadIds.has(el.getAttribute("data-id")!)).toBe(true);
+    }
+    const payloadEdges = new Set(GRAPH.edges.map((e) => `${e.from}|${e.kind}|${e.to}`));
+    for (const e of screen.getAllByTestId("graph-edge")) {
+      const key = `${e.getAttribute("data-from")}|${e.getAttribute("data-kind")}|${e.getAttribute("data-to")}`;
+      expect(payloadEdges.has(key)).toBe(true);
+    }
+  });
+
+  it("the sr mirror regroups by department and names every member (heads flagged)", () => {
+    renderGraph();
+    const deptLists = screen.getAllByTestId("graph-sr-dept");
+    expect(deptLists.length).toBe(GRAPH.departments.length);
+    const finance = deptLists.find((ul) => ul.getAttribute("aria-label") === "Finance department")!;
+    expect(finance.textContent).toContain("Felix Osei");
+    expect(finance.textContent).toContain("head");
+    expect(finance.textContent).toContain("Ana Flores");
   });
 });
 
-// ---------------------------------------------------------------------------
-// U-37 YOU ARE HERE
-// ---------------------------------------------------------------------------
+describe("REF-7: search + reduced motion", () => {
+  it("a query lights the match and dims the rest", () => {
+    renderGraph({ query: "Flores" });
+    expect(personNode("p061").getAttribute("opacity")).toBe("1");
+    expect(personNode("p075").getAttribute("opacity")).toBe(String(GEOMETRY.graphDimOpacity));
+  });
 
-describe("U-37: the actor's own node is marked 'you are here'", () => {
-  it("carries the self marker on exactly the actor", () => {
-    renderGraph();
-    expect(within(personNode("p060")).getByTestId("graph-self-marker")).toBeTruthy();
-    for (const id of ["p061", "p074", "p075"]) {
-      expect(within(personNode(id)).queryByTestId("graph-self-marker")).toBeNull();
+  it("reduced motion strips every transition", () => {
+    renderGraph({ reducedMotion: true });
+    expect(personNode("p061").getAttribute("style") ?? "").not.toContain("transition");
+    for (const e of screen.getAllByTestId("graph-edge")) {
+      expect(e.getAttribute("style") ?? "").not.toContain("transition");
     }
   });
 });
 
-// ---------------------------------------------------------------------------
-// U-38 PAN/ZOOM + FIT/RESET
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// REF-8 — THE LIVE INTERACTION LAWS still wired into OrgGraph: type filters,
+// pan/zoom + fit-reset, within-tier arrow traversal (hubs and heads), focus-
+// mode ghosting, and click-away release. These are exercised through the same
+// props/controls GraphRoom drives at runtime, so a regression in any of them
+// fails here (the reference-map rewrite kept the source; this keeps the test).
+// ===========================================================================
 
-describe("U-38: pan/zoom transforms the scene and Fit/reset restores it", () => {
-  it("a wheel zoom changes the scene transform; reset returns to identity", () => {
+function hubNode(deptId: string): HTMLElement {
+  return screen.getAllByTestId("graph-dept").find((el) => el.getAttribute("data-dept") === deptId)!;
+}
+function headNode(id: string): HTMLElement {
+  return screen.getAllByTestId("graph-head").find((el) => el.getAttribute("data-id") === id)!;
+}
+
+describe("REF-8: filters, zoom/reset, arrows, focus-mode, click-away", () => {
+  it("a type filter hides those nodes without disturbing any surviving position", () => {
+    const { rerender } = renderGraph({ hiddenKinds: [] });
+    const before = personNode("p061").getAttribute("transform");
+    rerender(
+      <OrgGraph graph={GRAPH} onSelectNode={() => {}} onFocusDept={() => {}} hiddenKinds={["agents"]} />,
+    );
+    expect(screen.queryAllByTestId("graph-tool").length).toBe(0);
+    expect(personNode("p061").getAttribute("transform")).toBe(before);
+    // The people rim is untouched (members = the non-anchor payload).
+    expect(screen.getAllByTestId("graph-person").length).toBe(
+      GRAPH.people.filter((p) => p.ring !== "anchor").length,
+    );
+  });
+
+  it("hiding people clears the dots, the promoted heads, and the rim spokes", () => {
+    renderGraph({ hiddenKinds: ["people"] });
+    expect(screen.queryAllByTestId("graph-person").length).toBe(0);
+    expect(screen.queryAllByTestId("graph-head").length).toBe(0);
+    expect(screen.queryAllByTestId("graph-rim-spoke").length).toBe(0);
+  });
+
+  it("a wheel zoom transforms the scene; Fit/reset restores identity and releases selection + focus", () => {
     const onFocusDept = vi.fn();
     const onSelectNode = vi.fn();
     renderGraph({ onFocusDept, onSelectNode });
@@ -223,254 +350,40 @@ describe("U-38: pan/zoom transforms the scene and Fit/reset restores it", () => 
     expect(onFocusDept).toHaveBeenCalledWith(null);
     expect(onSelectNode).toHaveBeenCalledWith(null);
   });
-});
 
-// ---------------------------------------------------------------------------
-// U-39 THE RING LAW (B1) — real nodes, keyboard operability, honest clusters
-// ---------------------------------------------------------------------------
-
-/** A synthetic >threshold payload for the cluster rule (a test fixture IS a
- * payload — every rendered node still maps to one of its entries). */
-function bigGraph(peopleCount: number): GraphResponse {
-  const people = Array.from({ length: peopleCount }, (_, i) => ({
-    id: `p${String(i + 1).padStart(3, "0")}`,
-    display_name: `Person ${i + 1}`,
-    title: "Analyst",
-    department_id: i % 2 === 0 ? "Finance" : "IT",
-    avatar_ref: "",
-    is_self: i === 0,
-    ring: "member" as const,
-  }));
-  return { ...GRAPH, people, edges: [], projects: [], tools: [], sources: [] };
-}
-
-describe("U-39 (T-B8): every rendered graph node maps to a real payload entity", () => {
-  it("renders zero decorative/synthetic nodes — all data-ids come from the payload", () => {
-    const { container } = renderGraph({ query: "Access Review" }); // projects revealed too
-    const payloadIds = new Set<string>([
-      GRAPH.center.id,
-      ...GRAPH.departments.map((d) => d.id),
-      ...GRAPH.people.map((p) => p.id),
-      ...GRAPH.tools.map((t) => t.id),
-      ...GRAPH.sources.map((s) => s.id),
-      ...GRAPH.projects.map((p) => p.id),
-    ]);
-    const rendered = Array.from(container.querySelectorAll("[data-id]"));
-    expect(rendered.length).toBeGreaterThan(0);
-    for (const el of rendered) {
-      expect(payloadIds.has(el.getAttribute("data-id")!)).toBe(true);
-    }
-  });
-
-  it("mirrors the rendered nodes for screen readers", () => {
-    renderGraph();
-    const mirror = screen.getByTestId("graph-sr-mirror");
-    for (const person of GRAPH.people) {
-      expect(mirror.textContent).toContain(person.display_name);
-    }
-    expect(mirror.textContent).toContain("Bryremead Distribution Ltd");
-  });
-});
-
-describe("U-39b (T-B2, rewritten to the A5 cluster law): the graph is keyboard-operable", () => {
-  it("nodes are tab stops; Enter activates; Escape climbs a tier (member → hub → root)", () => {
-    const onSelectNode = vi.fn();
-    renderGraph({ onSelectNode });
-    const node = personNode("p061");
-    expect(node.getAttribute("tabindex")).toBe("0");
-    expect(node.getAttribute("role")).toBe("button");
-    node.focus();
-    fireEvent.keyDown(node, { key: "Enter" });
-    expect(onSelectNode).toHaveBeenCalledWith({ id: "p061", kind: "human", label: "Ana Flores" });
-    // Member → its OWN hub.
-    fireEvent.keyDown(node, { key: "Escape" });
-    const finance = screen.getAllByTestId("graph-dept").find((d) => d.getAttribute("data-dept") === "Finance")!;
-    expect(document.activeElement).toBe(finance);
-    // Hub → the graph root.
-    fireEvent.keyDown(finance, { key: "Escape" });
-    expect(document.activeElement).toBe(screen.getByTestId("org-graph"));
-  });
-
-  it("arrow keys traverse WITHIN the current tier (hubs among hubs, members among siblings)", () => {
+  it("arrow keys traverse WITHIN a tier — hubs among hubs, heads among heads (a head never ejects the arc)", () => {
     renderGraph();
     // Hub tier: Finance → IT.
-    const finance = screen.getAllByTestId("graph-dept").find((d) => d.getAttribute("data-dept") === "Finance")!;
+    const finance = hubNode("Finance");
     finance.focus();
     fireEvent.keyDown(finance, { key: "ArrowRight" });
-    const it_ = screen.getAllByTestId("graph-dept").find((d) => d.getAttribute("data-dept") === "IT")!;
-    expect(document.activeElement).toBe(it_);
-    // Member tier: arrows stay INSIDE the Finance fan (anchor p060 → member
-    // p061 → wraps back to p060), never crossing into IT's members.
-    const p060 = personNode("p060");
-    p060.focus();
-    fireEvent.keyDown(p060, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(personNode("p061"));
-    fireEvent.keyDown(personNode("p061"), { key: "ArrowRight" });
-    expect(document.activeElement).toBe(personNode("p060"));
+    expect(document.activeElement).toBe(hubNode("IT"));
+    // Head tier: the two promoted heads walk among themselves (finding: a head
+    // used to sit in BOTH its member arc and the head tier, trapping traversal).
+    const financeHead = headNode("p060");
+    financeHead.focus();
+    fireEvent.keyDown(financeHead, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(headNode("p074"));
+    fireEvent.keyDown(headNode("p074"), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(headNode("p060"));
   });
 
-  it("tab order is the cluster order: center → hub → its members → next hub → ring 2", () => {
-    renderGraph();
-    // DOM order IS tab order for tabindex=0 stops.
-    const stops = Array.from(
-      document.querySelectorAll('[tabindex="0"][data-id], [tabindex="0"][data-testid="graph-center"]'),
-    ).map((el) => el.getAttribute("data-id"));
-    const centerIdx = stops.indexOf("org");
-    const financeIdx = stops.indexOf("Finance");
-    const p060Idx = stops.indexOf("p060");
-    const p061Idx = stops.indexOf("p061");
-    const itIdx = stops.indexOf("IT");
-    const p074Idx = stops.indexOf("p074");
-    const docstoreIdx = stops.indexOf("docstore");
-    expect(centerIdx).toBeLessThan(financeIdx);
-    expect(financeIdx).toBeLessThan(p060Idx);
-    expect(p060Idx).toBeLessThan(p061Idx);
-    expect(p061Idx).toBeLessThan(itIdx);
-    expect(itIdx).toBeLessThan(p074Idx);
-    expect(p074Idx).toBeLessThan(docstoreIdx);
-  });
-});
-
-describe("U-40 (cluster rule): past the threshold the ring collapses to honest department clusters", () => {
-  it(`over ${PEOPLE_CLUSTER_THRESHOLD} people: clusters with in-scope counts, no person nodes`, () => {
-    render(
-      <OrgGraph graph={bigGraph(PEOPLE_CLUSTER_THRESHOLD + 2)} onSelectNode={() => {}} onFocusDept={() => {}} />,
-    );
-    expect(screen.queryAllByTestId("graph-person").length).toBe(0);
-    const clusters = screen.getAllByTestId("graph-people-cluster");
-    expect(clusters.length).toBe(2);
-    const counts = clusters.map((c) => Number(c.getAttribute("data-count"))).sort((a, b) => a - b);
-    expect(counts[0] + counts[1]).toBe(PEOPLE_CLUSTER_THRESHOLD + 2);
-    expect(clusters[0].textContent).toContain("people in scope");
-  });
-
-  it(`at or under ${PEOPLE_CLUSTER_THRESHOLD} people: every person renders individually`, () => {
-    render(
-      <OrgGraph graph={bigGraph(PEOPLE_CLUSTER_THRESHOLD)} onSelectNode={() => {}} onFocusDept={() => {}} />,
-    );
-    expect(screen.getAllByTestId("graph-person").length).toBe(PEOPLE_CLUSTER_THRESHOLD);
-    expect(screen.queryAllByTestId("graph-people-cluster").length).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// U-41 EDGES + U-42 SOURCES
-// ---------------------------------------------------------------------------
-
-describe("U-41 (rewritten to the A2 staged-edge law): rest is structural; focus lights the payload set", () => {
-  it("at rest, only structural person→hub edges render (1px, 35%)", () => {
-    renderGraph();
-    const edges = screen.getAllByTestId("graph-edge");
-    expect(edges.length).toBe(restEdges(GRAPH));
-    for (const e of edges) {
-      expect(e.getAttribute("data-structural")).toBe("true");
-      expect(e.getAttribute("data-kind")).toBe("member_of");
-      expect(e.getAttribute("stroke-width")).toBe("1");
-      expect(e.getAttribute("stroke-opacity")).toBe("0.35");
-    }
-  });
-
-  it("a persisted selection lights that node's FULL payload edge set at 1.5px/100%", () => {
-    renderGraph({ selectedId: "p060" });
-    const edges = screen.getAllByTestId("graph-edge");
-    // p060's payload set: member_of Finance, reports_to (from p061),
-    // owns_agent, works_on cap31 — plus the other structural rest edges.
-    const lit = edges.filter((e) => e.getAttribute("data-lit") === "true");
-    const litKinds = new Set(lit.map((e) => e.getAttribute("data-kind")));
-    for (const k of ["member_of", "reports_to", "owns_agent", "works_on"]) {
-      expect(litKinds.has(k)).toBe(true);
-    }
-    for (const e of lit) {
-      expect(e.getAttribute("stroke-width")).toBe("1.5");
-      expect(e.getAttribute("stroke-opacity")).toBe("1");
-    }
-    // Chords are quadratic; structural spokes are straight lines.
-    const chord = lit.find((e) => e.getAttribute("data-kind") === "works_on")!;
-    expect(chord.getAttribute("d") ?? "").toMatch(/^M.*Q/);
-    // Non-connected structural edges dim to 15% — never vanish.
-    const dimmed = edges.filter((e) => e.getAttribute("data-lit") === "false");
-    expect(dimmed.length).toBeGreaterThan(0);
-    for (const e of dimmed) {
-      expect(e.getAttribute("stroke-opacity")).toBe("0.15");
-    }
-  });
-});
-
-describe("U-42: the real systems of record ride the graph", () => {
-  it("renders one node per source with its label", () => {
-    renderGraph();
-    const sources = screen.getAllByTestId("graph-source");
-    expect(sources.map((s) => s.getAttribute("data-id")).sort()).toEqual(["docstore", "wiki"]);
-    expect(within(sources.find((s) => s.getAttribute("data-id") === "docstore")!).getByText("Document store")).toBeTruthy();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// U-43 FILTERS PRESERVE LAYOUT
-// ---------------------------------------------------------------------------
-
-describe("U-43: a type filter hides nodes without disturbing the layout", () => {
-  it("hiding agents removes them but keeps every person's position", () => {
-    const { rerender } = renderGraph({ hiddenKinds: [] });
-    const before = personNode("p061").getAttribute("transform");
-    rerender(<OrgGraph graph={GRAPH} onSelectNode={() => {}} onFocusDept={() => {}} hiddenKinds={["agents"]} />);
-    expect(screen.queryAllByTestId("graph-tool").length).toBe(0);
-    expect(personNode("p061").getAttribute("transform")).toBe(before);
-    expect(screen.getAllByTestId("graph-person").length).toBe(GRAPH.people.length);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// U-44 SEARCH + U-45 FOCUS MODE (deterministic emphasis)
-// ---------------------------------------------------------------------------
-
-describe("U-44: search lights matches and dims the rest", () => {
-  it("a query emphasizes the match and reveals its name; others dim", () => {
-    renderGraph({ query: "Flores" }); // unique to Ana Flores (p061)
-    expect(personNode("p061").getAttribute("opacity")).toBe("1");
-    expect(within(personNode("p061")).getByTestId("graph-person-name").textContent).toBe("Ana Flores");
-    expect(personNode("p075").getAttribute("opacity")).toBe(String(GEOMETRY.graphDimOpacity));
-  });
-});
-
-describe("U-44b: project/capability traces light on focus (A2), never at rest", () => {
-  it("a linked project renders; SELECTING it lights its works_on/involves_department chords", () => {
-    const onSelectNode = vi.fn();
-    const { rerender } = renderGraph({ onSelectNode });
-    const project = screen.getByTestId("graph-project");
-    expect(project.getAttribute("data-id")).toBe("cap31");
-    expect(within(project).getByTestId("graph-project-label").textContent).toBe("Access Review 31");
-    // At rest the chords are staged away.
-    let kinds = new Set(screen.getAllByTestId("graph-edge").map((edge) => edge.getAttribute("data-kind")));
-    expect(kinds.has("works_on")).toBe(false);
-    fireEvent.click(project);
-    expect(onSelectNode).toHaveBeenCalledWith({ id: "cap31", kind: "project", label: "Capability: Access Review 31" });
-    // Selection persists the ego: the project's full payload edge set lights.
-    rerender(<OrgGraph graph={GRAPH} onSelectNode={onSelectNode} onFocusDept={() => {}} selectedId="cap31" />);
-    kinds = new Set(screen.getAllByTestId("graph-edge").map((edge) => edge.getAttribute("data-kind")));
-    expect(kinds.has("works_on")).toBe(true);
-    expect(kinds.has("involves_department")).toBe(true);
-  });
-
-  it("selecting a capability traces assigned people and involved departments", () => {
-    renderGraph({ selectedId: "cap31" });
-    expect(screen.getByTestId("graph-project")).toBeTruthy();
-    expect(personNode("p060").getAttribute("opacity")).toBe("1");
-    expect(personNode("p075").getAttribute("opacity")).toBe("1");
-    expect(personNode("p061").getAttribute("opacity")).toBe(String(GEOMETRY.graphDimOpacity));
-  });
-});
-
-describe("U-45: focus mode ghosts the rest and names the department", () => {
-  it("a focused department is full + named; other nodes are ghosted", () => {
+  it("focus mode ghosts every out-of-department node (0.1), not the 0.15 rest-dim", () => {
     renderGraph({ focusDept: "Finance" });
     expect(personNode("p061").getAttribute("opacity")).toBe("1");
-    // Finance member name revealed by focus (deterministic, not zoom-dependent).
-    expect(within(personNode("p061")).getByTestId("graph-person-name").textContent).toBe("Ana Flores");
-    // IT member ghosted.
     expect(personNode("p075").getAttribute("opacity")).toBe(String(GEOMETRY.graphGhostOpacity));
+    // The ghost branch is distinct from the ego rest-dim.
+    expect(GEOMETRY.graphGhostOpacity).not.toBe(GEOMETRY.graphDimOpacity);
+  });
+
+  it("click-away on the stage background releases a persisted selection", () => {
+    const onSelectNode = vi.fn();
+    renderGraph({ selectedId: "p060", onSelectNode });
+    fireEvent.click(screen.getByLabelText("Organization graph"));
+    expect(onSelectNode).toHaveBeenCalledWith(null);
   });
 });
+
 
 // ---------------------------------------------------------------------------
 // U-46 SIDEBAR — real counts, filters, department focus
@@ -743,7 +656,9 @@ describe("U-48: the Org Brain room wires counts, selection, and theme", () => {
     expect(screen.getByTestId("graph-relationship-summary").textContent).toContain("Keyboard-readable rows");
     expect(within(screen.getByTestId("graph-relationship-summary")).getAllByTestId("graph-relationship-row").length).toBe(5);
     expect(screen.getByTestId("graph-relationship-summary").textContent).toContain("Felix Osei");
-    expect(screen.getByTestId("graph-room").textContent ?? "").not.toMatch(/signals unavailable|permissions unavailable/i);
+    // "signals unavailable" is now the map's honest legend row; only the
+    // lying "permissions unavailable" row stays banned.
+    expect(screen.getByTestId("graph-room").textContent ?? "").not.toMatch(/permissions unavailable/i);
     expect(screen.queryByTestId("graph-signal-ring")).toBeNull();
     expect(screen.queryByTestId("graph-permission-ring")).toBeNull();
     const stat = (label: string) =>
@@ -752,8 +667,11 @@ describe("U-48: the Org Brain room wires counts, selection, and theme", () => {
       expect(within(stat("People")).getByTestId("sidebar-stat-value").textContent).toBe("120"),
     );
 
-    // Select a person -> the inspector opens with its governance.
-    fireEvent.click(screen.getAllByTestId("graph-person").find((p) => p.getAttribute("data-id") === "p074")!);
+    // Select a person -> the inspector opens with its governance. Yuki Moreau
+    // (p074) is a department head, so it renders as a promoted head node.
+    fireEvent.click(
+      document.querySelector('[data-testid="graph-head"][data-id="p074"], [data-testid="graph-person"][data-id="p074"]')!,
+    );
     await waitFor(() => expect(screen.getByTestId("inspector-card")).toBeTruthy());
     expect(screen.getByTestId("inspector-name").textContent).toBe("Yuki Moreau");
     expect(screen.getByTestId("inspector-relationship-trace").textContent).toContain("Yuki Moreau");
@@ -783,3 +701,4 @@ describe("U-48: the Org Brain room wires counts, selection, and theme", () => {
     ).toBe(true);
   });
 });
+

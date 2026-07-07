@@ -242,13 +242,16 @@ describe("U-17: an actor switch clears the Atlas room", () => {
     stubAtlasFetch(atlasP060);
     render(<Console view="atlas" />);
 
-    // The shell offers product-facing doors; the old reserved ledger placeholder is gone.
+    // The three base doors, plus the admin group (Company Map is an admin door,
+    // so being on /atlas surfaces the group). My Access moved to the settings
+    // drawer — it is no longer a nav door.
     expect(screen.getByTestId("view-door-me").getAttribute("href")).toBe("/me");
     expect(screen.getByTestId("view-door-project").getAttribute("href")).toBe("/project");
     expect(screen.getByTestId("view-door-ask").getAttribute("href")).toBe("/ask");
+    expect(screen.getByTestId("admin-doors")).toBeTruthy();
     expect(screen.getByTestId("view-door-admin-graph").getAttribute("href")).toBe("/admin/graph");
     expect(screen.queryByTestId("admin-preview-badge")).toBeNull();
-    expect(screen.getByTestId("view-door-lens").getAttribute("href")).toBe("/lens");
+    expect(screen.queryByTestId("view-door-lens")).toBeNull();
     expect(screen.getByTestId("view-door-atlas").getAttribute("aria-current")).toBe("page");
     expect(screen.queryByTestId("ledger-door")).toBeNull();
 

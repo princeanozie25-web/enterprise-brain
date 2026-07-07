@@ -97,6 +97,23 @@ describe("U-6: color discipline", () => {
         // The atmospheric wash — desaturated blue + violet, backdrop only.
         "#2D4A7C",
         "#4A3A8C",
+        // Showcase-1 (Track B): the department pastel family — an owner-
+        // ratified amendment; department IDENTITY on the Operating Map only.
+        "#E8A0BF",
+        "#E7C86E",
+        "#9DC7A0",
+        "#7FA8E8",
+        "#B7A6E3",
+        "#E8A76E",
+        "#8FBFA8",
+        "#7EC8D8",
+        // Showcase-1: the Operating Map STAGE — deep-navy field, blue core
+        // glow, white rim texture, black edge vignette.
+        "#0D1526",
+        "#0A0F1E",
+        "#6EA8FE",
+        "#FFFFFF",
+        "#000000",
       ].map((h) => h.toUpperCase()),
     );
     expect([...hexes].sort()).toEqual([...expected].sort());
