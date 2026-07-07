@@ -29,6 +29,7 @@ import { ProjectSurface } from "./ProjectSurface";
 import { ResultsList } from "./ResultsList";
 import { Skeleton } from "./Skeleton";
 import { DemoIdentityNotice } from "./TrustPosture";
+import { RoomBoundary } from "./RoomBoundary";
 import iris from "./LensBar.module.css";
 import * as session from "@/lib/session";
 
@@ -127,6 +128,26 @@ export function Console({
     setGrantContextUnavailable(false);
     setEntrySubject(null);
   }, []);
+
+  // K3 Track 2 — SESSION EXPIRY. When any seam call 401s, the session layer
+  // fires this once: capture the return intent (current room + the staged,
+  // never-submitted query), then route to the identity picker. No auto-retry,
+  // no refresh loop — one expiry, one human action, one restore. The picker
+  // (ProductHome) reads `?expired=1` + the stashed intent, announces via
+  // aria-live, and restores the room + staged query on re-pick.
+  useEffect(() => {
+    return session.onSessionExpired(() => {
+      if (typeof window === "undefined") return;
+      const path = window.location.pathname || "/";
+      const staged = query.trim();
+      session.captureReturnIntent({
+        path,
+        query: staged.length > 0 ? staged : null,
+        principal,
+      });
+      window.location.href = "/?expired=1";
+    });
+  }, [query, principal]);
 
   // ENTRY DOORS (AP-3/AP-4): /atlas?cap=… opens the capability sheet once
   // the atlas loads; /lens?diff=… opens the diff view against the room's
@@ -391,6 +412,12 @@ export function Console({
         className={`mx-auto flex ${view === "me" ? "max-w-7xl gap-3 px-4 py-3" : "max-w-6xl gap-6 p-4"} flex-col md:flex-row ${irisClass}`}
         data-testid="iris-stage"
       >
+        {/* K3 Track 3: the room body is boundary-wrapped. In its normal
+            (non-failed) state RoomBoundary is a pass-through fragment — zero
+            DOM/landmark/heading delta, so axe/heading/GP stay pinned. The
+            shell above #main (LensBar, guided journey, demo notice) is never
+            inside the boundary, so a room crash never loses it. */}
+        <RoomBoundary>
         {view === "adminGraph" ? (
           <AdminPreviewGate actor={principal} surface="admin">
             <main className="min-w-0 flex-1">
@@ -581,6 +608,7 @@ export function Console({
             </main>
           </>
         )}
+        </RoomBoundary>
       </div>
 
       <DocInspector

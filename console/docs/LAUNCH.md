@@ -47,3 +47,17 @@ Get-NetTCPConnection -LocalPort 3000 -State Listen | ForEach-Object { Stop-Proce
   shows its sources.
 - The walkthrough of what to click once it's up is in
   [FIRST_RUN.md](FIRST_RUN.md).
+
+## Build hygiene
+
+Rebuilds silently keep a stale artifact if the old process still holds it —
+verify the timestamp after every rebuild.
+
+- **Stop `service.exe` before `cargo build --release`.** A running binary
+  locks the target; the build fails and the stale binary keeps serving (K1
+  hit this — a config-less binary relaunched after a build that never landed).
+- **Stop `next dev` before `next build` / export.** A dev worker's lock makes
+  the build keep the previous `out/` (the presence pass shipped a stale
+  Jul-4 `out/` this way). `rm -rf .next` first.
+- **Verify the artifact timestamp** (`Get-Item target/release/service.exe`,
+  `out/lane.html`) is newer than your last edit before trusting a rebuild.

@@ -1,5 +1,9 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { TYPE } from "@/lib/tokens";
 import { suggestedQuestionFor } from "@/lib/firstQuestion";
+import { takeReturnIntent, type ReturnIntent } from "@/lib/session";
 import { MotionPanel, MotionSection } from "./MotionPrimitives";
 import { PersonAvatar } from "./PersonAvatar";
 
@@ -18,6 +22,12 @@ import { PersonAvatar } from "./PersonAvatar";
  *
  * A4 note: this page's single demo-status line is the mandated picker
  * sub-line below the heading (verbatim from the pass brief).
+ *
+ * K3 Track 2: this is also the re-authentication landing. When a session
+ * expires mid-use, the console routes here with `?expired=1` and a stashed
+ * return intent. The picker announces the expiry (aria-live, calm register —
+ * an expired session is a fact, not a failure) and rewrites each identity's
+ * href to RESTORE the room + the staged (never auto-submitted) query.
  */
 const FEATURED_IDENTITIES: ReadonlyArray<{
   id: string;
@@ -49,7 +59,34 @@ const FEATURED_IDENTITIES: ReadonlyArray<{
   },
 ];
 
+/** Build the restore href for an identity: the return room + staged query,
+ * but ONLY when the SAME identity that staged it is re-picked — a query is
+ * that identity's own content, so a different pick starts fresh at Home
+ * (never carrying one identity's staged text onto another). No expiry intent
+ * → the plain Home door (unchanged). */
+function identityHref(id: string, intent: ReturnIntent | null): string {
+  const as = encodeURIComponent(id);
+  if (intent === null) return `/me?as=${as}`;
+  if (intent.principal !== id) return `/me?as=${as}`;
+  const base = intent.path && intent.path !== "/" ? intent.path : "/me";
+  const q = intent.query ? `&q=${encodeURIComponent(intent.query)}` : "";
+  return `${base}?as=${as}${q}`;
+}
+
 export function ProductHome() {
+  // The expiry landing is client-only: the stashed intent is read (and
+  // cleared) exactly once on mount, held in state for the render.
+  const [expired, setExpired] = useState(false);
+  const [intent, setIntent] = useState<ReturnIntent | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("expired") === "1") {
+      setExpired(true);
+      setIntent(takeReturnIntent());
+    }
+  }, []);
+
   return (
     <main
       id="main"
@@ -72,6 +109,19 @@ export function ProductHome() {
         </p>
       </MotionPanel>
 
+      {/* K3 Track 2: the calm re-auth line, ABOVE the picker, aria-live so it
+          announces the expiry + navigation on landing. Neutral register, no
+          error styling — the color law holds. */}
+      <p
+        className="ap-soft"
+        role="status"
+        aria-live="polite"
+        style={{ fontSize: TYPE.scale.sm, lineHeight: TYPE.line.body, minHeight: expired ? undefined : 0 }}
+        data-testid="session-expired-line"
+      >
+        {expired ? "Your session ended. Pick who you are to continue." : ""}
+      </p>
+
       <MotionSection aria-labelledby="identity-picker-heading" data-testid="identity-picker">
         <h2
           id="identity-picker-heading"
@@ -93,7 +143,7 @@ export function ProductHome() {
           {FEATURED_IDENTITIES.map((identity) => (
             <li key={identity.id}>
               <a
-                href={`/me?as=${encodeURIComponent(identity.id)}`}
+                href={identityHref(identity.id, intent)}
                 className="ap-card ap-washable flex items-center gap-4 rounded-2xl border p-4"
                 data-testid={`identity-option-${identity.id}`}
               >

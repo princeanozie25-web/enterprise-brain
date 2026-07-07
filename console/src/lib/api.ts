@@ -10,7 +10,8 @@
 // rule held at the type layer (U-3 proves it at compile time).
 
 import { SERVICE_URL } from "./constants";
-import { authHeader } from "./session";
+import { authHeader, currentToken, notifyExpiry } from "./session";
+import { serviceRequest, parseJson, isRequestError } from "./request";
 
 export type Sensitivity =
   | "public"
@@ -159,9 +160,6 @@ export interface RoleScopeSummary {
   team_scope: RoleTeamScope;
 }
 
-/** 401: the request carried no principal. */
-export class Unauthenticated extends Error {}
-
 // FC-A1: identity rides the session bearer (Authorization), never a header the
 // caller asserts. The engine resolves the principal from the validated session.
 function headers(): HeadersInit {
@@ -171,14 +169,24 @@ function headers(): HeadersInit {
   };
 }
 
-async function parse<T>(response: Response): Promise<T> {
-  if (response.status === 401) {
-    throw new Unauthenticated("missing principal");
+// K3 Track 1/2: EVERY service call routes through this one wrapper. It binds
+// the loopback base, and on { kind: 'unauthorized' } fires the expiry notifier
+// ONCE before re-throwing — so a room's own catch still lands in its honest
+// empty state AND the app edge navigates to the identity picker. Timeout /
+// network / service / invalid_body all propagate as ServiceRequestError; the
+// pre-K3 rooms already catch generically, so their behavior is unchanged
+// except that an infinite spinner is now an aborted, stated failure.
+async function request(path: string, init: RequestInit = {}): Promise<Response> {
+  // Capture the token this call rides so a late 401 is attributed to the
+  // session that issued it, not to whatever session happens to be active
+  // when the failure lands (prevents a stale 401 from killing a fresh one).
+  const issuedToken = currentToken() ?? undefined;
+  try {
+    return await serviceRequest(SERVICE_URL, path, init);
+  } catch (cause) {
+    if (isRequestError(cause, "unauthorized")) notifyExpiry(issuedToken);
+    throw cause;
   }
-  if (!response.ok) {
-    throw new Error(`service error ${response.status}`);
-  }
-  return (await response.json()) as T;
 }
 
 export async function ask(
@@ -197,30 +205,30 @@ export async function ask(
     body.grant_id = options.grantId;
     body.capability_id = options.capabilityId;
   }
-  const response = await fetch(`${SERVICE_URL}/ask`, {
+  const response = await request(`/ask`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify(body),
   });
-  return parse<AnswerEnvelope>(response);
+  return parseJson<AnswerEnvelope>(response);
 }
 
 export async function getScope(principal: string): Promise<ScopeResponse> {
-  const response = await fetch(`${SERVICE_URL}/scope`, {
+  const response = await request(`/scope`, {
     headers: headers(),
   });
-  return parse<ScopeResponse>(response);
+  return parseJson<ScopeResponse>(response);
 }
 
 /** GET /me/scope. Read-only role posture, not an access grant. 404 -> null. */
 export async function getRoleScope(principal: string): Promise<RoleScopeSummary | null> {
-  const response = await fetch(`${SERVICE_URL}/me/scope`, {
+  const response = await request(`/me/scope`, {
     headers: headers(),
   });
   if (response.status === 404) {
     return null;
   }
-  return parse<RoleScopeSummary>(response);
+  return parseJson<RoleScopeSummary>(response);
 }
 
 /**
@@ -229,13 +237,13 @@ export async function getRoleScope(principal: string): Promise<RoleScopeSummary 
  * console can ever know. The inspector renders one empty state for it (U-5).
  */
 export async function getDoc(principal: string, docId: string): Promise<DocCard | null> {
-  const response = await fetch(`${SERVICE_URL}/doc/${encodeURIComponent(docId)}`, {
+  const response = await request(`/doc/${encodeURIComponent(docId)}`, {
     headers: headers(),
   });
   if (response.status === 404) {
     return null;
   }
-  return parse<DocCard>(response);
+  return parseJson<DocCard>(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -293,8 +301,8 @@ export interface PeopleResponse {
  * when this world has no humanization layer.
  */
 export async function getPeople(actor: string): Promise<PersonCard[]> {
-  const response = await fetch(`${SERVICE_URL}/people`, { headers: headers() });
-  const data = await parse<PeopleResponse>(response);
+  const response = await request(`/people`, { headers: headers() });
+  const data = await parseJson<PeopleResponse>(response);
   return data.people ?? [];
 }
 
@@ -372,11 +380,11 @@ export interface GraphResponse {
 
 /** GET /graph. 404 (unknown actor / no humanization layer) -> null. */
 export async function getGraph(actor: string): Promise<GraphResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/graph`, { headers: headers() });
+  const response = await request(`/graph`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
-  return parse<GraphResponse>(response);
+  return parseJson<GraphResponse>(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -456,19 +464,19 @@ export interface AccessGrantResponse {
 }
 
 export async function getAccessRequests(actor: string): Promise<AccessRequestsResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/access-requests`, { headers: headers() });
+  const response = await request(`/access-requests`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
-  return parse<AccessRequestsResponse>(response);
+  return parseJson<AccessRequestsResponse>(response);
 }
 
 export async function getAccessRequestInbox(actor: string): Promise<AccessRequestsResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/access-requests/inbox`, { headers: headers() });
+  const response = await request(`/access-requests/inbox`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
-  return parse<AccessRequestsResponse>(response);
+  return parseJson<AccessRequestsResponse>(response);
 }
 
 export async function postAccessRequest(
@@ -476,12 +484,12 @@ export async function postAccessRequest(
   target: AccessTarget,
   justification: string,
 ): Promise<AccessRequestMutationResponse> {
-  const response = await fetch(`${SERVICE_URL}/access-requests`, {
+  const response = await request(`/access-requests`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({ target, justification }),
   });
-  return parse<AccessRequestMutationResponse>(response);
+  return parseJson<AccessRequestMutationResponse>(response);
 }
 
 export async function postAccessRequestDecision(
@@ -490,36 +498,36 @@ export async function postAccessRequestDecision(
   decision: "approve" | "deny",
   reasonCode?: string,
 ): Promise<AccessRequestMutationResponse> {
-  const response = await fetch(
-    `${SERVICE_URL}/access-requests/${encodeURIComponent(requestId)}/${decision}`,
+  const response = await request(
+    `/access-requests/${encodeURIComponent(requestId)}/${decision}`,
     {
       method: "POST",
       headers: headers(),
       body: reasonCode ? JSON.stringify({ reason_code: reasonCode }) : undefined,
     },
   );
-  return parse<AccessRequestMutationResponse>(response);
+  return parseJson<AccessRequestMutationResponse>(response);
 }
 
 export async function getAccessGrants(actor: string): Promise<AccessGrantsResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/access-grants`, { headers: headers() });
+  const response = await request(`/access-grants`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
-  return parse<AccessGrantsResponse>(response);
+  return parseJson<AccessGrantsResponse>(response);
 }
 
 export async function getAccessGrant(
   actor: string,
   grantId: string,
 ): Promise<AccessGrantResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/access-grants/${encodeURIComponent(grantId)}`, {
+  const response = await request(`/access-grants/${encodeURIComponent(grantId)}`, {
     headers: headers(),
   });
   if (response.status === 404) {
     return null;
   }
-  return parse<AccessGrantResponse>(response);
+  return parseJson<AccessGrantResponse>(response);
 }
 
 export async function postAccessGrantRevoke(
@@ -527,15 +535,15 @@ export async function postAccessGrantRevoke(
   grantId: string,
   reasonCode?: string,
 ): Promise<AccessGrantResponse> {
-  const response = await fetch(
-    `${SERVICE_URL}/access-grants/${encodeURIComponent(grantId)}/revoke`,
+  const response = await request(
+    `/access-grants/${encodeURIComponent(grantId)}/revoke`,
     {
       method: "POST",
       headers: headers(),
       body: reasonCode ? JSON.stringify({ reason_code: reasonCode }) : undefined,
     },
   );
-  return parse<AccessGrantResponse>(response);
+  return parseJson<AccessGrantResponse>(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -586,14 +594,14 @@ export async function getProjectWorkflow(
   actor: string,
   capabilityId: string,
 ): Promise<ProjectWorkflowResponse | null> {
-  const response = await fetch(
-    `${SERVICE_URL}/workflow/project/${encodeURIComponent(capabilityId)}`,
+  const response = await request(
+    `/workflow/project/${encodeURIComponent(capabilityId)}`,
     { headers: headers() },
   );
   if (response.status === 404) {
     return null;
   }
-  return parse<ProjectWorkflowResponse>(response);
+  return parseJson<ProjectWorkflowResponse>(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -655,13 +663,13 @@ export interface NodeSummary {
 
 /** GET /node/{id}/summary. 404 (dept/source/unknown) -> null. */
 export async function getNodeSummary(actor: string, id: string): Promise<NodeSummary | null> {
-  const response = await fetch(`${SERVICE_URL}/node/${encodeURIComponent(id)}/summary`, {
+  const response = await request(`/node/${encodeURIComponent(id)}/summary`, {
     headers: headers(),
   });
   if (response.status === 404) {
     return null;
   }
-  return parse<NodeSummary>(response);
+  return parseJson<NodeSummary>(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -722,13 +730,13 @@ export async function getLens(
   actor: string,
   subjectId: string,
 ): Promise<LensResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/lens/${encodeURIComponent(subjectId)}`, {
+  const response = await request(`/lens/${encodeURIComponent(subjectId)}`, {
     headers: headers(),
   });
   if (response.status === 404) {
     return null;
   }
-  return parse<LensResponse>(response);
+  return parseJson<LensResponse>(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -785,13 +793,13 @@ export interface AtlasResponse {
 
 /** GET /atlas. 404 (this world has no BRM) -> null. */
 export async function getAtlas(actor: string): Promise<AtlasResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/atlas`, {
+  const response = await request(`/atlas`, {
     headers: headers(),
   });
   if (response.status === 404) {
     return null;
   }
-  return parse<AtlasResponse>(response);
+  return parseJson<AtlasResponse>(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -852,14 +860,14 @@ export async function getLensDiff(
   left: string,
   right: string,
 ): Promise<DiffResponse | null> {
-  const response = await fetch(
-    `${SERVICE_URL}/lens/diff?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`,
+  const response = await request(
+    `/lens/diff?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`,
     { headers: headers() },
   );
   if (response.status === 404) {
     return null;
   }
-  return parse<DiffResponse>(response);
+  return parseJson<DiffResponse>(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -877,11 +885,11 @@ export interface ExportRequest {
   ask?: { query: string; hybrid: boolean; judge: boolean };
 }
 
-export async function exportEvidence(actor: string, request: ExportRequest): Promise<Blob> {
-  const response = await fetch(`${SERVICE_URL}/export`, {
+export async function exportEvidence(actor: string, exportRequest: ExportRequest): Promise<Blob> {
+  const response = await request(`/export`, {
     method: "POST",
     headers: headers(),
-    body: JSON.stringify(request),
+    body: JSON.stringify(exportRequest),
   });
   if (!response.ok) {
     throw new Error(`service error ${response.status}`);
@@ -965,11 +973,11 @@ export interface RollupResponse {
 
 /** GET /lane — SELF-ONLY: the actor header is the only input. */
 export async function getLane(actor: string): Promise<LaneResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/lane`, { headers: headers() });
+  const response = await request(`/lane`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
-  return parse<LaneResponse>(response);
+  return parseJson<LaneResponse>(response);
 }
 
 export async function postBoxStatus(
@@ -977,8 +985,8 @@ export async function postBoxStatus(
   boxId: string,
   to: "active" | "done" | "dismissed",
 ): Promise<void> {
-  const response = await fetch(
-    `${SERVICE_URL}/lane/box/${encodeURIComponent(boxId)}/status`,
+  const response = await request(
+    `/lane/box/${encodeURIComponent(boxId)}/status`,
     { method: "POST", headers: headers(), body: JSON.stringify({ to }) },
   );
   if (!response.ok) {
@@ -987,11 +995,11 @@ export async function postBoxStatus(
 }
 
 export async function getInbox(actor: string): Promise<InboxResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/lane/inbox`, { headers: headers() });
+  const response = await request(`/lane/inbox`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
-  return parse<InboxResponse>(response);
+  return parseJson<InboxResponse>(response);
 }
 
 export async function postInboxDecision(
@@ -999,8 +1007,8 @@ export async function postInboxDecision(
   proposalId: string,
   decision: "accept" | "dismiss",
 ): Promise<void> {
-  const response = await fetch(
-    `${SERVICE_URL}/lane/inbox/${encodeURIComponent(proposalId)}/${decision}`,
+  const response = await request(
+    `/lane/inbox/${encodeURIComponent(proposalId)}/${decision}`,
     { method: "POST", headers: headers() },
   );
   if (!response.ok) {
@@ -1009,9 +1017,9 @@ export async function postInboxDecision(
 }
 
 export async function getRollup(actor: string): Promise<RollupResponse | null> {
-  const response = await fetch(`${SERVICE_URL}/lane/rollup`, { headers: headers() });
+  const response = await request(`/lane/rollup`, { headers: headers() });
   if (response.status === 404) {
     return null;
   }
-  return parse<RollupResponse>(response);
+  return parseJson<RollupResponse>(response);
 }
