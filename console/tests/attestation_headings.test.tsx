@@ -17,7 +17,36 @@ import { ProductHome } from "@/components/ProductHome";
 import { LaneRoom } from "@/components/LaneRoom";
 import { GraphRoom } from "@/components/GraphRoom";
 import { BursarSurface } from "@/components/BursarSurface";
-import type { GraphResponse } from "@/lib/api";
+import { ProjectSurface } from "@/components/ProjectSurface";
+import type { GraphResponse, ProjectWorkflowResponse } from "@/lib/api";
+
+const PIPE_PROV = {
+  capability: { id: "cap31", name: "Access Review 31" },
+  initiative: { id: "init03", name: "Strengthen Workforce Capability" },
+  strategy: { id: "strat01", name: "Workforce Capability" },
+  workflow: { id: "wf11", name: "Goods-In Verification 31" },
+};
+const PIPE_WORKFLOW: ProjectWorkflowResponse = {
+  actor_id: "p060",
+  capability_id: "cap31",
+  demo_identity_mode: true,
+  provenance: PIPE_PROV,
+  snapshot_version: "snap",
+  items: [
+    { capability_id: "cap31", dependencies: [], item_id: "box_active", kind: "lane_box", owner_id: "p060", provenance: PIPE_PROV, snapshot_version: "snap", status: "active", title: "Verify goods-in batch 31" },
+    { capability_id: "cap31", dependencies: [], item_id: "ar_mine", kind: "access_request", approver_id: "p060", requester_id: "p074", provenance: PIPE_PROV, snapshot_version: "snap", status: "pending", title: "Access request for Access Review 31" },
+  ],
+};
+function stubPipelineFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/workflow/project/cap31")) return new Response(JSON.stringify(PIPE_WORKFLOW), { status: 200 });
+      return new Response('{"demo_identity_mode":true,"error":"not found"}', { status: 404 });
+    }),
+  );
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -134,6 +163,19 @@ describe("B2: one h1 and no skipped heading levels on every routed surface", () 
     render(<BursarSurface />);
     await waitFor(() => expect(screen.getByTestId("bursar-unavailable")).toBeTruthy());
     assertHeadingDiscipline("/admin/bursar (ledger)");
+  });
+
+  it("the Pipeline projects room keeps heading discipline with its detail drawer OPEN", async () => {
+    // h1 (project title) -> h2 (five stage names) -> h2 (drawer title) -> h3
+    // (drawer sections). One h1, no skips — even with the drawer open. The
+    // populated surface is driven directly (the routed identity-less state is
+    // the entry card, covered above).
+    stubPipelineFetch();
+    render(<ProjectSurface actor="p060" capabilityId="cap31" />);
+    await waitFor(() => expect(screen.getByTestId("pipeline-board")).toBeTruthy());
+    fireEvent.click(screen.getAllByTestId("pipeline-card")[0]);
+    expect(screen.getByTestId("pipeline-drawer")).toBeTruthy();
+    assertHeadingDiscipline("/project (pipeline + open drawer)");
   });
 
   it("the Settings drawer keeps heading discipline when OPEN (Track A's new shell modal)", () => {

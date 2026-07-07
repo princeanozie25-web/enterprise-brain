@@ -21,8 +21,38 @@ import { Console } from "@/components/Console";
 import { ProductHome } from "@/components/ProductHome";
 import { GraphRoom } from "@/components/GraphRoom";
 import { BursarSurface } from "@/components/BursarSurface";
-import type { AnswerEnvelope, GraphResponse } from "@/lib/api";
+import { ProjectSurface } from "@/components/ProjectSurface";
+import type { AnswerEnvelope, GraphResponse, ProjectWorkflowResponse } from "@/lib/api";
 import { richEnvelope } from "./fixtures/typed";
+
+const PIPE_PROV = {
+  capability: { id: "cap31", name: "Access Review 31" },
+  initiative: { id: "init03", name: "Strengthen Workforce Capability" },
+  strategy: { id: "strat01", name: "Workforce Capability" },
+  workflow: { id: "wf11", name: "Goods-In Verification 31" },
+};
+const PIPE_WORKFLOW: ProjectWorkflowResponse = {
+  actor_id: "p060",
+  capability_id: "cap31",
+  demo_identity_mode: true,
+  provenance: PIPE_PROV,
+  snapshot_version: "snap",
+  items: [
+    { capability_id: "cap31", dependencies: ["box_seed"], item_id: "box_active", kind: "lane_box", owner_id: "p060", provenance: PIPE_PROV, snapshot_version: "snap", status: "active", title: "Verify goods-in batch 31" },
+    { capability_id: "cap31", dependencies: [], item_id: "ar_mine", kind: "access_request", approver_id: "p060", requester_id: "p074", provenance: PIPE_PROV, snapshot_version: "snap", status: "pending", title: "Access request for Access Review 31" },
+    { capability_id: "cap31", dependencies: ["box_active"], item_id: "box_done", kind: "accepted_agent_box", owner_id: "p060", provenance: PIPE_PROV, snapshot_version: "snap", status: "done", title: "Review accepted agent proposal" },
+  ],
+};
+function stubPipelineFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/workflow/project/cap31")) return new Response(JSON.stringify(PIPE_WORKFLOW), { status: 200 });
+      return new Response('{"demo_identity_mode":true,"error":"not found"}', { status: 404 });
+    }),
+  );
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -171,6 +201,16 @@ for (const theme of THEMES) {
       stubGraphFetch();
       const { container } = render(<Console view="lens" />);
       await expectNoViolations(container, `my-access/${theme}`);
+    });
+
+    it(`the Pipeline projects room + OPEN detail drawer has zero violations [${theme}]`, async () => {
+      setTheme(theme);
+      stubPipelineFetch();
+      const { container } = render(<ProjectSurface actor="p060" capabilityId="cap31" />);
+      await waitFor(() => expect(screen.getByTestId("pipeline-board")).toBeTruthy());
+      fireEvent.click(screen.getAllByTestId("pipeline-card")[0]);
+      expect(screen.getByTestId("pipeline-drawer")).toBeTruthy();
+      await expectNoViolations(container, `pipeline/${theme}`);
     });
 
     it(`the OPEN Settings drawer (Track A's shell modal) has zero violations [${theme}]`, async () => {

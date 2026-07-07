@@ -283,6 +283,22 @@ export const GRAPH_STAGE = {
 } as const;
 
 /**
+ * SHOWCASE-2 (Track B6): the pipeline stage's CONSTELLATION BACKDROP — a pure
+ * decoration layer (static SVG dots/lines, aria-hidden, pointer-events none,
+ * deliberately non-node-like) behind the pipeline columns. THE single token
+ * this pass adds to the palette: it controls only the decoration's OPACITY, so
+ * the fabric can never be mistaken for a data node (the F6 real-entity law
+ * governs the data layers; this layer opts out by being unmistakably faint).
+ * No new hue — the dots reuse GRAPH_STAGE.rimSpoke and the links reuse
+ * GRAPH_STAGE.coreGlow, both drawn at this opacity. A number, not a color, so
+ * the U-6 hex set is unchanged.
+ */
+export const STAGE_DRESSING = {
+  /** ≤8% per the decoration-layer law — background fabric, never signal. */
+  opacity: 0.06,
+} as const;
+
+/**
  * Sensitivity badge ink (B4): the five badge tints are FIXED pale hues shared
  * by both themes, so the label must NOT inherit the theme ink (near-white on
  * dark collapsed to 1.0:1 against the pale tints). Badge text is pinned to the
