@@ -88,8 +88,9 @@ function ProposalBox({ box }: { box: ProposalBoxView }) {
       {box.sources_outside_view > 0 && (
         <p className="ap-soft mt-1.5" style={{ fontSize: TYPE.scale.xs, fontStyle: "italic" }}>
           {box.sources_outside_view} of {box.sources_total}{" "}
-          {box.sources_total === 1 ? "source is" : "sources are"} outside your view and stay
-          hidden.
+          {box.sources_outside_view === 1
+            ? "source is outside your view and stays hidden."
+            : "sources are outside your view and stay hidden."}
         </p>
       )}
     </li>
