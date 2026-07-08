@@ -43,6 +43,17 @@ pub struct WorkflowItem {
     pub snapshot_version: String,
     pub status: String,
     pub title: String,
+    // SHOWCASE-III: present ONLY on materialized-proposal items. Absent on every
+    // existing item (skip_serializing_if=None) → the fixture/lane/access-request
+    // items serialize byte-identically.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchors: Option<Vec<crate::proposals::AnchorView>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sources_outside_view: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proposal_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -166,6 +177,10 @@ fn access_request_item(request: AccessRequest, provenance: &WorkflowProvenance) 
         snapshot_version: request.snapshot_version,
         status: request.status,
         title: format!("Access request for {}", provenance.capability.name),
+        description: None,
+        anchors: None,
+        sources_outside_view: None,
+        proposal_id: None,
     }
 }
 
@@ -278,6 +293,10 @@ pub fn project_workflow_view(
                 snapshot_version: state.snapshot_version.clone(),
                 status: status_for(seed.blocked, stored),
                 title: seed.capability.name.clone(),
+                description: None,
+                anchors: None,
+                sources_outside_view: None,
+                proposal_id: None,
             });
         }
     }
@@ -305,7 +324,42 @@ pub fn project_workflow_view(
                 snapshot_version: record.snapshot_version,
                 status: status_for(blocked, stored),
                 title: record.standing_query,
+                description: None,
+                anchors: None,
+                sources_outside_view: None,
+                proposal_id: None,
             });
+        }
+    }
+
+    // SHOWCASE-III: the 4th merge source — APPROVED + materialized proposals for
+    // this capability become "planned" lane_box items. Their anchors are S4-
+    // redacted for the VIEWER (the requesting actor): the proposer sees full
+    // anchors; anyone whose scope lacks a doc sees only the withheld marker.
+    if let Some(store) = &state.wf_proposals {
+        for proposal in store.approved_for(capability_id, &state.snapshot_version) {
+            let box_views = crate::proposals::redact_boxes_for(state, actor, &proposal.boxes)
+                .map_err(AskError::Internal)?;
+            for view in box_views {
+                items.push(WorkflowItem {
+                    capability_id: proposal.capability_id.clone(),
+                    dependencies: Vec::new(),
+                    agent_id: None,
+                    item_id: format!("{}#{}", proposal.proposal_id, view.box_index),
+                    kind: "lane_box".to_string(),
+                    approver_id: None,
+                    owner_id: Some(proposal.proposer_id.clone()),
+                    provenance: provenance.clone(),
+                    requester_id: None,
+                    snapshot_version: proposal.snapshot_version.clone(),
+                    status: "planned".to_string(),
+                    title: view.title.clone(),
+                    description: Some(view.description.clone()),
+                    sources_outside_view: Some(view.sources_outside_view),
+                    proposal_id: Some(proposal.proposal_id.clone()),
+                    anchors: Some(view.anchors),
+                });
+            }
         }
     }
 

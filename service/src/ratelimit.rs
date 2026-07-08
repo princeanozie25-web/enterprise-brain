@@ -63,6 +63,58 @@ impl RateLimiter {
     }
 }
 
+/// SHOWCASE-III: default per-principal proposal-generation cap — 3 per 60s.
+/// Generation is expensive; a 4th in the window is cheap-rejected (429).
+pub const PROPOSAL_GEN_RATE_MAX_DEFAULT: u32 = 3;
+pub const PROPOSAL_GEN_WINDOW_SECS_DEFAULT: u64 = 60;
+
+/// A fixed-window counter keyed PER PRINCIPAL. Separate from the global login
+/// limiter so proposal generation is throttled per identity without touching
+/// the auth path. Never consulted by `classify()` or the oracle → no oracle
+/// impact by construction.
+pub struct PrincipalRateLimiter {
+    max: u32,
+    window_secs: u64,
+    windows: Mutex<std::collections::HashMap<String, Window>>,
+}
+
+impl PrincipalRateLimiter {
+    pub fn new(max: u32, window_secs: u64) -> PrincipalRateLimiter {
+        PrincipalRateLimiter {
+            max,
+            window_secs,
+            windows: Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+
+    pub fn default_proposals() -> PrincipalRateLimiter {
+        PrincipalRateLimiter::new(
+            PROPOSAL_GEN_RATE_MAX_DEFAULT,
+            PROPOSAL_GEN_WINDOW_SECS_DEFAULT,
+        )
+    }
+
+    /// Count one attempt for `principal`. `true` = within cap (allow); `false` =
+    /// cap reached (429). Each principal's window rolls independently.
+    pub fn check(&self, principal: &str) -> bool {
+        let now = now_unix();
+        let mut map = self.windows.lock().expect("principal rate limiter mutex");
+        let w = map.entry(principal.to_string()).or_insert(Window {
+            start: now,
+            count: 0,
+        });
+        if now.saturating_sub(w.start) >= self.window_secs {
+            w.start = now;
+            w.count = 0;
+        }
+        if w.count >= self.max {
+            return false;
+        }
+        w.count += 1;
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

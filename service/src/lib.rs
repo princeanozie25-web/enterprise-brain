@@ -31,6 +31,7 @@ pub mod identity;
 pub mod lane;
 pub mod lens;
 pub mod node_summary;
+pub mod proposals;
 pub mod ratelimit;
 pub mod role_scope;
 pub mod routes;
@@ -248,6 +249,11 @@ pub struct AppState {
     /// rows and dispatch OFF the request path — never a second decision
     /// point, never a source of latency.
     pub alerts: Option<Arc<alerts::AlertDispatcher>>,
+    /// SHOWCASE-III: the append-only grounded-workflow proposal store (the first
+    /// mutation path). `None` = a build without `--state-dir`: proposal routes 503.
+    pub wf_proposals: Option<Arc<proposals::WorkflowProposalStore>>,
+    /// SHOWCASE-III: per-principal generation limiter (≤3 proposals / 60s → 429).
+    pub generation_rate: Arc<ratelimit::PrincipalRateLimiter>,
 }
 
 impl AppState {
@@ -410,6 +416,8 @@ impl AppState {
             agent_bridge: None,
             estate: None,
             alerts: None,
+            wf_proposals: None,
+            generation_rate: Arc::new(ratelimit::PrincipalRateLimiter::default_proposals()),
         })
     }
 
@@ -523,6 +531,20 @@ impl AppState {
 
     pub fn with_proposals(mut self, store: Arc<agent::proposals::ProposalStore>) -> AppState {
         self.proposals = Some(store);
+        self
+    }
+
+    /// SHOWCASE-III: wire the grounded-workflow proposal store (opened from
+    /// `--state-dir`). Tests inject an in-temp-dir store here.
+    pub fn with_wf_proposals(mut self, store: Arc<proposals::WorkflowProposalStore>) -> AppState {
+        self.wf_proposals = Some(store);
+        self
+    }
+
+    /// SHOWCASE-III: dial the per-principal proposal-generation rate (tests
+    /// exercise the 429 branch).
+    pub fn with_generation_rate(mut self, max: u32, window_secs: u64) -> AppState {
+        self.generation_rate = Arc::new(ratelimit::PrincipalRateLimiter::new(max, window_secs));
         self
     }
 
@@ -794,6 +816,19 @@ pub fn app(state: Arc<AppState>) -> Router {
         // (`s3/<bucket>/<key>`), so the id spans multiple segments.
         .route("/v1/documents/{*id}", get(handle_v1_document))
         .route("/v1/whoami", get(handle_v1_whoami))
+        // SHOWCASE-III: grounded workflow proposals (the first mutation
+        // path — session-classed, so on the human surface by S1's split).
+        .route("/workflow/proposals", get(handle_workflow_proposals_list))
+        .route("/workflow/proposals", post(handle_workflow_proposal_create))
+        .route("/workflow/proposals/{id}", get(handle_workflow_proposal_get))
+        .route(
+            "/workflow/proposals/{id}/approve",
+            post(handle_workflow_proposal_approve),
+        )
+        .route(
+            "/workflow/proposals/{id}/deny",
+            post(handle_workflow_proposal_deny),
+        )
         // Inner: every route except /healthz and /auth/login requires a valid
         // server session; the principal is resolved from it (FC-A1).
         .layer(axum::middleware::from_fn_with_state(
@@ -3179,6 +3214,430 @@ async fn handle_access_request_deny(
             access_requests::STATUS_DENIED,
             &body,
         )
+    })
+    .await
+}
+
+// ===========================================================================
+// SHOWCASE-III: grounded workflow proposals — EB's first mutation path. A model
+// PROPOSES (grounded, proposer-scoped); only the approver's decision (audit-
+// before-effect) MATERIALIZES. Fail-closed throughout; existence-hiding 404s.
+// ===========================================================================
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProposalCreateBody {
+    capability_id: String,
+    title: String,
+    goal: String,
+}
+
+#[derive(serde::Serialize)]
+struct ProposalView {
+    proposal_id: String,
+    proposer_id: String,
+    capability_id: String,
+    approver_id: String,
+    title: String,
+    goal: String,
+    /// S4 accountability line — the proposer owns the prose.
+    drafted_from: String,
+    boxes: Vec<proposals::BoxView>,
+    grounding: proposals::GroundingCounts,
+    status: String,
+    created_ordinal: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decided_by: Option<String>,
+    materialized: bool,
+    snapshot_version: String,
+}
+
+#[derive(serde::Serialize)]
+struct ProposalEnvelope {
+    demo_identity_mode: bool,
+    proposal: ProposalView,
+    snapshot_version: String,
+}
+
+#[derive(serde::Serialize)]
+struct ProposalListResponse {
+    actor_id: String,
+    demo_identity_mode: bool,
+    role: String,
+    proposals: Vec<ProposalView>,
+    snapshot_version: String,
+}
+
+#[derive(serde::Serialize)]
+struct ProposalGenerateEmpty {
+    demo_identity_mode: bool,
+    generated: bool,
+    reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    grounding: Option<proposals::GroundingCounts>,
+    snapshot_version: String,
+}
+
+/// Build the per-VIEWER wire view of a stored proposal (S4 redaction applied).
+fn proposal_view(
+    state: &AppState,
+    viewer: &str,
+    p: &proposals::Proposal,
+) -> Result<ProposalView, ()> {
+    let boxes = proposals::redact_boxes_for(state, viewer, &p.boxes).map_err(|_| ())?;
+    Ok(ProposalView {
+        proposal_id: p.proposal_id.clone(),
+        proposer_id: p.proposer_id.clone(),
+        capability_id: p.capability_id.clone(),
+        approver_id: p.approver_id.clone(),
+        title: p.title.clone(),
+        goal: p.goal.clone(),
+        drafted_from: format!(
+            "Drafted from {}'s authorized sources; proposed by {}",
+            p.proposer_id, p.proposer_id
+        ),
+        boxes,
+        grounding: p.grounding,
+        status: p.status.clone(),
+        created_ordinal: p.created_ordinal,
+        decided_by: p.decided_by.clone(),
+        materialized: p.materialized,
+        snapshot_version: p.snapshot_version.clone(),
+    })
+}
+
+fn create_workflow_proposal(state: &AppState, caller: &str, body: &[u8]) -> Reply {
+    let Some(store) = &state.wf_proposals else {
+        return reply_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "proposal store unavailable",
+        );
+    };
+    if !state.identity.is_known(caller) {
+        return reply_error(StatusCode::FORBIDDEN, "forbidden");
+    }
+    // Rate-limit BEFORE the expensive generation.
+    if !state.generation_rate.check(caller) {
+        return reply_error(StatusCode::TOO_MANY_REQUESTS, "too many proposals");
+    }
+    let request: ProposalCreateBody = match serde_json::from_slice(body) {
+        Ok(parsed) => parsed,
+        Err(_) => {
+            return reply_error(
+                StatusCode::BAD_REQUEST,
+                "proposal request fails strict parse",
+            );
+        }
+    };
+    let title = request.title.trim();
+    let goal = request.goal.trim();
+    let capability_id = request.capability_id.trim();
+    if title.is_empty()
+        || title.chars().count() > 120
+        || goal.is_empty()
+        || goal.len() > 1200
+        || capability_id.is_empty()
+    {
+        return reply_error(
+            StatusCode::BAD_REQUEST,
+            "title/goal/capability_id out of bounds",
+        );
+    }
+    let Some(graph) = &state.lane_graph else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    if !graph.capabilities.iter().any(|c| c.id == capability_id) {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    // Approver = the proposer's manager (the reused access-request resolution).
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("proposal people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    let Some(manager) = people.get(caller) else {
+        let _ = store.audit(
+            "proposal_generate",
+            caller,
+            capability_id,
+            "refused_unknown_principal",
+        );
+        return reply_error(StatusCode::FORBIDDEN, "forbidden");
+    };
+    let Some(approver_id) = manager.as_deref() else {
+        let _ = store.audit(
+            "proposal_generate",
+            caller,
+            capability_id,
+            "refused_no_approver",
+        );
+        return reply_error(StatusCode::CONFLICT, "no accountable approver");
+    };
+    if !people.contains_key(approver_id) {
+        let _ = store.audit(
+            "proposal_generate",
+            caller,
+            capability_id,
+            "refused_no_approver",
+        );
+        return reply_error(StatusCode::CONFLICT, "no accountable approver");
+    }
+    // Generate (proposer-scoped). Fault/zero-admitted write NOTHING.
+    match proposals::generate_proposal(state, caller, capability_id, approver_id, title, goal) {
+        Ok(proposals::GenerateOutcome::Fault) => {
+            let _ = store.audit("proposal_generate", caller, capability_id, "fault");
+            reply_canonical(&ProposalGenerateEmpty {
+                demo_identity_mode: true,
+                generated: false,
+                reason: "could not draft a grounded plan".to_string(),
+                grounding: None,
+                snapshot_version: state.snapshot_version.clone(),
+            })
+        }
+        Ok(proposals::GenerateOutcome::ZeroAdmitted { refused }) => {
+            let _ = store.audit("proposal_generate", caller, capability_id, "zero_admitted");
+            reply_canonical(&ProposalGenerateEmpty {
+                demo_identity_mode: true,
+                generated: false,
+                reason: "no plan could be grounded in your sources".to_string(),
+                grounding: Some(proposals::GroundingCounts {
+                    admitted: 0,
+                    refused,
+                }),
+                snapshot_version: state.snapshot_version.clone(),
+            })
+        }
+        Ok(proposals::GenerateOutcome::Drafted(draft)) => {
+            if store
+                .audit("proposal_generate", caller, capability_id, "drafted")
+                .is_err()
+            {
+                return reply_internal();
+            }
+            match store.create(draft) {
+                Ok(proposal) => match proposal_view(state, caller, &proposal) {
+                    Ok(view) => reply_canonical(&ProposalEnvelope {
+                        demo_identity_mode: true,
+                        proposal: view,
+                        snapshot_version: state.snapshot_version.clone(),
+                    }),
+                    Err(()) => reply_internal(),
+                },
+                Err(err) => {
+                    eprintln!("proposal create failed: {err:#}");
+                    reply_internal()
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("proposal generation failed: {err:#}");
+            reply_internal()
+        }
+    }
+}
+
+fn list_workflow_proposals(state: &AppState, caller: &str, role: &str) -> Reply {
+    let Some(store) = &state.wf_proposals else {
+        return reply_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "proposal store unavailable",
+        );
+    };
+    if !state.identity.is_known(caller) {
+        return reply_error(StatusCode::FORBIDDEN, "forbidden");
+    }
+    let (role_label, stored) = if role == "approver" {
+        ("approver", store.inbox_for(caller))
+    } else {
+        ("proposer", store.proposed_by(caller))
+    };
+    let mut views = Vec::new();
+    for p in &stored {
+        match proposal_view(state, caller, p) {
+            Ok(view) => views.push(view),
+            Err(()) => return reply_internal(),
+        }
+    }
+    reply_canonical(&ProposalListResponse {
+        actor_id: caller.to_string(),
+        demo_identity_mode: true,
+        role: role_label.to_string(),
+        proposals: views,
+        snapshot_version: state.snapshot_version.clone(),
+    })
+}
+
+fn get_workflow_proposal(state: &AppState, caller: &str, proposal_id: &str) -> Reply {
+    let Some(store) = &state.wf_proposals else {
+        return reply_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "proposal store unavailable",
+        );
+    };
+    let Some(proposal) = store.get(proposal_id) else {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    // Existence-hiding: only the proposer or the approver may see it.
+    if proposal.proposer_id != caller && proposal.approver_id != caller {
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    }
+    match proposal_view(state, caller, &proposal) {
+        Ok(view) => reply_canonical(&ProposalEnvelope {
+            demo_identity_mode: true,
+            proposal: view,
+            snapshot_version: state.snapshot_version.clone(),
+        }),
+        Err(()) => reply_internal(),
+    }
+}
+
+fn decide_workflow_proposal(
+    state: &AppState,
+    caller: &str,
+    proposal_id: &str,
+    status: &str,
+) -> Reply {
+    use proposals::{DecideError, STATUS_PENDING};
+    let Some(store) = &state.wf_proposals else {
+        return reply_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "proposal store unavailable",
+        );
+    };
+    let action = if status == proposals::STATUS_APPROVED {
+        "proposal_approve"
+    } else {
+        "proposal_deny"
+    };
+    let audit = |outcome: &str| store.audit(action, caller, proposal_id, outcome);
+    let people = match load_access_people(state) {
+        Ok(people) => people,
+        Err(err) => {
+            eprintln!("proposal people load failed: {err:#}");
+            return reply_internal();
+        }
+    };
+    if !people.contains_key(caller) {
+        if audit("refused_unknown_principal").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::FORBIDDEN, "forbidden");
+    }
+    let Some(proposal) = store.get(proposal_id) else {
+        if audit("refused_not_found").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::NOT_FOUND, "not found");
+    };
+    if proposal.approver_id != caller {
+        if audit("refused_not_approver").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::FORBIDDEN, "forbidden");
+    }
+    if proposal.snapshot_version != state.snapshot_version {
+        if audit("refused_stale").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::CONFLICT, "stale proposal");
+    }
+    if proposal.status != STATUS_PENDING {
+        if audit("refused_already_decided").is_err() {
+            return reply_internal();
+        }
+        return reply_error(StatusCode::CONFLICT, "already decided");
+    }
+    // AUDIT-BEFORE-EFFECT: the row is flushed before any state changes.
+    if audit("allowed").is_err() {
+        return reply_internal();
+    }
+    match store.decide(proposal_id, status, caller, &state.snapshot_version) {
+        Ok(Ok(decided)) => {
+            // THE ONE materialize() call site (INV1 / WF-G7): approve-only, after
+            // the audit flush and the approved decision.
+            if status == proposals::STATUS_APPROVED {
+                if let Err(err) = store.materialize(proposal_id) {
+                    eprintln!("proposal materialize failed: {err:#}");
+                    return reply_internal();
+                }
+            }
+            let latest = store.get(proposal_id).unwrap_or(decided);
+            match proposal_view(state, caller, &latest) {
+                Ok(view) => reply_canonical(&ProposalEnvelope {
+                    demo_identity_mode: true,
+                    proposal: view,
+                    snapshot_version: state.snapshot_version.clone(),
+                }),
+                Err(()) => reply_internal(),
+            }
+        }
+        Ok(Err(DecideError::NotFound)) => reply_error(StatusCode::NOT_FOUND, "not found"),
+        Ok(Err(DecideError::Stale)) => reply_error(StatusCode::CONFLICT, "stale proposal"),
+        Ok(Err(DecideError::AlreadyDecided)) => {
+            reply_error(StatusCode::CONFLICT, "already decided")
+        }
+        Err(err) => {
+            eprintln!("proposal decision failed: {err:#}");
+            reply_internal()
+        }
+    }
+}
+
+async fn handle_workflow_proposal_create(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    body: axum::body::Bytes,
+) -> Response {
+    let body = body.to_vec();
+    run_blocking(state, move |state| {
+        create_workflow_proposal(state, &caller, &body)
+    })
+    .await
+}
+
+async fn handle_workflow_proposals_list(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    axum::extract::Query(query): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    let role = query.get("role").cloned().unwrap_or_default();
+    run_blocking(state, move |state| {
+        list_workflow_proposals(state, &caller, &role)
+    })
+    .await
+}
+
+async fn handle_workflow_proposal_get(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    axum::extract::Path(proposal_id): axum::extract::Path<String>,
+) -> Response {
+    run_blocking(state, move |state| {
+        get_workflow_proposal(state, &caller, &proposal_id)
+    })
+    .await
+}
+
+async fn handle_workflow_proposal_approve(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    axum::extract::Path(proposal_id): axum::extract::Path<String>,
+) -> Response {
+    run_blocking(state, move |state| {
+        decide_workflow_proposal(state, &caller, &proposal_id, proposals::STATUS_APPROVED)
+    })
+    .await
+}
+
+async fn handle_workflow_proposal_deny(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(caller): DemoPrincipal,
+    axum::extract::Path(proposal_id): axum::extract::Path<String>,
+) -> Response {
+    run_blocking(state, move |state| {
+        decide_workflow_proposal(state, &caller, &proposal_id, proposals::STATUS_DENIED)
     })
     .await
 }

@@ -103,13 +103,17 @@ fn build_state(args: &Args) -> Result<AppState> {
         )?;
         // AP-6: the lane's box store shares the state dir.
         let boxes = service::lane::BoxStore::open(state_dir)?;
+        // SHOWCASE-III: the grounded-workflow proposal store shares the state dir
+        // (distinct wf_proposals.jsonl, so it never collides with M4's store).
+        let wf_proposals = service::proposals::WorkflowProposalStore::open(state_dir)?;
         state = state
             .with_agents(registry)
-            .with_lane_boxes(std::sync::Arc::new(boxes));
-        // S2b: a config-wired ledger (config.ledger.dir) is THE decision
-        // ledger when present — M4 opens its own from --state-dir only
-        // when config supplied none, exactly the pre-S2b behaviour. One
-        // ledger either way, never two.
+            .with_lane_boxes(std::sync::Arc::new(boxes))
+            // SHOWCASE-III: the grounded-workflow proposal store is additive.
+            .with_wf_proposals(std::sync::Arc::new(wf_proposals));
+        // S2b (invariant wins): a config-wired ledger (config.ledger.dir) is
+        // THE decision ledger when present — M4 opens its own from
+        // --state-dir only when config supplied none. One ledger either way.
         if state.proposals.is_none() {
             let store = service::agent::proposals::ProposalStore::open(state_dir)?;
             state = state.with_proposals(std::sync::Arc::new(store));

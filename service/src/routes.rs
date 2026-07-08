@@ -101,6 +101,14 @@ pub fn classify(method: &Method, path: &str) -> Option<RouteClass> {
         ("GET", ["lane", "rollup"]) => sr(MetadataProjection),
         ("GET", ["workflow", "project", _cap]) => sr(MetadataProjection),
 
+        // --- Session: SHOWCASE-III grounded workflow proposals ---------------
+        // (2-seg literal precedes the 3-seg {id}; both distinct from `project`.)
+        ("POST", ["workflow", "proposals"]) => sr(DocumentScope),
+        ("GET", ["workflow", "proposals"]) => sr(LedgerScoped),
+        ("GET", ["workflow", "proposals", _id]) => sr(LedgerScoped),
+        ("POST", ["workflow", "proposals", _id, "approve"]) => sr(ApprovalGated),
+        ("POST", ["workflow", "proposals", _id, "deny"]) => sr(ApprovalGated),
+
         // --- Session: AUTH-3 lens / diff (audited view-as) -------------------
         // `/lens/diff` MUST precede `/lens/{id}` — the literal wins over the param.
         ("GET", ["lens", "diff"]) => sr(ViewAsAudited),
@@ -166,6 +174,11 @@ pub const REGISTERED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/lane/inbox/{id}/dismiss"),
     ("GET", "/lane/rollup"),
     ("GET", "/workflow/project/{capability_id}"),
+    ("GET", "/workflow/proposals"),
+    ("POST", "/workflow/proposals"),
+    ("GET", "/workflow/proposals/{id}"),
+    ("POST", "/workflow/proposals/{id}/approve"),
+    ("POST", "/workflow/proposals/{id}/deny"),
     ("GET", "/graph"),
     ("GET", "/node/{id}/summary"),
     ("GET", "/people"),

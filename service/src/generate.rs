@@ -35,6 +35,21 @@ pub trait Generator: Send + Sync {
         context: &[ContextDoc],
         timeout: Duration,
     ) -> Result<GenerationOutcome>;
+
+    /// SHOWCASE-III: draft a STAGED WORKFLOW (box blocks) from a project name +
+    /// goal over the same sealed context. Additive — the `/ask` path never
+    /// calls this, so `generate()`'s behaviour (and every A/G byte) is
+    /// untouched. Default fails closed: a generator that cannot draft boxes
+    /// degrades to no-proposal, never to an ungrounded one.
+    fn generate_boxes(
+        &self,
+        _title: &str,
+        _goal: &str,
+        _context: &[ContextDoc],
+        _timeout: Duration,
+    ) -> Result<GenerationOutcome> {
+        bail!("this generator does not draft workflow boxes")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +145,144 @@ pub fn parse_claims(output: &str) -> Result<Vec<DraftClaim>> {
     Ok(claims)
 }
 
+/// SHOWCASE-III: the maximum number of draft boxes a proposal may carry. More
+/// is a format fault, not a truncation — no salvage parsing.
+pub const DRAFT_BOXES_MAX: usize = 8;
+
+/// One machine-parseable draft workflow box: a short title, a one/two-sentence
+/// description of what to do, and the single document + verbatim quote the box
+/// is anchored to. Parsed here; ADMITTED (or refused) by `grounding` per box.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraftBox {
+    pub title: String,
+    pub description: String,
+    pub doc_id: String,
+    pub quote: String,
+}
+
+/// STRICT parse of the box contract. The output must be 1..=8 blocks of exactly
+/// four lines each (blank lines between blocks allowed):
+///
+/// ```text
+/// BOX: <title, <= 80 chars>
+/// DESC: <one or two plain sentences>
+/// SOURCE: <doc_id>
+/// QUOTE: "<verbatim text>"
+/// ```
+///
+/// ANY deviation is an error → GenerationFault → NO proposal. Square brackets
+/// (the citation channel) are refused in BOTH title and description, so a box
+/// cannot smuggle a citation past the per-box grounding gate (fail closed).
+pub fn parse_boxes(output: &str) -> Result<Vec<DraftBox>> {
+    let mut boxes: Vec<DraftBox> = Vec::new();
+    let mut lines = output.lines().map(|l| l.trim_end_matches('\r'));
+    while let Some(line) = lines.next() {
+        if line.trim().is_empty() {
+            continue; // blank separator between blocks
+        }
+        let Some(title) = line.strip_prefix("BOX: ") else {
+            bail!("generation format fault: expected a BOX line");
+        };
+        let title = title.trim();
+        if title.is_empty() {
+            bail!("generation format fault: empty BOX title");
+        }
+        if title.chars().count() > 80 {
+            bail!("generation format fault: BOX title exceeds 80 characters");
+        }
+        if title.contains('[') || title.contains(']') {
+            bail!("generation format fault: BOX title carries bracket characters reserved for citations");
+        }
+        let desc_line = lines
+            .next()
+            .context("generation format fault: missing DESC line")?;
+        let Some(description) = desc_line.strip_prefix("DESC: ") else {
+            bail!("generation format fault: expected a DESC line");
+        };
+        let description = description.trim();
+        if description.is_empty() {
+            bail!("generation format fault: empty DESC");
+        }
+        if description.contains('[') || description.contains(']') {
+            bail!(
+                "generation format fault: DESC carries bracket characters reserved for citations"
+            );
+        }
+        let source_line = lines
+            .next()
+            .context("generation format fault: missing SOURCE line")?;
+        let Some(doc_id) = source_line.strip_prefix("SOURCE: ") else {
+            bail!("generation format fault: expected a SOURCE line");
+        };
+        let doc_id = doc_id.trim();
+        if doc_id.is_empty() || doc_id.contains(char::is_whitespace) {
+            bail!("generation format fault: SOURCE must be exactly one document id");
+        }
+        let quote_line = lines
+            .next()
+            .context("generation format fault: missing QUOTE line")?;
+        let Some(rest) = quote_line.strip_prefix("QUOTE: \"") else {
+            bail!("generation format fault: expected a QUOTE line in double quotes");
+        };
+        let Some(quote) = rest.strip_suffix('"') else {
+            bail!("generation format fault: QUOTE must end with a closing double quote");
+        };
+        boxes.push(DraftBox {
+            title: title.to_string(),
+            description: description.to_string(),
+            doc_id: doc_id.to_string(),
+            quote: quote.to_string(),
+        });
+        if boxes.len() > DRAFT_BOXES_MAX {
+            bail!("generation format fault: more than {DRAFT_BOXES_MAX} boxes");
+        }
+    }
+    if boxes.is_empty() {
+        bail!("generation format fault: no boxes parsed");
+    }
+    Ok(boxes)
+}
+
+/// SHOWCASE-III: the box-contract prompt. Same discipline as the claim prompt
+/// (quote only the provided snippets, verified later against the full body),
+/// re-shaped to drafting a staged plan from a project name + goal.
+fn build_box_prompt(title: &str, goal: &str, context: &[ContextDoc]) -> String {
+    let mut prompt = String::from(
+        "You draft a short, staged workflow to start a project, grounded ONLY \
+         in the documents below. Output at most 8 boxes. For each box output \
+         EXACTLY four lines in this format, with one blank line between boxes \
+         and NOTHING else — no preamble, no numbering, no epilogue:\n\
+         \n\
+         BOX: <a short step title, at most 80 characters>\n\
+         DESC: <one or two plain sentences saying what to do>\n\
+         SOURCE: <the id of the one document that supports it>\n\
+         QUOTE: \"<a short passage copied character-for-character from that \
+         document's text below>\"\n\
+         \n\
+         Format example (shape only — never copy its content):\n\
+         \n\
+         BOX: Confirm the March start date\n\
+         DESC: Check the effective date before scheduling the kickoff.\n\
+         SOURCE: d0000\n\
+         QUOTE: \"takes effect on 1 March\"\n\
+         \n\
+         Rules: the QUOTE must be an exact verbatim substring of the chosen \
+         document's text as printed below — copy it exactly, never paraphrase, \
+         prefer 5 to 20 words, one line. One SOURCE id per box, chosen from the \
+         ids below. Never use square brackets in the BOX or DESC lines. If the \
+         documents do not support a plan, output the one box they best \
+         support.\n\n",
+    );
+    for doc in context {
+        prompt.push_str(&format!(
+            "[{}] {}\n{}\n\n",
+            doc.doc_id, doc.title, doc.snippet
+        ));
+    }
+    prompt.push_str(&format!("Project: {title}\nGoal: {goal}\nBoxes:"));
+    prompt
+}
+
 /// Deterministic prompt: the claim-block contract, the sealed documents, the
 /// question. The generator is instructed to quote ONLY text visible in the
 /// provided snippets; grounding later verifies each quote against the FULL
@@ -211,6 +364,31 @@ impl Generator for OllamaGenerator {
         };
         Ok(GenerationOutcome { text, usage })
     }
+
+    fn generate_boxes(
+        &self,
+        title: &str,
+        goal: &str,
+        context: &[ContextDoc],
+        timeout: Duration,
+    ) -> Result<GenerationOutcome> {
+        let body = json!({
+            "model": self.model,
+            "messages": [{ "role": "user", "content": build_box_prompt(title, goal, context) }],
+            "stream": false,
+            // Sized for up to 8 four-line boxes; temperature 0 + fixed seed keep
+            // the draft stable for the strict box parser.
+            "options": { "temperature": 0, "seed": 7, "num_predict": 768 }
+        });
+        let response = self.client.post_json("/api/chat", &body, timeout)?;
+        let text = response
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .context("unexpected generator response shape")?
+            .to_string();
+        Ok(GenerationOutcome { text, usage: None })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -258,6 +436,10 @@ fn groundable_quote(doc: &ContextDoc) -> String {
 
 fn claim_block(text: &str, doc_id: &str, quote: &str) -> String {
     format!("CLAIM: {text}\nSOURCE: {doc_id}\nQUOTE: \"{quote}\"")
+}
+
+fn box_block(title: &str, desc: &str, doc_id: &str, quote: &str) -> String {
+    format!("BOX: {title}\nDESC: {desc}\nSOURCE: {doc_id}\nQUOTE: \"{quote}\"")
 }
 
 /// Captures every input it is shown, so A-1 can assert the generation seal.
@@ -357,6 +539,100 @@ impl Generator for MockGenerator {
                 blocks.join("\n\n")
             }
             MockBehavior::Uncited => "Confident claim with no citation at all.".to_string(),
+            MockBehavior::Raw(output) => output.clone(),
+            MockBehavior::Fail => bail!("mock generator unreachable"),
+        };
+        Ok(GenerationOutcome { text, usage: None })
+    }
+
+    fn generate_boxes(
+        &self,
+        title: &str,
+        goal: &str,
+        context: &[ContextDoc],
+        _timeout: Duration,
+    ) -> Result<GenerationOutcome> {
+        self.captured
+            .lock()
+            .expect("mock generator mutex")
+            .push((format!("{title}\n{goal}"), context.to_vec()));
+        let text = match &self.behavior {
+            MockBehavior::CiteFirst => {
+                let first = context.first().context("empty context")?;
+                box_block(
+                    "Review the grounding source",
+                    &format!("Read {} before starting.", first.doc_id),
+                    &first.doc_id,
+                    &groundable_quote(first),
+                )
+            }
+            MockBehavior::CiteEach => context
+                .iter()
+                .enumerate()
+                .map(|(i, d)| {
+                    box_block(
+                        &format!("Step {} grounded in {}", i + 1, d.doc_id),
+                        &format!("Act on the guidance in {}.", d.doc_id),
+                        &d.doc_id,
+                        &groundable_quote(d),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            MockBehavior::ForeignCitation => box_block(
+                "Step from nowhere",
+                "This box cites a document not in scope.",
+                "d9999_foreign",
+                "nowhere at all",
+            ),
+            MockBehavior::FabricatedQuote => {
+                let first = context.first().context("empty context")?;
+                box_block(
+                    "Misquoted step",
+                    "This box quotes text found in no document.",
+                    &first.doc_id,
+                    "this exact sentence appears in no corpus document whatsoever",
+                )
+            }
+            MockBehavior::WrongSourceRealQuote => {
+                let first = context.first().context("empty context")?;
+                box_block(
+                    "Real quote, wrong source",
+                    "The quote is real but pinned on a document outside scope.",
+                    "d9999_foreign",
+                    &groundable_quote(first),
+                )
+            }
+            MockBehavior::Mixed => {
+                let mut blocks: Vec<String> = context
+                    .iter()
+                    .take(2)
+                    .enumerate()
+                    .map(|(i, d)| {
+                        box_block(
+                            &format!("Step {} grounded in {}", i + 1, d.doc_id),
+                            &format!("Act on the guidance in {}.", d.doc_id),
+                            &d.doc_id,
+                            &groundable_quote(d),
+                        )
+                    })
+                    .collect();
+                let first = context.first().context("empty context")?;
+                blocks.push(box_block(
+                    "Misquoted step",
+                    "This box quotes text found in no document.",
+                    &first.doc_id,
+                    "this exact sentence appears in no corpus document whatsoever",
+                ));
+                blocks.push(box_block(
+                    "Step from nowhere",
+                    "This box cites a document not in scope.",
+                    "d9999_foreign",
+                    "nowhere at all",
+                ));
+                blocks.join("\n\n")
+            }
+            MockBehavior::Uncited => "A confident plan with no box blocks at all.".to_string(),
             MockBehavior::Raw(output) => output.clone(),
             MockBehavior::Fail => bail!("mock generator unreachable"),
         };
