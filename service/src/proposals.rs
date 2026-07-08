@@ -512,11 +512,18 @@ pub fn generate_proposal(
         Duration::from_millis(PROPOSAL_GEN_TIMEOUT_MS),
     ) {
         Ok(outcome) => outcome,
-        Err(_) => return Ok(GenerateOutcome::Fault),
+        Err(err) => {
+            // Operator diagnostics only — the fault KIND, never model text.
+            eprintln!("proposal generation fault (generator): {err:#}");
+            return Ok(GenerateOutcome::Fault);
+        }
     };
     let draft_boxes = match parse_boxes(&outcome.text) {
         Ok(boxes) => boxes,
-        Err(_) => return Ok(GenerateOutcome::Fault),
+        Err(err) => {
+            eprintln!("proposal generation fault (parse): {err:#}");
+            return Ok(GenerateOutcome::Fault);
+        }
     };
 
     // 4. Per-box grounding gate — DESC is the claim text so bracket-smuggling in

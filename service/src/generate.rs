@@ -119,7 +119,10 @@ pub fn parse_claims(output: &str) -> Result<Vec<DraftClaim>> {
         };
         let doc_id = doc_id.trim();
         if doc_id.is_empty() || doc_id.contains(char::is_whitespace) {
-            bail!("generation format fault: SOURCE must be exactly one document id");
+            bail!(
+                "generation format fault: SOURCE must be exactly one document id (saw {:?})",
+                doc_id.chars().take(60).collect::<String>()
+            );
         }
         let quote_line = lines
             .next()
@@ -216,7 +219,10 @@ pub fn parse_boxes(output: &str) -> Result<Vec<DraftBox>> {
         };
         let doc_id = doc_id.trim();
         if doc_id.is_empty() || doc_id.contains(char::is_whitespace) {
-            bail!("generation format fault: SOURCE must be exactly one document id");
+            bail!(
+                "generation format fault: SOURCE must be exactly one document id (saw {:?})",
+                doc_id.chars().take(60).collect::<String>()
+            );
         }
         let quote_line = lines
             .next()
@@ -249,29 +255,33 @@ pub fn parse_boxes(output: &str) -> Result<Vec<DraftBox>> {
 fn build_box_prompt(title: &str, goal: &str, context: &[ContextDoc]) -> String {
     let mut prompt = String::from(
         "You draft a short, staged workflow to start a project, grounded ONLY \
-         in the documents below. Output at most 8 boxes. For each box output \
-         EXACTLY four lines in this format, with one blank line between boxes \
-         and NOTHING else — no preamble, no numbering, no epilogue:\n\
+         in the documents below. Output EXACTLY 3 boxes, then stop. For each \
+         box output EXACTLY four lines in this format, with one blank line \
+         between boxes and NOTHING else — no preamble, no numbering, no \
+         epilogue:\n\
          \n\
          BOX: <a short step title, at most 80 characters>\n\
          DESC: <one or two plain sentences saying what to do>\n\
-         SOURCE: <the id of the one document that supports it>\n\
+         SOURCE: <one document id, the id alone — nothing else on the line>\n\
          QUOTE: \"<a short passage copied character-for-character from that \
          document's text below>\"\n\
          \n\
          Format example (shape only — never copy its content):\n\
          \n\
-         BOX: Confirm the March start date\n\
-         DESC: Check the effective date before scheduling the kickoff.\n\
+         BOX: Review the supporting notices\n\
+         DESC: Read the relevant documents before planning the first step.\n\
          SOURCE: d0000\n\
          QUOTE: \"takes effect on 1 March\"\n\
          \n\
          Rules: the QUOTE must be an exact verbatim substring of the chosen \
          document's text as printed below — copy it exactly, never paraphrase, \
-         prefer 5 to 20 words, one line. One SOURCE id per box, chosen from the \
-         ids below. Never use square brackets in the BOX or DESC lines. If the \
-         documents do not support a plan, output the one box they best \
-         support.\n\n",
+         prefer 5 to 20 words, one line. Each SOURCE line carries EXACTLY ONE \
+         id (like d0123) chosen from the ids below — never two ids, never a \
+         title, never any other word, NEVER empty. Every box must carry a \
+         non-empty SOURCE and a non-empty QUOTE — a box you cannot support \
+         with a document must not be written at all. Never use square \
+         brackets in the BOX or DESC lines. After the third box, output the \
+         single word END on its own line and stop.\n\n",
     );
     for doc in context {
         prompt.push_str(&format!(
@@ -376,9 +386,15 @@ impl Generator for OllamaGenerator {
             "model": self.model,
             "messages": [{ "role": "user", "content": build_box_prompt(title, goal, context) }],
             "stream": false,
-            // Sized for up to 8 four-line boxes; temperature 0 + fixed seed keep
-            // the draft stable for the strict box parser.
-            "options": { "temperature": 0, "seed": 7, "num_predict": 768 }
+            // The prompt asks for at most 5 boxes and an END sentinel; the
+            // stop sequence terminates the completion cleanly there (a small
+            // model at temperature 0 otherwise keeps emitting boxes until the
+            // token cap cuts one mid-block — a strict-parse fault). If the
+            // model never emits END, the cap still cuts it and the fault
+            // stays honest. 1024 tokens is headroom for 5 full boxes.
+            // Both sentinel spellings stop the run: the clean "END" line and
+            // the template-locked "BOX: END" a small model sometimes writes.
+            "options": { "temperature": 0, "seed": 7, "num_predict": 1024, "stop": ["\nEND", "\nBOX: END"] }
         });
         let response = self.client.post_json("/api/chat", &body, timeout)?;
         let text = response
