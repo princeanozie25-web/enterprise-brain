@@ -174,6 +174,43 @@ fn wf_g2_fabricated_boxes_refused_and_zero_admitted_writes_nothing() {
 }
 
 // ===========================================================================
+// WF-G3 — a proposer with NO accountable approver (the org root, p113, has no
+// manager) is refused fail-closed BEFORE any generation: 409, ZERO generator
+// calls, ZERO store rows, and the refusal is audited. MockBehavior::Fail pins
+// "zero generation calls": if the handler reached the generator at all, the
+// outcome would be a Fault (200, generated:false) or a 500 — never this 409.
+// ===========================================================================
+#[tokio::test]
+async fn wf_g3_no_approver_refuses_before_generation() {
+    let dir = scratch("wfg3_state");
+    let state = Arc::new(state_with(MockBehavior::Fail, &dir));
+    let router = app(state.clone());
+    let ingrid = common::bearer(&router, "p113").await;
+    let body =
+        serde_json::json!({ "capability_id": CAP, "title": "Rootless", "goal": GOAL }).to_string();
+    let (status, reply) = send(&router, "POST", "/workflow/proposals", &ingrid, Some(body)).await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "no accountable approver must refuse with 409, not draft"
+    );
+    assert_eq!(reply["error"], "no accountable approver");
+    // Zero writes: the events log was never created (or stayed empty).
+    let events = std::fs::read_to_string(dir.join("wf_proposals.jsonl")).unwrap_or_default();
+    assert!(
+        events.trim().is_empty(),
+        "a refused generation must write no proposal rows"
+    );
+    // The refusal itself is audited.
+    let audit = std::fs::read_to_string(dir.join("wf_proposals_audit.jsonl")).expect("audit log");
+    assert!(
+        audit.lines().any(|l| l.contains("\"action\":\"proposal_generate\"")
+            && l.contains("\"outcome\":\"refused_no_approver\"")),
+        "the no-approver refusal is audited"
+    );
+}
+
+// ===========================================================================
 // WF-G4 — anchor-visibility: verbatim content never crosses to an identity
 // whose own scope lacks the doc. Proposer sees full anchors; a disjoint viewer
 // sees only the withheld marker.
