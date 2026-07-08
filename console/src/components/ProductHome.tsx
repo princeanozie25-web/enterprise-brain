@@ -35,6 +35,9 @@ const FEATURED_IDENTITIES: ReadonlyArray<{
   role: string;
   department: string | null;
   hint: string;
+  /** Showreel Track A: the journey's subject gets the visually-primary card.
+   * Styling only — the href/behavior is identical to every other card. */
+  primary?: boolean;
 }> = [
   {
     id: "p060",
@@ -42,6 +45,7 @@ const FEATURED_IDENTITIES: ReadonlyArray<{
     role: "Finance head",
     department: "Finance",
     hint: "A rich scope: a full department slice of the map and its documents.",
+    primary: true,
   },
   {
     id: "p088",
@@ -128,30 +132,30 @@ export function ProductHome() {
           className="ap-register-chrome"
           style={{ fontSize: TYPE.scale.lg, fontWeight: 600, lineHeight: TYPE.line.display }}
         >
-          Who are you today?
+          Choose a work identity
         </h2>
         <p
           className="ap-soft mt-1"
           style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body }}
           data-testid="identity-picker-demo-line"
         >
-          Demo mode: sign in as anyone — no password. View-as is open to everyone. Nothing here is
-          deployed.
+          Demo access — no account, no password. You&apos;ll see exactly what that person is
+          authorized to see.
         </p>
 
-        <ul className="mt-4 grid grid-cols-1 gap-3">
+        <ul className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
           {FEATURED_IDENTITIES.map((identity) => (
-            <li key={identity.id}>
+            <li key={identity.id} className={identity.primary ? "md:col-span-2" : undefined}>
               <a
                 href={identityHref(identity.id, intent)}
-                className="ap-card ap-washable flex items-center gap-4 rounded-2xl border p-4"
+                className={`${identity.primary ? "ap-focus-surface" : "ap-card"} ap-washable flex items-center gap-4 rounded-2xl border p-4`}
                 data-testid={`identity-option-${identity.id}`}
               >
                 <PersonAvatar
                   principalId={identity.id}
                   displayName={identity.name}
                   department={identity.department}
-                  size={44}
+                  size={identity.primary ? 52 : 44}
                 />
                 <span className="min-w-0 flex-1">
                   <span

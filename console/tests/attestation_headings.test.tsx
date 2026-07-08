@@ -15,6 +15,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { Console } from "@/components/Console";
 import { ProductHome } from "@/components/ProductHome";
 import { LaneRoom } from "@/components/LaneRoom";
+import { EntryScreen } from "@/components/EntryScreen";
 import { GraphRoom } from "@/components/GraphRoom";
 import { BursarSurface } from "@/components/BursarSurface";
 import { ProjectSurface } from "@/components/ProjectSurface";
@@ -37,12 +38,49 @@ const PIPE_WORKFLOW: ProjectWorkflowResponse = {
     { capability_id: "cap31", dependencies: [], item_id: "ar_mine", kind: "access_request", approver_id: "p060", requester_id: "p074", provenance: PIPE_PROV, snapshot_version: "snap", status: "pending", title: "Access request for Access Review 31" },
   ],
 };
+// SHOWCASE-III: one pending proposal so the heading gate sees the populated
+// proposals panel (h2 "Grounded proposals" -> h3 proposal title) too.
+const PIPE_PROPOSAL = {
+  proposal_id: "wfp_0001",
+  proposer_id: "p060",
+  capability_id: "cap31",
+  approver_id: "p113",
+  title: "Onboarding new hires",
+  goal: "confidential financial statements",
+  drafted_from: "Drafted by a model from documents p060 is authorized to see.",
+  boxes: [
+    {
+      box_index: 0,
+      stage: "Next",
+      title: "Collect the signed statements",
+      description: "Gather the statements.",
+      anchors: [{ visible: true, doc_id: "doc_fin_042", quote: "filed quarterly", locator: "doc_fin_042@118" }],
+      sources_total: 1,
+      sources_outside_view: 0,
+    },
+  ],
+  grounding: { admitted: 1, refused: 0 },
+  status: "pending",
+  created_ordinal: 1,
+  materialized: false,
+  snapshot_version: "snap",
+};
 function stubPipelineFetch() {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/workflow/project/cap31")) return new Response(JSON.stringify(PIPE_WORKFLOW), { status: 200 });
+      if (url.includes("/workflow/proposals?role=proposer"))
+        return new Response(
+          JSON.stringify({ actor_id: "p060", demo_identity_mode: true, role: "proposer", proposals: [PIPE_PROPOSAL], snapshot_version: "snap" }),
+          { status: 200 },
+        );
+      if (url.includes("/workflow/proposals?role=approver"))
+        return new Response(
+          JSON.stringify({ actor_id: "p060", demo_identity_mode: true, role: "approver", proposals: [], snapshot_version: "snap" }),
+          { status: 200 },
+        );
       return new Response('{"demo_identity_mode":true,"error":"not found"}', { status: 404 });
     }),
   );
@@ -126,6 +164,13 @@ describe("B2: one h1 and no skipped heading levels on every routed surface", () 
   it("/ (front door)", () => {
     render(<ProductHome />);
     assertHeadingDiscipline("/");
+  });
+
+  it("/ (cinematic entry screen — Showreel Track A)", () => {
+    render(<EntryScreen onEnter={() => {}} />);
+    assertHeadingDiscipline("/ (entry)");
+    // The entry's one h1 IS the wordmark.
+    expect(document.querySelector("h1")?.textContent).toBe("Enterprise Brain");
   });
 
   for (const view of ["ask", "me", "lens", "atlas", "lane", "project"] as const) {

@@ -578,6 +578,12 @@ export interface WorkflowItem {
   snapshot_version: string;
   status: string;
   title: string;
+  // SHOWCASE-III: present ONLY on materialized-proposal items (the service
+  // skips them when absent, so every pre-existing item is byte-identical).
+  description?: string;
+  anchors?: ProposalAnchorView[];
+  sources_outside_view?: number;
+  proposal_id?: string;
 }
 
 export interface ProjectWorkflowResponse {
@@ -602,6 +608,148 @@ export async function getProjectWorkflow(
     return null;
   }
   return parseJson<ProjectWorkflowResponse>(response);
+}
+
+// ---------------------------------------------------------------------------
+// SHOWCASE-III: grounded workflow proposals — the first mutation path. A model
+// PROPOSES (grounded, proposer-scoped); only the approver's audited decision
+// MATERIALIZES. Types mirror service/src/{lib,proposals}.rs field-for-field.
+// ---------------------------------------------------------------------------
+
+/** S4 anchor redaction: verbatim fields are ABSENT (not empty) when the
+ * viewer's own scope lacks the document — only the withheld marker crosses. */
+export interface ProposalAnchorView {
+  visible: boolean;
+  doc_id?: string;
+  title?: string;
+  quote?: string;
+  locator?: string;
+}
+
+export interface ProposalBoxView {
+  box_index: number;
+  stage: string;
+  title: string;
+  description: string;
+  anchors: ProposalAnchorView[];
+  sources_total: number;
+  sources_outside_view: number;
+}
+
+export interface ProposalGroundingCounts {
+  admitted: number;
+  refused: number;
+}
+
+export type WorkflowProposalStatus = "pending" | "approved" | "denied";
+
+export interface WorkflowProposal {
+  proposal_id: string;
+  proposer_id: string;
+  capability_id: string;
+  approver_id: string;
+  title: string;
+  goal: string;
+  /** S4 accountability line — the proposer owns the prose. */
+  drafted_from: string;
+  boxes: ProposalBoxView[];
+  grounding: ProposalGroundingCounts;
+  status: WorkflowProposalStatus | string;
+  created_ordinal: number;
+  decided_by?: string;
+  materialized: boolean;
+  snapshot_version: string;
+}
+
+export interface WorkflowProposalEnvelope {
+  demo_identity_mode: boolean;
+  proposal: WorkflowProposal;
+  snapshot_version: string;
+}
+
+/** The honest empty: generation faulted or zero boxes could be grounded.
+ * NOTHING was written server-side; `reason` is the disclosure line. */
+export interface WorkflowProposalEmpty {
+  demo_identity_mode: boolean;
+  generated: false;
+  reason: string;
+  grounding?: ProposalGroundingCounts;
+  snapshot_version: string;
+}
+
+export type WorkflowProposalCreateResult = WorkflowProposalEnvelope | WorkflowProposalEmpty;
+
+/** Discriminate a create result: a drafted proposal carries `proposal`. */
+export function proposalWasDrafted(
+  result: WorkflowProposalCreateResult,
+): result is WorkflowProposalEnvelope {
+  return "proposal" in result;
+}
+
+export interface WorkflowProposalListResponse {
+  actor_id: string;
+  demo_identity_mode: boolean;
+  role: "proposer" | "approver" | string;
+  proposals: WorkflowProposal[];
+  snapshot_version: string;
+}
+
+/** POST /workflow/proposals — generate a grounded draft (proposer-scoped).
+ * Server budget is 20s (one attempt); request.ts gives this path the long
+ * timeout class. Returns the envelope OR the honest empty; fault/zero-admitted
+ * write nothing server-side. */
+export async function postWorkflowProposal(
+  actor: string,
+  body: { capability_id: string; title: string; goal: string },
+): Promise<WorkflowProposalCreateResult> {
+  const response = await request(`/workflow/proposals`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(body),
+  });
+  return parseJson<WorkflowProposalCreateResult>(response);
+}
+
+/** GET /workflow/proposals?role=proposer|approver — my proposals, or my
+ * decision inbox. */
+export async function getWorkflowProposals(
+  actor: string,
+  role: "proposer" | "approver",
+): Promise<WorkflowProposalListResponse> {
+  const response = await request(`/workflow/proposals?role=${encodeURIComponent(role)}`, {
+    headers: headers(),
+  });
+  return parseJson<WorkflowProposalListResponse>(response);
+}
+
+/** GET /workflow/proposals/{id}. Existence-hiding: only the proposer or the
+ * approver may see it — everyone else gets the same 404 as a missing id. */
+export async function getWorkflowProposal(
+  actor: string,
+  proposalId: string,
+): Promise<WorkflowProposalEnvelope | null> {
+  const response = await request(`/workflow/proposals/${encodeURIComponent(proposalId)}`, {
+    headers: headers(),
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  return parseJson<WorkflowProposalEnvelope>(response);
+}
+
+/** POST /workflow/proposals/{id}/{approve|deny} — ApprovalGated server-side
+ * (only the resolved approver; audit flushed BEFORE any effect; approve is
+ * the ONE materialize path). Mirrors postAccessRequestDecision. */
+export async function postWorkflowProposalDecision(
+  actor: string,
+  proposalId: string,
+  decision: "approve" | "deny",
+): Promise<WorkflowProposalEnvelope> {
+  const response = await request(
+    `/workflow/proposals/${encodeURIComponent(proposalId)}/${decision}`,
+    { method: "POST", headers: headers() },
+  );
+  return parseJson<WorkflowProposalEnvelope>(response);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
-import { ProductHome } from "@/components/ProductHome";
+import { FrontDoor } from "@/components/FrontDoor";
 
 export default function Page() {
-  return <ProductHome />;
+  return <FrontDoor />;
 }

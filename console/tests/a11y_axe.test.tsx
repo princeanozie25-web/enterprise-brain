@@ -18,6 +18,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { axe } from "vitest-axe";
 
 import { Console } from "@/components/Console";
+import { EntryScreen } from "@/components/EntryScreen";
 import { ProductHome } from "@/components/ProductHome";
 import { GraphRoom } from "@/components/GraphRoom";
 import { BursarSurface } from "@/components/BursarSurface";
@@ -43,12 +44,52 @@ const PIPE_WORKFLOW: ProjectWorkflowResponse = {
     { capability_id: "cap31", dependencies: ["box_active"], item_id: "box_done", kind: "accepted_agent_box", owner_id: "p060", provenance: PIPE_PROV, snapshot_version: "snap", status: "done", title: "Review accepted agent proposal" },
   ],
 };
+// SHOWCASE-III: one pending proposal so the axe sweep covers the proposal
+// card, anchor chips (visible + S4-withheld), and the approver's live gate.
+const PIPE_PROPOSAL = {
+  proposal_id: "wfp_0001",
+  proposer_id: "p074",
+  capability_id: "cap31",
+  approver_id: "p060",
+  title: "Onboarding new hires",
+  goal: "confidential financial statements",
+  drafted_from: "Drafted by a model from documents p074 is authorized to see.",
+  boxes: [
+    {
+      box_index: 0,
+      stage: "Next",
+      title: "Collect the signed statements",
+      description: "Gather the confidential financial statements for the quarter.",
+      anchors: [
+        { visible: true, doc_id: "doc_fin_042", quote: "filed quarterly", locator: "doc_fin_042@118" },
+        { visible: false },
+      ],
+      sources_total: 2,
+      sources_outside_view: 1,
+    },
+  ],
+  grounding: { admitted: 1, refused: 1 },
+  status: "pending",
+  created_ordinal: 1,
+  materialized: false,
+  snapshot_version: "snap",
+};
 function stubPipelineFetch() {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/workflow/project/cap31")) return new Response(JSON.stringify(PIPE_WORKFLOW), { status: 200 });
+      if (url.includes("/workflow/proposals?role=proposer"))
+        return new Response(
+          JSON.stringify({ actor_id: "p060", demo_identity_mode: true, role: "proposer", proposals: [], snapshot_version: "snap" }),
+          { status: 200 },
+        );
+      if (url.includes("/workflow/proposals?role=approver"))
+        return new Response(
+          JSON.stringify({ actor_id: "p060", demo_identity_mode: true, role: "approver", proposals: [PIPE_PROPOSAL], snapshot_version: "snap" }),
+          { status: 200 },
+        );
       return new Response('{"demo_identity_mode":true,"error":"not found"}', { status: 404 });
     }),
   );
@@ -169,6 +210,12 @@ for (const theme of THEMES) {
       setTheme(theme);
       const { container } = render(<ProductHome />);
       await expectNoViolations(container, `home/${theme}`);
+    });
+
+    it(`the cinematic entry screen (Showreel Track A) has zero violations [${theme}]`, async () => {
+      setTheme(theme);
+      const { container } = render(<EntryScreen onEnter={() => {}} />);
+      await expectNoViolations(container, `entry/${theme}`);
     });
 
     it(`Ask with a GROUNDED answer has zero violations [${theme}]`, async () => {

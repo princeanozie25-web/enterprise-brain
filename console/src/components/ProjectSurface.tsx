@@ -6,6 +6,7 @@ import type { GraphProject, GraphResponse, ProjectWorkflowResponse } from "@/lib
 import { TYPE } from "@/lib/tokens";
 import { MotionAnchor, MotionArticle, MotionSection } from "./MotionPrimitives";
 import { PipelineBoard } from "./projects/PipelineBoard";
+import { ProposalsPanel } from "./projects/ProposalsPanel";
 import { Skeleton } from "./Skeleton";
 
 type ProjectTab = "graph" | "workflow";
@@ -229,7 +230,13 @@ export function ProjectSurface({
       )}
 
       {!loading && available && tab === "workflow" && (
-        <PipelineBoard workflow={workflow} actor={actor} onReload={reloadWorkflow} />
+        <>
+          <PipelineBoard workflow={workflow} actor={actor} onReload={reloadWorkflow} />
+          {/* SHOWCASE-III: the mutation path's console face. Approval reloads
+              the board so materialized boxes land in "Next" server-derived —
+              never optimistically. */}
+          <ProposalsPanel actor={actor} capabilityId={capabilityId} onMaterialized={reloadWorkflow} />
+        </>
       )}
 
       {!loading && available && tab === "graph" && (

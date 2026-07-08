@@ -157,6 +157,35 @@ body {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
+/* SHOWREEL TRACK A — the cinematic entry. The plate is a STILL image of the
+   product (never a live graph); the scrim is overlay chrome, so the glass law
+   holds (this is not a data surface). Nothing here animates ambiently. */
+.ap-entry-plate {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+  pointer-events: none;
+}
+/* The entry scrim carries NO blur of its own — the glass comes from stacking
+   the lawful .ap-glass-scrim overlay class beneath it, so the glass law's
+   two-class allowlist stays exact. This layer only darkens. */
+.ap-entry-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 90% at 50% 110%, color-mix(in srgb, var(--surface-0) 55%, transparent), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-0) 78%, transparent), color-mix(in srgb, var(--surface-0) 88%, transparent));
+}
+/* The ONE cold-open transition (entry -> picker): a single fade/scale inside
+   the iris budget, fired by the button. Dead under prefers-reduced-motion. */
+.ap-entry-iris { animation: ap-entry-iris var(--dur-iris) var(--ease-iris); }
+@keyframes ap-entry-iris {
+  from { opacity: 0; transform: scale(0.985); }
+  to { opacity: 1; transform: scale(1); }
+}
 .ap-flat {
   background: transparent;
   box-shadow: none;
@@ -227,7 +256,8 @@ input, textarea {
 @keyframes ap-pulse { from { opacity: 0.45; } to { opacity: 0.9; } }
 @media (prefers-reduced-motion: reduce) {
   .ap-fade-view,
-  .ap-skeleton-pulse {
+  .ap-skeleton-pulse,
+  .ap-entry-iris {
     animation: none;
   }
   .ap-washable,

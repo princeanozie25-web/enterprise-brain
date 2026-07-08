@@ -139,13 +139,13 @@ describe("route separation", () => {
     expect(screen.queryByText("Company Operating System")).toBeNull();
     expect((screen.getByTestId("root-home").textContent ?? "")).not.toContain("Aperture");
 
-    // The picker is the front door: heading, the verbatim demo-mode line,
-    // and the three featured REAL fixture identities. No hardwired p060.
-    expect(screen.getByRole("heading", { name: "Who are you today?" })).toBeTruthy();
+    // The picker (Showreel Track A reframe): intentional arrival, honest
+    // labels, and the three featured REAL fixture identities. No hardwired
+    // p060 behavior — Felix is only VISUALLY primary.
+    expect(screen.getByRole("heading", { name: "Choose a work identity" })).toBeTruthy();
     const demoLine = screen.getByTestId("identity-picker-demo-line").textContent ?? "";
-    expect(demoLine).toContain("Demo mode: sign in as anyone — no password.");
-    expect(demoLine).toContain("View-as is open to everyone.");
-    expect(demoLine).toContain("Nothing here is deployed.");
+    expect(demoLine).toContain("Demo access — no account, no password.");
+    expect(demoLine).toContain("exactly what that person is authorized to see");
     expect(screen.getByTestId("identity-option-p060").getAttribute("href")).toBe("/me?as=p060");
     expect(screen.getByTestId("identity-option-p060").textContent).toContain("Felix Osei");
     expect(screen.getByTestId("identity-option-p088").getAttribute("href")).toBe("/me?as=p088");

@@ -110,7 +110,17 @@ export function PipelineDrawer({ item, onClose }: { item: WorkflowItem | null; o
           <Row k="Item id" v={item.item_id} mono />
           <Row k="Capability id" v={item.capability_id} mono />
           <Row k="Kind" v={KIND_LABEL[item.kind]} />
+          {item.proposal_id && <Row k="From proposal" v={item.proposal_id} mono />}
         </section>
+
+        {item.description && (
+          <section data-testid="pipeline-drawer-description">
+            <SectionTitle>What to do</SectionTitle>
+            <p className="mt-1" style={{ fontSize: TYPE.scale.xs, lineHeight: TYPE.line.body, color: GRAPH_STAGE.label }}>
+              {item.description}
+            </p>
+          </section>
+        )}
 
         <section data-testid="pipeline-drawer-provenance">
           <SectionTitle>Provenance</SectionTitle>
@@ -164,7 +174,46 @@ export function PipelineDrawer({ item, onClose }: { item: WorkflowItem | null; o
 
         <section data-testid="pipeline-drawer-documents">
           <SectionTitle>Linked documents</SectionTitle>
-          <Empty>This workflow payload carries no document references, timestamps, or status history.</Empty>
+          {item.anchors && item.anchors.length > 0 ? (
+            <div className="mt-2 space-y-2" data-testid="pipeline-drawer-anchors">
+              {item.anchors.map((anchor, index) =>
+                anchor.visible && anchor.doc_id ? (
+                  <div key={index}>
+                    <p style={{ fontFamily: FONT.evidence, fontSize: TYPE.scale.xs, color: GRAPH_STAGE.label }}>
+                      {anchor.doc_id}
+                      {anchor.locator ? ` · ${anchor.locator}` : ""}
+                    </p>
+                    {anchor.quote && (
+                      <p
+                        className="mt-0.5"
+                        style={{ fontFamily: FONT.evidence, fontSize: TYPE.scale.xs - 1, color: GRAPH_STAGE.labelSoft }}
+                      >
+                        &ldquo;{anchor.quote}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  /* S4: an out-of-scope anchor crosses as a marker, never content. */
+                  <p
+                    key={index}
+                    data-testid="pipeline-drawer-anchor-withheld"
+                    style={{ fontSize: TYPE.scale.xs, fontStyle: "italic", color: GRAPH_STAGE.labelSoft }}
+                  >
+                    A source outside your view — withheld.
+                  </p>
+                ),
+              )}
+              {typeof item.sources_outside_view === "number" && item.sources_outside_view > 0 && (
+                <p style={{ fontSize: TYPE.scale.xs, fontStyle: "italic", color: GRAPH_STAGE.labelSoft }}>
+                  {item.sources_outside_view}{" "}
+                  {item.sources_outside_view === 1 ? "source stays" : "sources stay"} hidden from
+                  your identity.
+                </p>
+              )}
+            </div>
+          ) : (
+            <Empty>This workflow payload carries no document references, timestamps, or status history.</Empty>
+          )}
         </section>
       </aside>
     </div>
