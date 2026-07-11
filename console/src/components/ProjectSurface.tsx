@@ -6,6 +6,7 @@ import type { GraphProject, GraphResponse, ProjectWorkflowResponse } from "@/lib
 import { TYPE } from "@/lib/tokens";
 import { MotionAnchor, MotionArticle, MotionSection } from "./MotionPrimitives";
 import { PipelineBoard } from "./projects/PipelineBoard";
+import { ProposalsPanel } from "./projects/ProposalsPanel";
 import { Skeleton } from "./Skeleton";
 
 type ProjectTab = "graph" | "workflow";
@@ -230,6 +231,16 @@ export function ProjectSurface({
 
       {!loading && available && tab === "workflow" && (
         <PipelineBoard workflow={workflow} actor={actor} onReload={reloadWorkflow} />
+      )}
+
+      {/* SHOWCASE-III: the mutation path's console face. NOT gated on the
+          projection being available — proposals are actor-scoped (an approver
+          may hold a decision for a capability whose projection is not hers),
+          and the panel carries its own honest states. Approval reloads the
+          board so materialized boxes land in "Next" server-derived — never
+          optimistically. */}
+      {!loading && tab === "workflow" && (
+        <ProposalsPanel actor={actor} capabilityId={capabilityId} onMaterialized={reloadWorkflow} />
       )}
 
       {!loading && available && tab === "graph" && (

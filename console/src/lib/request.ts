@@ -39,10 +39,14 @@ export class ServiceRequestError extends Error {
   }
 }
 
-/** Routes chosen for the longer budget: POST /ask only (generation path). */
+/** Routes chosen for the longer budget: the two GENERATION paths — POST /ask
+ * and POST /workflow/proposals (Showcase III drafts share the same 20s
+ * server-side generation budget). Everything else is a metadata read. */
 function timeoutFor(path: string, init: RequestInit): number {
   const method = (init.method ?? "GET").toUpperCase();
-  if (method === "POST" && path === "/ask") return ASK_TIMEOUT_MS;
+  if (method === "POST" && (path === "/ask" || path === "/workflow/proposals")) {
+    return ASK_TIMEOUT_MS;
+  }
   return DEFAULT_TIMEOUT_MS;
 }
 

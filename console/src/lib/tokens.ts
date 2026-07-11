@@ -329,9 +329,10 @@ export const FONT = {
   evidence: "'IBM Plex Mono', ui-monospace, 'Courier New', monospace",
 } as const;
 
-/** Type scale (px) and line heights. */
+/** Type scale (px) and line heights. `display` exists for the ONE cinematic
+ * entry wordmark (Showreel Track A) — page surfaces stay on xs..xl. */
 export const TYPE = {
-  scale: { xs: 13, sm: 15, md: 18, lg: 24, xl: 32 },
+  scale: { xs: 13, sm: 15, md: 18, lg: 24, xl: 32, display: 40 },
   line: { body: 1.45, display: 1.2 },
 } as const;
 
