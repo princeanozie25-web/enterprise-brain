@@ -1,0 +1,52 @@
+# Enterprise Brain — one-command demo stack.
+#
+#   docker compose up --build          # build, bootstrap, serve
+#   docker compose logs bootstrap      # the four agent tokens, copy-paste curls
+#   docker compose exec gateway \
+#     curl -s -H "Authorization: Bearer <TOKEN>" http://127.0.0.1:8787/v1/whoami
+#
+# The gateway binds loopback ONLY (a security invariant: the server refuses a
+# non-loopback bind, enforced by a test). A container cannot publish a loopback
+# port to the host, so the demo surface is reached from INSIDE the container
+# via `docker compose exec` — not a limitation, the invariant made visible.
+
+services:
+  # One-shot: mint the demo world (RSA key, four 24 h agent tokens, a
+  # DEMO-labelled config) onto the shared volume, print the tokens, exit 0.
+  bootstrap:
+    build: .
+    image: enterprise-brain-gateway:demo
+    command: ["bootstrap-dev", "--out", "/data/dev-out", "--force"]
+    volumes:
+      - demo:/data
+
+  # The governed gateway. Healthy IFF `doctor` passes (config sound — a
+  # misconfig fails it with the offending field named) AND the port serves
+  # (liveness). Both halves must pass, so a hung or misconfigured container is
+  # UNHEALTHY, not silently up.
+  gateway:
+    image: enterprise-brain-gateway:demo
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - demo:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          service doctor --json --fixtures fixtures --artifacts compiler/artifacts
+          --idx retrieval/idx --config /data/dev-out/config.json
+          && curl -fsS http://127.0.0.1:8787/healthz
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+    # No published port: the server is loopback-only by invariant. Reach it via
+    # `docker compose exec gateway curl http://127.0.0.1:8787/...`.
+
+# The demo world — including the ledger and alert sink — persists here, so
+# `docker compose run --rm gateway service verify-ledger /data/dev-out/ledger/audit.jsonl`
+# can audit the chain against a stopped stack.
+volumes:
+  demo:

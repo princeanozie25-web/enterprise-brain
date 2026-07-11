@@ -199,6 +199,41 @@ fn doctor_cmd(args: &Args, json: bool) -> ExitCode {
     }
 }
 
+/// S5b: `service bootstrap-dev --out <dir> [--force]` — mint a complete local
+/// demo world (RSA key, four agent tokens, a DEMO-labelled config) so a
+/// stranger goes from clone to a healthy gateway in one command. Writes files
+/// and exits: it never starts the server and never touches the request path.
+fn bootstrap_dev_cmd(argv: Vec<String>) -> ExitCode {
+    let mut out: Option<String> = None;
+    let mut force = false;
+    let mut args = argv.into_iter();
+    while let Some(flag) = args.next() {
+        match flag.as_str() {
+            "--out" => out = args.next(),
+            "--force" => force = true,
+            other => {
+                eprintln!("bootstrap-dev: unknown flag {other:?}");
+                eprintln!("usage: service bootstrap-dev --out <dir> [--force]");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    let Some(out) = out else {
+        eprintln!("usage: service bootstrap-dev --out <dir> [--force]");
+        return ExitCode::FAILURE;
+    };
+    match service::bootstrap::bootstrap_dev(std::path::Path::new(&out), force) {
+        Ok(output) => {
+            output.print_launch_guide();
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("REFUSED: {err:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     // S4/S5a: subcommands run without the async server.
     let mut raw = std::env::args().skip(1);
@@ -223,6 +258,9 @@ fn main() -> ExitCode {
                 }
             };
             return doctor_cmd(&args, json);
+        }
+        if first == "bootstrap-dev" {
+            return bootstrap_dev_cmd(raw.collect());
         }
     }
 

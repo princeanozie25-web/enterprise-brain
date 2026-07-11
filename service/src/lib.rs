@@ -17,6 +17,7 @@ pub mod agent_bridge;
 pub mod alerts;
 pub mod answer;
 pub mod atlas;
+pub mod bootstrap;
 pub mod cache;
 pub mod clock;
 pub mod cors;
