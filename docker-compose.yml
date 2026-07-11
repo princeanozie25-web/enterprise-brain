@@ -29,6 +29,9 @@ services:
   # UNHEALTHY, not silently up.
   gateway:
     image: enterprise-brain-gateway:demo
+    # The demo world on the volume outlives the daemon; so should the
+    # gateway — a docker/host restart brings it back without ceremony.
+    restart: unless-stopped
     depends_on:
       bootstrap:
         condition: service_completed_successfully
