@@ -4,7 +4,7 @@
 //!
 //!   * `jwks.json`        — the public verification key (kid `dev-key-1`);
 //!   * `private_key.pem`  — the throwaway signing key (DEMO — never commit);
-//!   * `tokens.json`      — four 24 h agent JWTs, `principal -> token`;
+//!   * `tokens.json`      — six 24 h agent JWTs, `principal -> token`;
 //!   * `config.json`      — a DEMO/DEV ServiceConfig (bridge ENABLED here).
 //!
 //! INVARIANTS THIS RESPECTS:
@@ -43,12 +43,18 @@ const DEMO_KID: &str = "dev-key-1";
 /// Demo tokens live 24 hours (long enough for a session at a desk).
 const TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
 
-/// The four demo agents. Two primary-corpus agents (for `whoami` and the
-/// primary machine surface) and the TWO estate agents — the only principals
-/// with any estate grant, so the tier-seam demo (a confidential estate object
-/// one may read and the other may not) has agents to turn on. Object ids
-/// follow the S0 fixture convention (`aaaa…` primary, `bbbb…` estate).
-const DEMO_AGENTS: [(&str, &str); 4] = [
+/// The six demo agents: the FOUR canonical primary fixture agents
+/// (compiled-allowlist authority — the same four every conformance suite and
+/// the SDK integration suite pin) plus the TWO estate agents (tier authority
+/// — the only principals with any estate grant, so the tier-seam demo has
+/// agents to turn on). Object ids follow the S0 fixture convention
+/// (`aaaa…` primary, `bbbb…` estate).
+const DEMO_AGENTS: [(&str, &str); 6] = [
+    ("agent_qa_drafter", "aaaa0001-5c1e-4a2b-9d3e-000000000a01"),
+    (
+        "agent_ops_concierge",
+        "aaaa0002-5c1e-4a2b-9d3e-000000000a02",
+    ),
     (
         "agent_finance_analyst",
         "aaaa0003-5c1e-4a2b-9d3e-000000000a03",
@@ -243,7 +249,7 @@ impl BootstrapOutput {
             slashed(&self.config_path)
         );
         println!();
-        println!("Four demo agents (24 h tokens). WHO resolved:");
+        println!("Demo agents (24 h tokens). WHO resolved:");
         for (principal, token) in &self.tokens {
             println!("  # {principal}");
             println!(

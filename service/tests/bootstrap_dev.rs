@@ -2,7 +2,7 @@
 //! validate through the REAL ladder (not a test-only relaxation), it refuses
 //! to clobber without `--force`, no key material is ever tracked (S5b-1), the
 //! doctor passes on it (the container healthcheck), and — the acceptance
-//! proof — the four minted tokens drive the real router: whoami ×4 and the
+//! proof — the six minted tokens drive the real router: whoami ×6 and the
 //! tier seam (a confidential estate object one agent reads and another cannot).
 
 mod common;
@@ -54,7 +54,7 @@ fn fresh_world_is_complete_and_tokens_validate_through_the_real_ladder() {
     assert!(output.jwks_path.exists(), "jwks.json");
     assert!(output.private_key_path.exists(), "private_key.pem");
     assert!(output.tokens_path.exists(), "tokens.json");
-    assert_eq!(output.tokens.len(), 4, "four demo agents");
+    assert_eq!(output.tokens.len(), 6, "six demo agents");
 
     // The config the demo ships: bridge ENABLED, four registrations, and a
     // profile that LOUDLY says DEMO (JSON has no comments; the schema is
@@ -67,7 +67,7 @@ fn fresh_world_is_complete_and_tokens_validate_through_the_real_ladder() {
     );
     let bridge_cfg = cfg.agent_bridge.expect("bridge section present");
     assert!(bridge_cfg.enabled, "demo config enables the bridge");
-    assert_eq!(bridge_cfg.agents.len(), 4);
+    assert_eq!(bridge_cfg.agents.len(), 6);
 
     // The strong proof: build the REAL bridge from the generated config and
     // authenticate every minted token end-to-end. Each resolves to exactly
@@ -120,7 +120,7 @@ fn force_regenerates_a_clean_world() {
     let first_token = token_for(&first, "agent_finance_analyst").to_string();
 
     let second = bootstrap_dev(&out, true, false).expect("--force regenerates");
-    assert_eq!(second.tokens.len(), 4);
+    assert_eq!(second.tokens.len(), 6);
     assert_ne!(
         first_token,
         token_for(&second, "agent_finance_analyst"),
@@ -212,9 +212,9 @@ fn doctor_passes_on_generated_config_and_names_an_induced_fault() {
     );
 }
 
-// -- 6. THE ACCEPTANCE PROOF: the four minted tokens drive the REAL router,
+// -- 6. THE ACCEPTANCE PROOF: the six minted tokens drive the REAL router,
 //       wired from the generated config exactly as production wires it.
-//       whoami ×4 -> 200; the tier seam holds (confidential agent reads the
+//       whoami ×6 -> 200; the tier seam holds (confidential agent reads the
 //       confidential object; the internal agent gets THE 404).
 #[tokio::test]
 async fn tokens_drive_the_real_router_whoami_and_the_seam() {
@@ -238,7 +238,7 @@ async fn tokens_drive_the_real_router_whoami_and_the_seam() {
     let state = cfg.apply(state).expect("apply generated config");
     let router = app(Arc::new(state));
 
-    // whoami ×4 -> 200, echoing the resolved principal.
+    // whoami ×6 -> 200, echoing the resolved principal.
     for (principal, token) in &output.tokens {
         let (status, body) = send(&router, "/v1/whoami", token).await;
         assert_eq!(status, StatusCode::OK, "{principal} whoami");
