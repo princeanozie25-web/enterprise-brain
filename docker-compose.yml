@@ -53,7 +53,8 @@ services:
       start_period: 30s
 
 # The demo world — including the ledger and alert sink — persists here, so
-# `docker compose run --rm gateway verify-ledger /data/dev-out/ledger/audit.jsonl`
-# can audit the chain against a stopped stack.
+# `docker compose run --rm --no-deps gateway verify-ledger /data/dev-out/ledger/audit.jsonl`
+# can audit the chain against a stopped stack. (--no-deps: the audit command
+# must never re-run the bootstrap one-shot, which regenerates the world.)
 volumes:
   demo:

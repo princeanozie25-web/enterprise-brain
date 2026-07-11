@@ -74,9 +74,13 @@ Every one of those decisions — the 200 and the 404 — is a row in a hash-chai
 ledger on the volume. Verify the chain, even against a stopped stack:
 
 ```sh
-docker compose run --rm gateway verify-ledger /data/dev-out/ledger/audit.jsonl
+docker compose run --rm --no-deps gateway verify-ledger /data/dev-out/ledger/audit.jsonl
 # CLEAN: N rows (… hash-chained) verify intact
 ```
+
+(`--no-deps` matters: without it, compose would first re-run the bootstrap
+one-shot — which regenerates the demo world — before verifying. An audit
+command must never touch the evidence it audits.)
 
 ---
 
