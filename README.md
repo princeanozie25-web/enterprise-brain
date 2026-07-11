@@ -1,268 +1,86 @@
 # Enterprise Brain
 
-**AI for your organisation's knowledge that can't leak what you're not allowed to see.**
+**An authorization gateway for AI agents: authorization is proven before retrieval — unauthorized content never reaches the model.**
+
+```text
+                        ┌─────────────────────────── Enterprise Brain gateway ───────────────────────────┐
+  agent (Entra JWT) ──▶ │  validation ladder ─▶ registry (tid,oid) ─▶ compiled scope ─▶ governed retrieval │ ──▶ only authorized
+      /v1 (machine)     │        │                    │                   │  (scope INSIDE the query)      │      content
+                        │        └────────────────────┴───────────────────┴──▶ hash-chained decision ledger │
+  human (session) ────▶ │  console surface (separate door; a session never opens /v1, a JWT never opens it) │
+                        └────────────────────────────────────────────────────────────────────────────────┘
+   sources: primary corpus + estate connectors (bytes only — authority NEVER travels with a document)
+```
+
+## Ten lines to governed retrieval
+
+```python
+from enterprise_brain import Client
+
+eb = Client(base_url="http://127.0.0.1:8787", token="<agent jwt>")
+
+me = eb.whoami()                                  # who this token resolves to
+result = eb.retrieve("supplier audit findings")   # candidates scoped AT QUERY CONSTRUCTION
+doc = eb.get_document(result.candidates[0].doc_id)  # full body IFF authorized; else THE 404
+
+retriever = eb.as_langchain_retriever()           # LangChain: every document that enters
+docs = retriever.invoke("supplier audit findings")  # model context is a ledgered allow
+```
+
+**94,500/0/0 estate-wide decision conformance; a single false-allow blocks release.** Every (principal × document) pair is checked against an oracle that recomputes expected access independently from the raw fixture facts — the gateway's answers must match all of them, and the suite re-runs on every change.
+
+## Three commands to a running gateway
+
+```sh
+git clone https://github.com/princeanozie25-web/enterprise-brain.git
+cd enterprise-brain
+docker compose up --build -d     # healthy in ~a minute; tokens: docker compose logs bootstrap
+```
+
+The gateway publishes **host-loopback only** (`127.0.0.1:8787`). Demo agent tokens are minted locally on a volume — never committed, fresh every `up`. See [QUICKSTART.md](QUICKSTART.md) for the two curls that prove the invariant, and [docs/quickstart.md](docs/quickstart.md) for the native and SDK paths.
 
 ---
 
-## What it is
+## The invariants
 
-Companies want to put AI on their internal documents — policies, contracts, HR
-records, customer files — so anyone can ask a question in plain English and get
-an answer grounded in the company's own knowledge. The danger is obvious the
-moment you say it out loud: the AI can show someone something they were never
-allowed to see.
+The whole system is these seven statements; every feature since the first commit exists to keep them true:
 
-**Enterprise Brain is the layer that makes this safe.** It works out what you're
-permitted to see *before* the AI is handed anything, so the AI can only ever
-answer from documents you're authorised for. It isn't a chatbot — it's the
-governance that makes putting a chatbot on sensitive data possible.
+- **EB-1 — Authorization before retrieval.** The caller's authority is established before any retrieval work begins; there is no "fetch then filter."
+- **EB-2 — Enforcement is server-side.** No client, SDK, or prompt is trusted to enforce anything; the SDK is a dumb pipe by design.
+- **EB-3 — Decisions are deterministic compiled lookups.** Authority compiles ahead of time into artifacts; a request-time decision is a lookup, not an inference.
+- **EB-4 — Fail closed.** Missing key, unknown principal, unverifiable state, unledgerable surface — every uncertainty denies.
+- **EB-5 — Exclusion at query construction.** Out-of-scope documents are never candidates: scope is a MUST clause inside the query, never a post-filter over a wider result.
+- **EB-6 — Every decision is ledgered.** Allow and deny both write hash-chained ledger rows; a surface that cannot ledger does not serve.
+- **EB-7 — Denies are monitoring signals.** A policy deny is security telemetry, alertable off the request path — not just a refusal.
 
-## The problem
+## The seam, demonstrated
 
-Most systems do it backwards. They fetch documents, hand them to the AI, and
-*then* try to filter the answer. But once unauthorised content is in front of
-the model, you can't take it back — the leak has already happened. Other tools
-give every employee the same view of the company's knowledge regardless of their
-access.
+The same confidential estate object, two agents (from the executed [QUICKSTART](QUICKSTART.md)):
 
-For a regulated business — pharma, finance, healthcare — a single answer that
-crosses a permission boundary is a compliance breach. So the project meant to
-roll AI out across the company quietly dies at the security review.
+```text
+whoami(agent_estate_confidential)                       -> 200 {"principal_id":"agent_estate_confidential"}
+GET /v1/documents/s3/finance-restricted/.../budget-variance-ashcombe.md
+  as agent_estate_confidential (tier: confidential)     -> 200, full body, metadata.source = "s3"
+  as agent_estate_internal     (tier: internal)         -> 404
+verify-ledger audit.jsonl                               -> CLEAN: 15 rows (15 hash-chained) verify intact
+```
 
-## The key idea
+**The document did not decide. The access model did.** Objects carry bytes; authority lives in a separate access model the objects know nothing about.
 
-**Enterprise Brain checks permission *before* retrieval, not after.** Your access
-is compiled into the search itself — a hard filter applied before the model
-receives a single document — so it is structurally impossible for the model to
-be handed something you can't see.
+## Documentation
 
-And it **fails closed**: no explicit permission means the answer is *nothing*,
-never a guess. Even the org chart obeys this — you see only the part of the
-company inside your remit, and someone with no access sees an empty map, not a
-blurred-out one.
-
-## The proof
-
-This isn't asserted, it's measured. Enterprise Brain is tested against a
-complete synthetic company — a fictional, regulated pharmaceutical wholesaler
-with **120 people** and **600 documents** — by checking *every possible access
-decision* exhaustively:
-
-| What's checked | Decisions | Wrong answers |
-| --- | ---: | ---: |
-| **Who can read which document** | **74,400** | **0** |
-| **Who can see which part of the org map** | **15,500** | **0** |
-
-Zero over-shared, zero wrongly hidden, in either matrix. Crucially, the
-"correct" answer for each check is worked out **independently** from the raw
-company data — so the tests genuinely catch mistakes instead of quietly agreeing
-with the system they're testing. **One wrong answer fails the whole release.**
-
-> Scope of the 15,500: this proves *org-map / metadata visibility* exhaustively —
-> which people, departments, and systems each identity may see, for all 124
-> principals × 125 nodes, covering both structural visibility (your department,
-> your reporting lines, the agents you own) **and** grant-reachable visibility
-> (the people a group you hold connects you to). Together with the 74,400
-> document decisions, every access decision the product makes is scope-proven
-> on this synthetic company — not certified secure.
-
-## See it
-
-The same org map, the same build, two identities — captured live against the
-running product:
-
-| A finance head | An identity with no access |
+| Where | What |
 | --- | --- |
-| ![The Operating Map as Freya Fernandes, a warehouse operations head: 34 named people ringing the org core in department arcs, 257 relationship records disclosed — chords draw on focus — her slice of the company, drawn from real org data](console/docs/screenshots/s3-map-p060.png) | ![The Operating Map as Zara Castillo, who holds no access: zero connections and an empty-state card — "No organizational view in your scope" — not a blurred map](console/docs/screenshots/s4-map-pvoid.png) |
+| [docs/quickstart.md](docs/quickstart.md) | Docker, native, and SDK paths from zero |
+| [docs/concepts.md](docs/concepts.md) | The invariants, the two surfaces, authority-vs-bytes |
+| [docs/how-to/](docs/how-to/) | Register an agent, add a source, rotate dev keys, read the ledger, run doctor, verify a ledger |
+| [docs/reference/](docs/reference/) | `/v1` API, ServiceConfig schema, CLI (`bootstrap-dev` / `doctor` / `verify-ledger`) |
+| [docs/runbook-denials.md](docs/runbook-denials.md) | **Every deny class → where the truth lives → the fix** (the wire is mute on purpose) |
+| [docs/threat-model.md](docs/threat-model.md) | Assets, trust boundaries, the ladder as attack surface, what hash-chaining does and does not claim |
+| [docs/connector-certification.md](docs/connector-certification.md) | The certified-connector rubric + the conformance kit |
 
-Freya Fernandes (a warehouse operations head) sees her slice: 34 named people
-ringing the org core in department arcs, all 257 of her relationship records
-disclosed in the masthead (relationship chords draw when a node takes focus —
-the map never claims fewer connections than it discloses). Zara Castillo (no
-access) sees an honest empty map — zero nodes, no blur, no silhouettes. The
-difference is enforced on the server, per identity, before anything is
-retrieved or drawn; the page only ever receives what that identity may see.
-Scope-proven on a synthetic company (see [The proof](#the-proof)), not
-certified secure.
+## Posture
 
-## How it works
-
-Five layers, each fail-closed, each refusing rather than guessing:
-
-1. **Identity is session-bound, never asserted.** You authenticate once and the
-   server mints a signed, expiring session. Identity is resolved from that
-   session — never from a header the caller can set — so a request can't simply
-   *claim* to be someone. No valid session, no answer (HTTP 401).
-
-2. **Your permissions are compiled.** Each identity's access is worked out ahead
-   of time into an explicit allowlist — a fixed, tamper-checked statement of
-   exactly which documents that identity may read, derived from their team, role,
-   site, and seniority.
-
-3. **The allowlist is part of the search, not a filter on the results.** When you
-   ask a question, your allowlist is injected into the retrieval query as a
-   required clause — a *pre-retrieval* filter. Out-of-scope documents are never
-   fetched in the first place, so they can never reach the model. (This is the
-   opposite of fetch-everything-then-redact.)
-
-4. **The answer is grounded and audited.** The model only ever sees a sealed set
-   of in-scope documents. Every citation in its answer is checked back against
-   that sealed set; an answer that cites anything outside it — or cites nothing
-   at all — is refused whole. The text generator is treated as untrusted by
-   construction.
-
-5. **Metadata obeys the same rule.** The org map, the per-node summaries, and the
-   "who-can-see-what" lens are scoped to *your* projection of the company. Out of
-   scope is **absent** — never hidden-but-counted, never blurred, never a
-   padlock. An identity with no standing gets an empty map.
-
-Underneath all of this sits a conformance-proven decision core (the document
-matrix above), consumed read-only. Nothing in the serving path can widen what it
-decided.
-
----
-
-## Technical detail (for engineers)
-
-Everything below is the substrate the product story above is built on: the
-synthetic company the whole system is tested against, and the independently
-computed access-control ground truth that produces the 74,400/0/0 number.
-
-### M0 — the synthetic company + ground-truth ACL oracle
-
-A deterministic generator for **Bryremead Distribution Ltd**, a fictional UK
-GDP-regulated pharmaceutical wholesaler: 120 synthetic people, 14 groups, 4 agent
-principals, 600 documents across 5 mimicked sources, a 6→18→40→90 BRM (Business
-Reference Model) graph, and a fully materialized access-control ground truth.
-This dataset is the test substrate for a permission-aware retrieval system whose
-release rule is *"a single false-allow blocks release."* Everything is fictional;
-every person record carries `"synthetic": true`, and a denylist test fails
-generation if any real company/distributor name appears in any output file.
-
-#### Regenerate
-
-```sh
-python -m synth.generate --seed 42 --out fixtures/   # byte-identical to committed fixtures
-python -m pytest                                     # P-1..P-9 + module tests
-```
-
-Python 3.11+, stdlib + pytest only. No network, no databases, no LLMs anywhere.
-
-#### Oracle guarantees
-
-The oracle is the *independent* definition of "correct" — computed from first
-principles, not from the system under test. It is what makes the 74,400/0/0 a
-real proof rather than a tautology.
-
-1. `oracle.resolve(principal, resource)` is a pure function over the generated model — no caching, no randomness, no I/O.
-2. It is computed from first principles (direct rule evaluation in `synth/acl.py`) and depends on nothing that will later be the system under test.
-3. Deny-by-default: no matching grant rule means DENY, and unknown rule kinds fail closed.
-4. Every decision carries at least one stable reason id, so any row in `ground_truth.jsonl` can be audited back to the rule that produced it.
-5. ReBAC grants (public/group/role) are OR'd; ABAC constraints (site, employment-band minimum) are AND'd on top.
-6. `special_category` documents additionally require explicit HR-group membership — except that a person can always read their own HR record, and their manager never can via the org edge.
-7. Agent access is the explicit intersection `agent grant ∩ owner access`, computed per pair; agents never inherit owner scope implicitly, which is what the 15 confused-deputy traps verify.
-8. The matrix is total — all 124 × 600 = 74,400 pairs — and regeneration with the same seed is byte-identical (no wall clocks, one seeded RNG).
-9. Generation aborts rather than emitting weak fixtures: trap minimums (12/10/15/8/6), the < 35% overall allow-rate ceiling, the < 5% restricted+special ceiling, and the denylist are all enforced at build time.
-10. Trap inventory is tagged in `fixtures/traps.json` and re-verified against the oracle both at generation time and in pytest (P-5..P-8).
-
-#### The metadata conformance oracle
-
-The same methodology, applied to the org map. For every (principal, node) pair —
-124 principals × 125 nodes (the org core + 120 people + 4 agents) = **15,500
-decisions** — the expected visibility is computed independently from the raw
-company structure (department, manager, group membership) and checked against
-the live metadata surfaces: **0 false-allow / 0 false-deny**
-(`service/tests/metadata_conformance.rs`). A principal with no group standing
-projects to the empty set. The rule proven is the full one: structural core
-∪ grant-reachable — a principal also sees the co-members of every group it
-holds, and nothing else.
-
-### Component notes
-
-**The Lane's derivation rule (AP-6, verbatim).** Aperture's rooms are Ask / Lens
-/ Atlas / **Lane** and **Export** (AP-5, server-derived attested evidence PDFs),
-with Ledger still reserved (charter amendment, AP-6). The Lane is v4a — display
-only — and because `/synth` is frozen, its assignments DERIVE:
-
-> At startup, deterministically derive assignments from verified inputs
-> only: for each human principal, take the capabilities whose realizing
-> documents' departments match the principal's department AND where the
-> principal has >=1 visible realizing doc; rank by visible-doc count
-> (tie-break capability id asc); cap at 8 boxes per person. Every derived
-> box carries `derived: true` and the console labels the lane "Derived
-> assignments (demo)". Agents get no lane (boxes are human work).
-
-Interpretation note (flagged in the AP-6 closeout): "realizing documents'
-departments match" is read as *at least one* realizing document's department
-equal to the principal's department; visibility is membership in the principal's
-compiled M1 allowlist. Implemented in `service/src/lane.rs::seeds_for_human`;
-held deterministic by AW-7 (two startups derive byte-identical lanes).
-
-**Ask controls (console).** The Ask surface (`/ask`) has two toggles. Both sit on
-top of the engine's permission scope — they never widen what you can see; they
-only change *how* the system searches and how careful it is before answering.
-
-- **Broad search** — when on, Ask finds documents by **meaning as well as exact
-  keywords** (keyword/BM25 *and* vector/embedding search, combined with
-  Reciprocal Rank Fusion, `RRF_K = 60`, in `retrieval/src/fuse.rs`). When off,
-  Ask falls back to **keyword-only** (`lexical_only`) search, so close-but-not-
-  exact wording can be missed. (Engine name: the "hybrid" retrieval mode.)
-- **Verified answers** — when on, after an answer is drafted from your authorised
-  documents the system **checks each claim against that evidence and leaves out
-  anything it cannot support** (fail-closed). When off, that verification step is
-  skipped. (Engine name: the "judge" grounding pass.)
-
-**Current limitation (honest):** in this build **both toggles are DISABLED in the
-UI** and only keyword-only answers run — each switch is greyed out with an
-always-visible reason — because the regenerated corpus dropped its vector index
-and no judge model is running, so turning them on would hit an engine path that
-currently errors. Re-enabling each is a single flag in
-`console/src/components/Console.tsx` once the engine supports that mode.
-
----
-
-## Status
-
-**Pre-pilot, and proven on synthetic data only — no real company's information is
-involved.** The honesty here is deliberate: the system is built to be provably
-bounded, and the documentation holds itself to the same standard.
-
-Live (enforced on the engine):
-- **Authorisation-before-retrieval for documents** — the allowlist compiled into
-  the query, fail-closed, conformance-proven at 74,400/0/0.
-- **Session-bound identity** — login mints a signed session; the header can no
-  longer assert who you are.
-- **Per-identity scoping of the org map** — structural ∪ grant-reachable
-  visibility, proven at 15,500/0/0.
-- **Audited "view-as"** — a cross-identity view is written to the audit log
-  before it renders, and is refused outright if it cannot be recorded; outside
-  demo mode it is admin-classed.
-- **Console live render** — the org-map view draws each identity's slice from
-  the scoped engine responses (captured live in [See it](#see-it)).
-
-In progress:
-- **Spend governance** and further security hardening.
-
-## Running it
-
-The system is a Rust engine plus a Next.js console, over the synthetic corpus.
-
-```sh
-# 1. Provision the compiled artifacts + retrieval index from the fixtures
-cargo run -p scope-compiler -- compile --fixtures fixtures --out compiler/artifacts
-cargo run -p retrieval     -- index   --fixtures fixtures --out retrieval/idx
-
-# 2. Run the governed engine (loopback only, 127.0.0.1:8787)
-cargo run --release -p service -- \
-    --fixtures fixtures --artifacts compiler/artifacts --idx retrieval/idx \
-    --agents-config config/agents.example.json --state-dir .state/agent-store
-
-# 3. Run the console
-cd console && npm install && npm run dev   # http://localhost:3000
-```
-
-The console runs in **Demo Identity Mode**: you pick a Work Identity to sign in
-as (a server-minted session — the demo stand-in for real OIDC), and a
-non-dismissible banner says so on every screen. Tests: `cargo test` (Rust) and
-`npm test` (console). See [`service/README.md`](service/README.md) for the full
-endpoint reference.
+- **No telemetry.** The gateway and the SDK make no calls except the ones you configure; nothing phones home.
+- **Solo maintainer.** Best-effort responses; security reports get priority — see [SECURITY.md](SECURITY.md). No SLA is implied.
+- **Licence to be finalised at public release.**

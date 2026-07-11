@@ -92,12 +92,13 @@ that lets a container bind wider is never set here.
 
 ```sh
 # 1. Provision artifacts + index, then mint the demo world.
+#    (Re-provisioning: the indexer refuses a non-empty retrieval/idx — delete it first.)
 cargo run -p scope-compiler -- compile --fixtures fixtures --out compiler/artifacts
 cargo run -p retrieval     -- index   --fixtures fixtures --out retrieval/idx
-cargo run -p service -- bootstrap-dev --out dev-out       # prints the token curls
+cargo run -p service --bin service -- bootstrap-dev --out dev-out   # prints the token curls
 
 # 2. Serve (loopback 127.0.0.1:8787).
-cargo run --release -p service -- \
+cargo run --release -p service --bin service -- \
   --fixtures fixtures --artifacts compiler/artifacts --idx retrieval/idx \
   --config dev-out/config.json
 
