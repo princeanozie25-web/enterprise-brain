@@ -20,6 +20,7 @@ pub mod atlas;
 pub mod cache;
 pub mod clock;
 pub mod cors;
+pub mod doctor;
 pub mod diff;
 pub mod estate;
 pub mod export;
@@ -244,6 +245,12 @@ pub struct AppState {
     /// exactly the pre-S3 behaviour. Loaded from `fixtures/estate` when
     /// present; the estate agents and `s3/...` ids exist only when it does.
     pub estate: Option<Arc<estate::EstateModel>>,
+    /// S5a: the estate retrieval index, built once at INGEST over both
+    /// sources (primary docs + second-source objects). `None` = no estate.
+    /// Request-time estate retrieval reads this index — it never
+    /// re-tokenizes a corpus body. Authority stays inside candidate
+    /// construction (EB-5); this index has zero authority over decisions.
+    pub estate_index: Option<Arc<estate::EstateIndex>>,
     /// S4: the policy-deny alert dispatcher. `None` = alerting off (the
     /// default; zero behaviour change). Alerts derive from ledger deny
     /// rows and dispatch OFF the request path — never a second decision
@@ -415,6 +422,7 @@ impl AppState {
             login_rate: Arc::new(ratelimit::RateLimiter::default_login()),
             agent_bridge: None,
             estate: None,
+            estate_index: None,
             alerts: None,
             wf_proposals: None,
             generation_rate: Arc::new(ratelimit::PrincipalRateLimiter::default_proposals()),
@@ -433,15 +441,43 @@ impl AppState {
     pub fn with_estate_from(mut self, estate_dir: &Path) -> Result<AppState> {
         if estate_dir.join("s3-access.json").exists() {
             let model = estate::EstateModel::load(estate_dir)?;
+            self.estate_index = Some(Arc::new(self.build_estate_index(&model)));
             self.estate = Some(Arc::new(model));
         }
         Ok(self)
     }
 
-    /// S3: attach an already-built estate model (tests).
+    /// S3: attach an already-built estate model (tests). S5a: the retrieval
+    /// index is (re)built from the current corpus + the model's objects.
     pub fn with_estate(mut self, model: Arc<estate::EstateModel>) -> AppState {
+        self.estate_index = Some(Arc::new(self.build_estate_index(&model)));
         self.estate = Some(model);
         self
+    }
+
+    /// S5a: build the estate retrieval index over BOTH sources — the primary
+    /// corpus (`self.docs`, source `primary`) and the second-source objects
+    /// (source `s3`). Tokenization happens once here, at ingest.
+    pub(crate) fn build_estate_index(&self, model: &estate::EstateModel) -> estate::EstateIndex {
+        let primary = self.docs.iter().map(|(id, meta)| {
+            (
+                id.clone(),
+                meta.title.clone(),
+                meta.body.clone(),
+                meta.sensitivity.clone(),
+                "primary".to_string(),
+            )
+        });
+        let s3 = model.objects().map(|object| {
+            (
+                object.doc_id.clone(),
+                object.title.clone(),
+                object.body.clone(),
+                object.sensitivity.clone(),
+                "s3".to_string(),
+            )
+        });
+        estate::EstateIndex::build(primary.chain(s3))
     }
 
     /// AUTH-4 (D1): set the `/auth/login` rate limit (max attempts per window
@@ -1464,22 +1500,21 @@ async fn handle_v1_retrieve(
                 .estate
                 .as_ref()
                 .expect("estate agent implies an estate");
-            // Borrow the primary corpus (no body copies) for the union.
-            let primary: Vec<estate::PrimaryRef> = blocking_state
-                .docs
-                .iter()
-                .map(|(id, meta)| estate::PrimaryRef {
-                    doc_id: id,
-                    title: &meta.title,
-                    body: &meta.body,
-                    sensitivity: &meta.sensitivity,
+            let index = blocking_state
+                .estate_index
+                .as_ref()
+                .expect("estate agent implies an estate index");
+            // S5a: retrieve off the INGEST-built index — no corpus body is
+            // re-tokenized here. Authority is a MUST clause on candidacy
+            // (EB-5, inside construction): the tier predicate admits a
+            // candidate, it never post-filters a wider result.
+            index
+                .retrieve(&blocking_query, top_k, |sensitivity| {
+                    estate.can_read(&blocking_principal, sensitivity)
                 })
-                .collect();
-            estate
-                .retrieve(&blocking_principal, &blocking_query, top_k, &primary)
                 .iter()
                 .enumerate()
-                .map(|(index, candidate)| {
+                .map(|(rank, candidate)| {
                     serde_json::json!({
                         "doc_id": candidate.doc_id,
                         "title": candidate.title,
@@ -1487,7 +1522,7 @@ async fn handle_v1_retrieve(
                             candidate.body,
                             answer::CONTEXT_SNIPPET_CHARS,
                         ),
-                        "rank": index as u32 + 1,
+                        "rank": rank as u32 + 1,
                     })
                 })
                 .collect::<Vec<_>>()

@@ -189,3 +189,101 @@ async fn warm_p99_on_the_grown_estate_stays_under_100ms() {
         "S3 warm p99 must stay under 100ms, measured {p99:?}"
     );
 }
+
+// S5a: the RETRIEVE-HEAVY 1,000-mix — the exact shape that produced the
+// S3 34.5ms p99 before the estate got an ingest-built index. Target < 10ms
+// (hard gate stays < 100ms); this proves the O(corpus) cliff is gone (query
+// time no longer re-tokenizes 750 bodies).
+#[tokio::test]
+async fn retrieve_heavy_warm_p99_after_indexing() {
+    let dir = scratch("estate-latency-retrieve");
+    let jwks_path = dir.join("jwks.json");
+    fs::write(&jwks_path, &jwt::issuer().jwks_json).expect("write jwks");
+    let config: AgentBridgeConfig = serde_json::from_value(json!({
+        "enabled": true,
+        "tenant_id": TEST_TENANT,
+        "audience": TEST_AUDIENCE,
+        "jwks": { "file": jwks_path },
+        "agents": [{ "tid": TEST_TENANT, "oid": AGENT_A.1, "principal": AGENT_A.0 }],
+    }))
+    .expect("bridge config parses");
+    let store = Arc::new(ProposalStore::open(&dir.join("state")).expect("store"));
+    let state = AppState::build(
+        &common::repo_fixtures_dir(),
+        &repo_root().join("compiler").join("artifacts"),
+        &repo_root().join("retrieval").join("idx"),
+    )
+    .expect("build state")
+    .with_people()
+    .expect("people layer")
+    .with_estate_from(&estate_dir())
+    .expect("estate loads")
+    .with_proposals(store)
+    .with_agent_bridge(Arc::new(
+        Bridge::from_config(&config).expect("bridge builds"),
+    ));
+    let router = app(Arc::new(state));
+    let token = TokenSpec::autonomous(AGENT_A.1).sign();
+    let queries = [
+        "supplier audit",
+        "cold chain transit",
+        "invoice matching",
+        "site notice",
+        "returns reconciliation",
+        "budget variance",
+    ];
+
+    // Warm-up.
+    for _ in 0..5 {
+        let body = json!({ "query": queries[0] }).to_string();
+        let _ = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/retrieve")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+    }
+
+    let mut durations: Vec<Duration> = Vec::with_capacity(1_000);
+    for i in 0..1_000usize {
+        let body = json!({ "query": queries[i % queries.len()], "top_k": 20 }).to_string();
+        let started = Instant::now();
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/retrieve")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        durations.push(started.elapsed());
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+    durations.sort();
+    let (p50, p95, p99) = (
+        percentile(&durations, 0.50),
+        percentile(&durations, 0.95),
+        percentile(&durations, 0.99),
+    );
+    println!(
+        "S5a retrieve-heavy latency (1000 estate retrieves): p50 {:?}, p95 {:?}, p99 {:?} \
+         (was 34.5ms before the ingest index; target < 10ms)",
+        p50, p95, p99
+    );
+    assert!(
+        p99 < Duration::from_millis(10),
+        "S5a retrieve p99 target < 10ms, measured {p99:?}"
+    );
+}
