@@ -113,6 +113,14 @@ pub struct AuditEvent {
     pub token_aud: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_uti: Option<String>,
+    /// S1: `/v1` request attribution (`v1_*` rows only; optional + defaulted
+    /// so every pre-S1 row parses and every pre-S1 writer stays
+    /// byte-identical). `query` is the retrieve query, stored verbatim up to
+    /// 2,048 chars; `candidates` are the returned document ids.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidates: Option<Vec<String>>,
 }
 
 /// S0: the claim attribution carried on one `agent_token` audit row.
@@ -319,6 +327,8 @@ impl ProposalStore {
             token_parent_azp: None,
             token_aud: None,
             token_uti: None,
+            query: None,
+            candidates: None,
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;
@@ -345,6 +355,8 @@ impl ProposalStore {
             token_parent_azp: None,
             token_aud: None,
             token_uti: None,
+            query: None,
+            candidates: None,
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;
@@ -381,6 +393,51 @@ impl ProposalStore {
             token_parent_azp: token.parent_azp.clone(),
             token_aud: token.aud.clone(),
             token_uti: token.uti.clone(),
+            query: None,
+            candidates: None,
+        };
+        Self::append(&self.audit_path, &event)?;
+        state.next_audit_ordinal += 1;
+        Ok(ordinal)
+    }
+
+    /// S1: one `/v1` surface audit row — EVERY `/v1` request, allow AND
+    /// deny, before its effect reaches the wire. `action` names the surface
+    /// (`v1_retrieve` / `v1_document` / `v1_whoami` / `v1_unknown_route`);
+    /// `outcome` is `authorized` or the ledger-only deny reason; `query`
+    /// (retrieve only) is stored verbatim capped at 2,048 chars by the
+    /// caller; `candidates` (retrieve only) are the returned document ids.
+    /// Same discipline as every other row: claims attribution only — the
+    /// raw token and its signature are NEVER logged.
+    #[allow(clippy::too_many_arguments)]
+    pub fn audit_v1(
+        &self,
+        action: &str,
+        actor: &str,
+        target: &str,
+        outcome: &str,
+        token: &TokenAuditFields,
+        query: Option<&str>,
+        candidates: Option<&[String]>,
+    ) -> Result<u64> {
+        let mut state = self.state.lock().expect("store mutex");
+        let ordinal = state.next_audit_ordinal;
+        let event = AuditEvent {
+            action: action.to_string(),
+            actor_principal: actor.to_string(),
+            left: None,
+            ordinal,
+            outcome: outcome.to_string(),
+            right: None,
+            target: target.to_string(),
+            token_tid: token.tid.clone(),
+            token_oid: token.oid.clone(),
+            token_azp: token.azp.clone(),
+            token_parent_azp: token.parent_azp.clone(),
+            token_aud: token.aud.clone(),
+            token_uti: token.uti.clone(),
+            query: query.map(str::to_string),
+            candidates: candidates.map(<[String]>::to_vec),
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;

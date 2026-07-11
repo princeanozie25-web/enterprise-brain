@@ -679,6 +679,11 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/proposals", get(handle_proposals_list))
         .route("/proposals/{id}/approve", post(handle_proposal_approve))
         .route("/proposals/{id}/reject", post(handle_proposal_reject))
+        // S1: the /v1 machine surface (agent tokens only; gated in
+        // require_session BEFORE routing — see v1_gate).
+        .route("/v1/retrieve", post(handle_v1_retrieve))
+        .route("/v1/documents/{id}", get(handle_v1_document))
+        .route("/v1/whoami", get(handle_v1_whoami))
         // Inner: every route except /healthz and /auth/login requires a valid
         // server session; the principal is resolved from it (FC-A1).
         .layer(axum::middleware::from_fn_with_state(
@@ -811,6 +816,317 @@ fn doc_not_found() -> Response {
         StatusCode::NOT_FOUND,
         b"{\"demo_identity_mode\":true,\"error\":\"not found\"}\n".to_vec(),
     )
+}
+
+// ---------------------------------------------------------------------------
+// S1: the /v1 machine surface — retrieve / documents / whoami
+// ---------------------------------------------------------------------------
+
+/// `/v1/retrieve` query limit (characters) — also the ledger cap.
+pub const V1_QUERY_MAX_CHARS: usize = 2_048;
+/// `/v1/retrieve` request-body limit (bytes).
+pub const V1_BODY_MAX_BYTES: usize = 16_384;
+pub const V1_TOP_K_DEFAULT: usize = 8;
+pub const V1_TOP_K_MAX: usize = 50;
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct V1RetrieveRequest {
+    query: String,
+    #[serde(default)]
+    top_k: Option<u64>,
+}
+
+fn v1_bad_request() -> Response {
+    json_bytes_response(
+        StatusCode::BAD_REQUEST,
+        b"{\"demo_identity_mode\":true,\"error\":\"bad request\"}\n".to_vec(),
+    )
+}
+
+fn v1_payload_too_large() -> Response {
+    json_bytes_response(
+        StatusCode::PAYLOAD_TOO_LARGE,
+        b"{\"demo_identity_mode\":true,\"error\":\"payload too large\"}\n".to_vec(),
+    )
+}
+
+fn v1_internal() -> Response {
+    json_bytes_response(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        b"{\"demo_identity_mode\":true,\"error\":\"internal error\"}\n".to_vec(),
+    )
+}
+
+/// The ledger copy of a retrieve query: verbatim up to the cap.
+fn v1_capped_query(query: &str) -> String {
+    query.chars().take(V1_QUERY_MAX_CHARS).collect()
+}
+
+/// GET /v1/whoami — the SDK handshake diagnostic: WHO resolved, and nothing
+/// else. Deliberately no scope information (no allowlist, no counts, no
+/// department): whoami is not an enumeration surface.
+async fn handle_v1_whoami(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(principal): DemoPrincipal,
+    axum::extract::Extension(context): axum::extract::Extension<V1TokenContext>,
+) -> Response {
+    let Some(store) = &state.proposals else {
+        return identity::unauthorized();
+    };
+    if let Err(err) = store.audit_v1(
+        "v1_whoami",
+        &principal,
+        "GET /v1/whoami",
+        "authorized",
+        &context.0,
+        None,
+        None,
+    ) {
+        eprintln!("v1 audit failed: {err:#}");
+        return v1_internal();
+    }
+    let display = humanize::display_name_or(state.people.as_deref(), &principal, "");
+    let body = if display.is_empty() {
+        serde_json::json!({ "principal_id": principal })
+    } else {
+        serde_json::json!({ "principal_id": principal, "display_name": display })
+    };
+    match retrieval::index::canonical_json_bytes(&body) {
+        Ok(bytes) => json_bytes_response(StatusCode::OK, bytes),
+        Err(err) => {
+            eprintln!("whoami serialization failed: {err:#}");
+            v1_internal()
+        }
+    }
+}
+
+/// GET /v1/documents/{id} — the machine-surface document fetch: the SAME
+/// compiled-scope decision and the SAME payload shape as the console `/doc`
+/// (S0's row 11, unmoved). Unauthorized and nonexistent share THE one 404,
+/// byte-identical (S1-3).
+async fn handle_v1_document(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(principal): DemoPrincipal,
+    axum::extract::Extension(context): axum::extract::Extension<V1TokenContext>,
+    axum::extract::Path(doc_id): axum::extract::Path<String>,
+) -> Response {
+    let Some(store) = &state.proposals else {
+        return identity::unauthorized();
+    };
+    let target = format!("GET /v1/documents/{doc_id}");
+    let blocking_state = state.clone();
+    let blocking_principal = principal.clone();
+    let blocking_doc = doc_id.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        answer::doc_card(&blocking_state, &blocking_principal, &blocking_doc)
+    })
+    .await;
+    match result {
+        Ok(Ok(Some(card))) => match retrieval::index::canonical_json_bytes(&card) {
+            Ok(bytes) => {
+                // The allow is ledgered BEFORE it reaches the wire.
+                if let Err(err) = store.audit_v1(
+                    "v1_document",
+                    &principal,
+                    &target,
+                    "authorized",
+                    &context.0,
+                    None,
+                    None,
+                ) {
+                    eprintln!("v1 audit failed: {err:#}");
+                    return v1_internal();
+                }
+                json_bytes_response(StatusCode::OK, bytes)
+            }
+            Err(err) => {
+                eprintln!("v1 document serialization failed: {err:#}");
+                v1_internal()
+            }
+        },
+        Ok(Ok(None)) => {
+            // Out-of-scope OR nonexistent — the ledger records the deny;
+            // the wire cannot tell the two apart (S1-3).
+            if let Err(err) = store.audit_v1(
+                "v1_document",
+                &principal,
+                &target,
+                "not_found",
+                &context.0,
+                None,
+                None,
+            ) {
+                eprintln!("v1 audit failed: {err:#}");
+                return v1_internal();
+            }
+            doc_not_found()
+        }
+        Ok(Err(err)) => {
+            eprintln!("v1 document lookup failed: {err:#}");
+            v1_internal()
+        }
+        Err(join_error) => {
+            eprintln!("v1 document task failed: {join_error}");
+            v1_internal()
+        }
+    }
+}
+
+/// POST /v1/retrieve — the core: governed retrieval scoped AT QUERY
+/// CONSTRUCTION to the resolved principal's compiled allowlist (EB-5). An
+/// out-of-scope document is never a candidate — not as an id, a title, a
+/// snippet, or a score. Empty results are a 200, not an error. The `score`
+/// field carries the 1-based fused rank (1 = best): raw similarity scores
+/// are never serialized (the M2a envelope invariant), and the rank is the
+/// deterministic ordering key a machine actually needs.
+async fn handle_v1_retrieve(
+    State(state): State<Arc<AppState>>,
+    DemoPrincipal(principal): DemoPrincipal,
+    axum::extract::Extension(context): axum::extract::Extension<V1TokenContext>,
+    request: Request,
+) -> Response {
+    let Some(store) = &state.proposals else {
+        return identity::unauthorized();
+    };
+    let target = "POST /v1/retrieve";
+
+    // Limits first, cheapest first. Violations are ledgered (the ledger is
+    // the audit surface) and answered generically.
+    let body = request.into_body();
+    let bytes = match axum::body::to_bytes(body, V1_BODY_MAX_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            audit_v1_deny(
+                &state,
+                "v1_retrieve",
+                target,
+                "payload_oversize",
+                &context.0,
+            );
+            return v1_payload_too_large();
+        }
+    };
+    let parsed: V1RetrieveRequest = match serde_json::from_slice(&bytes) {
+        Ok(parsed) => parsed,
+        Err(_) => {
+            audit_v1_deny(&state, "v1_retrieve", target, "bad_request", &context.0);
+            return v1_bad_request();
+        }
+    };
+    let query_chars = parsed.query.chars().count();
+    if query_chars == 0 || query_chars > V1_QUERY_MAX_CHARS {
+        if let Err(err) = store.audit_v1(
+            "v1_retrieve",
+            &principal,
+            target,
+            "query_out_of_range",
+            &context.0,
+            Some(&v1_capped_query(&parsed.query)),
+            None,
+        ) {
+            eprintln!("v1 audit failed: {err:#}");
+        }
+        return v1_bad_request();
+    }
+    let top_k = match parsed.top_k {
+        None => V1_TOP_K_DEFAULT,
+        Some(k) if (1..=V1_TOP_K_MAX as u64).contains(&k) => k as usize,
+        Some(_) => {
+            if let Err(err) = store.audit_v1(
+                "v1_retrieve",
+                &principal,
+                target,
+                "top_k_out_of_range",
+                &context.0,
+                Some(&v1_capped_query(&parsed.query)),
+                None,
+            ) {
+                eprintln!("v1 audit failed: {err:#}");
+            }
+            return v1_bad_request();
+        }
+    };
+
+    // Unknown principal: the empty result — deny by default, identical in
+    // shape to a principal granted nothing (the house rule, unchanged).
+    let candidates: Vec<serde_json::Value> = if !state.identity.is_known(&principal) {
+        Vec::new()
+    } else {
+        let blocking_state = state.clone();
+        let blocking_principal = principal.clone();
+        let blocking_query = parsed.query.clone();
+        let searched = tokio::task::spawn_blocking(move || {
+            let scope = retrieval::search::PrincipalScope::load(
+                &blocking_state.artifacts_dir,
+                &blocking_principal,
+            )
+            .context("loading the principal's compiled allowlist")?;
+            let options = retrieval::search::SearchOptions {
+                k: top_k,
+                include_superseded: false,
+                hybrid: None,
+                judge: None,
+            };
+            let (envelope, _trace) = blocking_state
+                .engine
+                .search(&scope, &blocking_query, &options)
+                .context("governed retrieval failed")?;
+            let mut out = Vec::with_capacity(envelope.results.len());
+            for result in &envelope.results {
+                let meta = blocking_state
+                    .docs
+                    .get(&result.document_id)
+                    .context("result id missing from the verified corpus")?;
+                out.push(serde_json::json!({
+                    "doc_id": result.document_id,
+                    "title": meta.title,
+                    "snippet": retrieval::vector::snippet_of(&meta.body, answer::CONTEXT_SNIPPET_CHARS),
+                    "score": result.score_rank,
+                }));
+            }
+            anyhow::Ok(out)
+        })
+        .await;
+        match searched {
+            Ok(Ok(candidates)) => candidates,
+            Ok(Err(err)) => {
+                eprintln!("v1 retrieve failed: {err:#}");
+                return v1_internal();
+            }
+            Err(join_error) => {
+                eprintln!("v1 retrieve task failed: {join_error}");
+                return v1_internal();
+            }
+        }
+    };
+
+    // The allow row — query verbatim (capped) + the candidate ids — lands
+    // BEFORE the response reaches the wire.
+    let candidate_ids: Vec<String> = candidates
+        .iter()
+        .filter_map(|c| c["doc_id"].as_str().map(str::to_string))
+        .collect();
+    if let Err(err) = store.audit_v1(
+        "v1_retrieve",
+        &principal,
+        target,
+        "authorized",
+        &context.0,
+        Some(&v1_capped_query(&parsed.query)),
+        Some(&candidate_ids),
+    ) {
+        eprintln!("v1 audit failed: {err:#}");
+        return v1_internal();
+    }
+    let body = serde_json::json!({ "principal": principal, "candidates": candidates });
+    match retrieval::index::canonical_json_bytes(&body) {
+        Ok(bytes) => json_bytes_response(StatusCode::OK, bytes),
+        Err(err) => {
+            eprintln!("v1 retrieve serialization failed: {err:#}");
+            v1_internal()
+        }
+    }
 }
 
 /// GET /lens/{subject_id} — the Lens room body (AP-2). The actor is the
@@ -1500,6 +1816,14 @@ async fn require_session(
     mut request: Request,
     next: Next,
 ) -> Response {
+    // S1-1: the /v1 machine surface is gated BEFORE everything — before the
+    // OPTIONS pass-through (no preflight leniency on a non-browser surface),
+    // before HEAD folding (the machine surface is strict-method), before
+    // route classification (auth first, routing second: an unauthenticated
+    // probe cannot map the namespace).
+    if cors::is_v1_path(request.uri().path()) {
+        return v1_gate(state, request, next).await;
+    }
     if request.method() == Method::OPTIONS {
         return next.run(request).await;
     }
@@ -1512,51 +1836,116 @@ async fn require_session(
     match routes::classify(&method, &path) {
         None => identity::route_denied(),
         Some(routes::RouteClass::Public) => next.run(request).await,
+        // Defensive: /v1 routes never reach here (the prefix gate above
+        // runs first), but a classification exists for AUTH-4's registry
+        // and any future wiring drift still lands in the same gate.
+        Some(routes::RouteClass::AgentTokenRequired(_scope)) => v1_gate(state, request, next).await,
         Some(routes::RouteClass::SessionRequired(_scope)) => {
-            // S0: a JWT-SHAPED bearer credential (dotted — opaque session
-            // tokens are 64 hex chars by construction and can never contain
-            // a dot) selects the agent-token bridge EXCLUSIVELY. A failed
-            // bridge credential never falls back to session semantics, and
-            // a session credential never reaches the bridge (S0-5).
-            if let Some(credential) = bearer_token(request.headers()) {
-                if credential.contains('.') {
-                    return agent_token_request(state, credential, request, next).await;
-                }
-            }
-            match session_principal(request.headers(), &state) {
+            // S1-1 (console side): sessions ONLY. A JWT-shaped bearer
+            // (dotted — opaque session tokens are 64 hex chars and can
+            // never contain a dot) is NEVER consulted here: with a valid
+            // session cookie the session authenticates the request and the
+            // bridge is not involved; without one, the request is denied
+            // generically. No credential class crosses surfaces, no
+            // fallback in either direction.
+            match console_session_principal(request.headers(), &state) {
                 Some(principal) => {
                     request.extensions_mut().insert(SessionPrincipal(principal));
                     next.run(request).await
                 }
-                None => identity::unauthorized(),
+                None => {
+                    if bearer_token(request.headers())
+                        .is_some_and(|credential| credential.contains('.'))
+                    {
+                        // A machine credential knocking on the human door —
+                        // ledgered as a monitoring signal (EB-7), denied
+                        // generically, never validated (its claims are not
+                        // parsed, so nothing about it is trusted or echoed).
+                        let target = format!("{} {}", request.method(), request.uri().path());
+                        audit_token_deny_reason(
+                            &state,
+                            &target,
+                            "jwt_on_console_surface",
+                            &Default::default(),
+                        );
+                    }
+                    identity::unauthorized()
+                }
             }
         }
     }
 }
 
-/// S0: one bearer-token request through the bridge. The ladder runs inside
-/// `spawn_blocking` (CPU-bound crypto plus a possible JWKS refresh); EVERY
-/// token-path decision — allow AND deny — is written to the audit ledger
-/// BEFORE its effect, and an allow that cannot be recorded is DENIED
-/// (EB-4 × EB-6). On success the resolved principal enters the SAME
-/// request-extension seam the session path fills, so every downstream
-/// scope / oracle / audit behaviour is identical to a session-authenticated
-/// caller (S0-1, S0-5). The token layer resolved identity; it decided no
-/// resource.
-async fn agent_token_request(
-    state: Arc<AppState>,
-    token: String,
-    mut request: Request,
-    next: Next,
-) -> Response {
+/// S1: the claims attribution a resolved `/v1` request carries into its
+/// handler, so the handler's ledger row is fully attributed. Inserted into
+/// request extensions by [`v1_gate`] alongside the [`SessionPrincipal`].
+#[derive(Clone)]
+pub struct V1TokenContext(pub agent::proposals::TokenAuditFields);
+
+/// The `/v1` audit action for a (method, path) — the ledger names the
+/// surface even when the request never routes (auth denies, unknown
+/// routes). Strict-method: HEAD is not folded into GET here.
+fn v1_action_for(method: &Method, path: &str) -> &'static str {
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    match (method.as_str(), segments.as_slice()) {
+        ("POST", ["v1", "retrieve"]) => "v1_retrieve",
+        ("GET", ["v1", "documents", _id]) => "v1_document",
+        ("GET", ["v1", "whoami"]) => "v1_whoami",
+        _ => "v1_unknown_route",
+    }
+}
+
+/// S1: the `/v1` gate — the machine surface's authentication ladder, run
+/// BEFORE routing (an unauthenticated caller cannot distinguish a real
+/// `/v1` route from a fictional one). JWT-shaped bearers ONLY: cookies are
+/// never read, session-shaped bearers are refused, and no deny reason
+/// reaches the wire (S1-6 — the ledger holds the reason). A surface that
+/// cannot ledger does not serve (EB-6: the whole namespace requires the
+/// audit store).
+async fn v1_gate(state: Arc<AppState>, mut request: Request, next: Next) -> Response {
     let target = format!("{} {}", request.method(), request.uri().path());
+    let action = v1_action_for(request.method(), request.uri().path());
+
+    // EB-6 precondition: no ledger, no surface. (Unledgerable itself —
+    // stderr is the operational signal; the deny still stands.)
+    if state.proposals.is_none() {
+        eprintln!("v1 refused: no audit ledger wired (EB-6)");
+        return identity::unauthorized();
+    }
+
+    // Credential class: exactly one acceptable shape — a dotted bearer.
+    let token = match bearer_token(request.headers()) {
+        None => {
+            audit_v1_deny(
+                &state,
+                action,
+                &target,
+                "credential_missing",
+                &Default::default(),
+            );
+            return identity::unauthorized();
+        }
+        Some(credential) if !credential.contains('.') => {
+            // A session credential on the machine surface: refused, never
+            // consulted against the session store (S1-1 — no crossing).
+            audit_v1_deny(
+                &state,
+                action,
+                &target,
+                "session_credential_on_v1",
+                &Default::default(),
+            );
+            return identity::unauthorized();
+        }
+        Some(jwt) => jwt,
+    };
+
     let Some(bridge) = state.agent_bridge.clone() else {
-        // S0-4 — the default posture: the bridge does not exist; a JWT
-        // bearer is denied `bridge_disabled` and nothing else changes.
-        audit_token_deny(
+        audit_v1_deny(
             &state,
+            action,
             &target,
-            agent_bridge::DenyReason::BridgeDisabled,
+            agent_bridge::DenyReason::BridgeDisabled.as_str(),
             &Default::default(),
         );
         return identity::unauthorized();
@@ -1565,11 +1954,12 @@ async fn agent_token_request(
     let outcome = match outcome {
         Ok(outcome) => outcome,
         Err(join_error) => {
-            eprintln!("agent token task failed: {join_error}");
-            audit_token_deny(
+            eprintln!("v1 token task failed: {join_error}");
+            audit_v1_deny(
                 &state,
+                action,
                 &target,
-                agent_bridge::DenyReason::BridgeUnavailable,
+                agent_bridge::DenyReason::BridgeUnavailable.as_str(),
                 &Default::default(),
             );
             return identity::unauthorized();
@@ -1577,42 +1967,72 @@ async fn agent_token_request(
     };
     match outcome {
         agent_bridge::BridgeOutcome::Denied { reason, claims } => {
-            // The WIRE carries the one generic 401 — which ladder row
-            // denied (and every claim we extracted) lives in the ledger
-            // ONLY. A caller probing the ladder learns nothing.
-            audit_token_deny(&state, &target, reason, &token_audit_fields(claims.as_deref()));
+            // Which ladder row denied is a ledger fact, not a wire fact.
+            audit_v1_deny(
+                &state,
+                action,
+                &target,
+                reason.as_str(),
+                &token_audit_fields(claims.as_deref()),
+            );
             identity::unauthorized()
         }
         agent_bridge::BridgeOutcome::Resolved { principal, claims } => {
             let fields = token_audit_fields(Some(&claims));
-            // EB-6: no ledger, no allow. The audit row lands BEFORE the
-            // request proceeds; an unrecordable allow is a deny.
-            let Some(store) = &state.proposals else {
-                eprintln!("agent token allow refused: no audit ledger wired (EB-6)");
-                return identity::unauthorized();
-            };
-            if let Err(err) = store.audit_agent_token(&principal, &target, "authorized", &fields)
-            {
-                eprintln!("agent token audit failed: {err:#}");
-                return identity::unauthorized();
+            // Routing SECOND: only a resolved agent learns whether a /v1
+            // route exists. Unknown -> the same 404 unknown paths get.
+            if action == "v1_unknown_route" {
+                if let Some(store) = &state.proposals {
+                    if let Err(err) = store.audit_v1(
+                        action,
+                        &principal,
+                        &target,
+                        "unknown_route",
+                        &fields,
+                        None,
+                        None,
+                    ) {
+                        eprintln!("v1 audit failed: {err:#}");
+                        return identity::unauthorized();
+                    }
+                }
+                return identity::route_denied();
             }
+            // Known route: the handler owns the (allow / not-found) row —
+            // it knows the decision and, for retrieve, the candidates.
             request.extensions_mut().insert(SessionPrincipal(principal));
+            request.extensions_mut().insert(V1TokenContext(fields));
             next.run(request).await
         }
     }
 }
 
-/// Deny-side ledger write. The deny stands whether or not it could be
-/// recorded — a missing ledger never turns a deny into anything else; a
-/// write failure is an stderr signal (the EB-7 channel stays the ledger).
-fn audit_token_deny(
+/// `/v1` deny-side ledger write: the deny stands whether or not it could be
+/// recorded; a write failure is an stderr signal.
+fn audit_v1_deny(
     state: &AppState,
+    action: &str,
     target: &str,
-    reason: agent_bridge::DenyReason,
+    reason: &str,
     fields: &agent::proposals::TokenAuditFields,
 ) {
     if let Some(store) = &state.proposals {
-        if let Err(err) = store.audit_agent_token("unresolved", target, reason.as_str(), fields) {
+        if let Err(err) = store.audit_v1(action, "unresolved", target, reason, fields, None, None) {
+            eprintln!("v1 audit failed: {err:#}");
+        }
+    }
+}
+
+/// Console-side ledger write for a refused machine credential — the reason
+/// is a ledger-only string; the wire said only the generic 401.
+fn audit_token_deny_reason(
+    state: &AppState,
+    target: &str,
+    reason: &str,
+    fields: &agent::proposals::TokenAuditFields,
+) {
+    if let Some(store) = &state.proposals {
+        if let Err(err) = store.audit_agent_token("unresolved", target, reason, fields) {
             eprintln!("agent token audit failed: {err:#}");
         }
     }
@@ -1636,10 +2056,16 @@ fn token_audit_fields(
     }
 }
 
-/// Resolve the principal from the request's bearer token or session cookie via
-/// the authoritative store. Fail-closed: no token / unknown / expired -> None.
-fn session_principal(headers: &HeaderMap, state: &AppState) -> Option<String> {
-    let token = bearer_token(headers).or_else(|| cookie_token(headers))?;
+/// Resolve the principal from the request's SESSION credentials via the
+/// authoritative store: a dotless bearer token or the session cookie.
+/// Fail-closed: no token / unknown / expired -> None. A dotted (JWT-shaped)
+/// bearer is NOT a session credential and is never consulted here — with a
+/// valid cookie alongside, the cookie authenticates (S1-1: the machine
+/// credential plays no part on the human surface).
+fn console_session_principal(headers: &HeaderMap, state: &AppState) -> Option<String> {
+    let token = bearer_token(headers)
+        .filter(|credential| !credential.contains('.'))
+        .or_else(|| cookie_token(headers))?;
     state.sessions.resolve(&token)
 }
 
