@@ -19,6 +19,7 @@ pub mod atlas;
 pub mod cache;
 pub mod cors;
 pub mod diff;
+pub mod estate;
 pub mod export;
 pub mod generate;
 pub mod graph;
@@ -235,6 +236,11 @@ pub struct AppState {
     /// `bridge_disabled` and nothing else changes behaviour. Built only
     /// from an explicitly-enabled `agent_bridge` config section.
     pub agent_bridge: Option<Arc<agent_bridge::Bridge>>,
+    /// S3: the multi-source estate — the second source + its authority
+    /// model. `None` = a single-source world (the primary corpus alone),
+    /// exactly the pre-S3 behaviour. Loaded from `fixtures/estate` when
+    /// present; the estate agents and `s3/...` ids exist only when it does.
+    pub estate: Option<Arc<estate::EstateModel>>,
 }
 
 impl AppState {
@@ -395,7 +401,25 @@ impl AppState {
             demo_identity_mode: true,
             login_rate: Arc::new(ratelimit::RateLimiter::default_login()),
             agent_bridge: None,
+            estate: None,
         })
+    }
+
+    /// S3: load the multi-source estate from `fixtures/estate` (the second
+    /// source + `s3-access.json` authority + pinned content hash). Absent
+    /// the directory, the world stays single-source (pre-S3 behaviour).
+    pub fn with_estate_from(mut self, estate_dir: &Path) -> Result<AppState> {
+        if estate_dir.join("s3-access.json").exists() {
+            let model = estate::EstateModel::load(estate_dir)?;
+            self.estate = Some(Arc::new(model));
+        }
+        Ok(self)
+    }
+
+    /// S3: attach an already-built estate model (tests).
+    pub fn with_estate(mut self, model: Arc<estate::EstateModel>) -> AppState {
+        self.estate = Some(model);
+        self
     }
 
     /// AUTH-4 (D1): set the `/auth/login` rate limit (max attempts per window
@@ -546,6 +570,11 @@ pub struct ServiceConfig {
     /// no longer depends on the M4 `--agents-config` flag to have a ledger.
     #[serde(default)]
     pub ledger: Option<LedgerConfig>,
+    /// S3: the multi-source estate directory (holding `s3-access.json` +
+    /// `s3-store/`). Absent = single-source. `None` keeps every existing
+    /// deployment single-source until the estate is deliberately wired.
+    #[serde(default)]
+    pub estate_dir: Option<PathBuf>,
 }
 
 /// S2b: where the decision ledger lives. Same store type, same file
@@ -605,6 +634,10 @@ impl ServiceConfig {
             let store = agent::proposals::ProposalStore::open(&ledger.dir)
                 .with_context(|| format!("config.ledger.dir {}", ledger.dir.display()))?;
             state = state.with_proposals(Arc::new(store));
+        }
+        // S3: the multi-source estate, when the config names its directory.
+        if let Some(estate_dir) = &self.estate_dir {
+            state = state.with_estate_from(estate_dir)?;
         }
         Ok(state)
     }
@@ -705,7 +738,9 @@ pub fn app(state: Arc<AppState>) -> Router {
         // S1: the /v1 machine surface (agent tokens only; gated in
         // require_session BEFORE routing — see v1_gate).
         .route("/v1/retrieve", post(handle_v1_retrieve))
-        .route("/v1/documents/{id}", get(handle_v1_document))
+        // Catch-all `{*id}`: second-source ids are path-like
+        // (`s3/<bucket>/<key>`), so the id spans multiple segments.
+        .route("/v1/documents/{*id}", get(handle_v1_document))
         .route("/v1/whoami", get(handle_v1_whoami))
         // Inner: every route except /healthz and /auth/login requires a valid
         // server session; the principal is resolved from it (FC-A1).
@@ -906,6 +941,7 @@ async fn handle_v1_whoami(
         None,
         None,
         None,
+        None,
     ) {
         eprintln!("v1 audit failed: {err:#}");
         return v1_internal();
@@ -956,104 +992,223 @@ async fn handle_v1_document(
     let blocking_state = state.clone();
     let blocking_principal = principal.clone();
     let blocking_doc = doc_id.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        answer::doc_card(&blocking_state, &blocking_principal, &blocking_doc)
+    // Resolution runs off the async runtime: it may touch the compiled
+    // artifacts (primary path). The estate paths are pure in-memory reads.
+    let resolved = tokio::task::spawn_blocking(move || {
+        resolve_v1_document(&blocking_state, &blocking_principal, &blocking_doc)
     })
     .await;
-    match result {
-        Ok(Ok(Some(card))) => {
-            let Some(meta) = state.docs.get(&doc_id) else {
-                // doc_card just proved the id exists in the verified
-                // corpus; its absence here is state corruption.
-                eprintln!("v1 document: {doc_id} authorized but absent from the corpus");
-                return v1_internal();
-            };
-            if meta.body.len() > V1_CONTENT_MAX_BYTES {
-                // Fail LOUD: ledgered, generic 500, never truncated,
-                // never 404.
-                if let Err(err) = store.audit_v1(
-                    "v1_document",
-                    &principal,
-                    &target,
-                    "body_exceeds_cap",
-                    &context.0,
-                    None,
-                    None,
-                    None,
-                ) {
-                    eprintln!("v1 audit failed: {err:#}");
-                }
-                return v1_internal();
-            }
-            let body = serde_json::json!({
-                "doc_id": card.document_id,
-                "title": card.title,
-                "snippet": card.snippet,
-                "content": meta.body,
-                "metadata": v1_document_metadata(&card),
-            });
-            match retrieval::index::canonical_json_bytes(&body) {
-                Ok(bytes) => {
-                    // The allow is ledgered BEFORE it reaches the wire —
-                    // and records that the FULL payload was served.
-                    if let Err(err) = store.audit_v1(
-                        "v1_document",
-                        &principal,
-                        &target,
-                        "authorized",
-                        &context.0,
-                        None,
-                        None,
-                        Some("full"),
-                    ) {
-                        eprintln!("v1 audit failed: {err:#}");
-                        return v1_internal();
-                    }
-                    json_bytes_response(StatusCode::OK, bytes)
-                }
-                Err(err) => {
-                    eprintln!("v1 document serialization failed: {err:#}");
-                    v1_internal()
-                }
-            }
+    let served = match resolved {
+        Ok(Ok(served)) => served,
+        Ok(Err(err)) => {
+            eprintln!("v1 document lookup failed: {err:#}");
+            return v1_internal();
         }
-        Ok(Ok(None)) => {
-            // Out-of-scope OR nonexistent — the ledger records the deny;
-            // the wire cannot tell the two apart (S1-3).
+        Err(join_error) => {
+            eprintln!("v1 document task failed: {join_error}");
+            return v1_internal();
+        }
+    };
+    let Some(served) = served else {
+        // Out-of-scope OR nonexistent OR across-the-seam-denied — the
+        // ledger records the deny; the wire cannot tell them apart (S1-3).
+        if let Err(err) = store.audit_v1(
+            "v1_document",
+            &principal,
+            &target,
+            "not_found",
+            &context.0,
+            None,
+            None,
+            None,
+            Some(source_of(&doc_id)),
+        ) {
+            eprintln!("v1 audit failed: {err:#}");
+            return v1_internal();
+        }
+        return doc_not_found();
+    };
+    if served.content.len() > V1_CONTENT_MAX_BYTES {
+        // Fail LOUD: ledgered, generic 500, never truncated, never 404.
+        if let Err(err) = store.audit_v1(
+            "v1_document",
+            &principal,
+            &target,
+            "body_exceeds_cap",
+            &context.0,
+            None,
+            None,
+            None,
+            Some(&served.source),
+        ) {
+            eprintln!("v1 audit failed: {err:#}");
+        }
+        return v1_internal();
+    }
+    let body = serde_json::json!({
+        "doc_id": served.doc_id,
+        "title": served.title,
+        "snippet": served.snippet,
+        "content": served.content,
+        "metadata": served.metadata,
+    });
+    match retrieval::index::canonical_json_bytes(&body) {
+        Ok(bytes) => {
             if let Err(err) = store.audit_v1(
                 "v1_document",
                 &principal,
                 &target,
-                "not_found",
+                "authorized",
                 &context.0,
                 None,
                 None,
-                None,
+                Some("full"),
+                Some(&served.source),
             ) {
                 eprintln!("v1 audit failed: {err:#}");
                 return v1_internal();
             }
-            doc_not_found()
+            json_bytes_response(StatusCode::OK, bytes)
         }
-        Ok(Err(err)) => {
-            eprintln!("v1 document lookup failed: {err:#}");
-            v1_internal()
-        }
-        Err(join_error) => {
-            eprintln!("v1 document task failed: {join_error}");
+        Err(err) => {
+            eprintln!("v1 document serialization failed: {err:#}");
             v1_internal()
         }
     }
 }
 
-/// The `/v1` document metadata sub-object: the card's non-core facts
-/// (sensitivity + supersession), exactly what the console card discloses
-/// beyond id/title/snippet — no more.
+/// S3 conformance seam: the composed `/v1` document authorization decision
+/// for any (principal, doc_id) across the estate — `true` iff the principal
+/// may read the document. This is EXACTLY what `handle_v1_document` gates on
+/// (it wraps the same resolver), so the estate conformance can drive all
+/// 94,500 (principal × document) pairs in-process, at the same authority the
+/// wire enforces.
+pub fn v1_document_authorized(
+    state: &AppState,
+    principal: &str,
+    doc_id: &str,
+) -> anyhow::Result<bool> {
+    Ok(resolve_v1_document(state, principal, doc_id)?.is_some())
+}
+
+/// A resolved, authorized document ready to serve on `/v1`.
+struct ServedDocument {
+    doc_id: String,
+    title: String,
+    snippet: String,
+    content: String,
+    source: String,
+    metadata: serde_json::Value,
+}
+
+/// Which source a doc id names — `s3/...` is the second source, everything
+/// else is primary. (Ids carry the source; the candidate envelope is
+/// unchanged.)
+fn source_of(doc_id: &str) -> &'static str {
+    if doc_id.starts_with("s3/") {
+        "s3"
+    } else {
+        "primary"
+    }
+}
+
+/// The composed authorization + resolution for `GET /v1/documents/{id}`,
+/// across the seam. `None` is THE 404 (denied OR nonexistent — never
+/// distinguished). Three cases:
+///   * an `s3/...` id → the SECOND source, authorized by the estate tier
+///     rule (estate agents only; everyone else denied — the fail-closed
+///     seam default);
+///   * a primary id, estate agent → the FIRST source, authorized by the
+///     SAME tier rule over the primary doc's sensitivity;
+///   * a primary id, any other principal → the existing compiled-allowlist
+///     path (`doc_card`), completely unchanged.
+fn resolve_v1_document(
+    state: &AppState,
+    principal: &str,
+    doc_id: &str,
+) -> anyhow::Result<Option<ServedDocument>> {
+    // Second source.
+    if doc_id.starts_with("s3/") {
+        let Some(estate) = &state.estate else {
+            return Ok(None);
+        };
+        let Some(object) = estate.object(doc_id) else {
+            return Ok(None);
+        };
+        if !estate.can_read(principal, &object.sensitivity) {
+            return Ok(None);
+        }
+        return Ok(Some(ServedDocument {
+            doc_id: object.doc_id.clone(),
+            title: object.title.clone(),
+            snippet: retrieval::vector::snippet_of(&object.body, answer::CONTEXT_SNIPPET_CHARS),
+            content: object.body.clone(),
+            source: "s3".to_string(),
+            metadata: serde_json::json!({
+                "sensitivity": object.sensitivity,
+                "source": "s3",
+                "bucket": object.bucket,
+            }),
+        }));
+    }
+
+    // First source, estate agent: the SAME tier rule over the primary
+    // doc's sensitivity (a distinct authority model from the compiled
+    // allowlist — the estate agents are new principals with tier grants).
+    if let Some(estate) = &state.estate {
+        if estate.is_estate_agent(principal) {
+            let Some(meta) = state.docs.get(doc_id) else {
+                return Ok(None);
+            };
+            if !estate.can_read(principal, &meta.sensitivity) {
+                return Ok(None);
+            }
+            return Ok(Some(ServedDocument {
+                doc_id: doc_id.to_string(),
+                title: meta.title.clone(),
+                snippet: retrieval::vector::snippet_of(&meta.body, answer::CONTEXT_SNIPPET_CHARS),
+                content: meta.body.clone(),
+                source: "primary".to_string(),
+                metadata: serde_json::json!({
+                    "sensitivity": meta.sensitivity,
+                    "source": "primary",
+                }),
+            }));
+        }
+    }
+
+    // First source, existing principal: the compiled-allowlist path,
+    // unchanged. `source: "primary"` is added to the metadata (every
+    // document carries its source), nothing else moves.
+    let Some(card) = answer::doc_card(state, principal, doc_id)? else {
+        return Ok(None);
+    };
+    let Some(meta) = state.docs.get(doc_id) else {
+        anyhow::bail!("{doc_id} authorized but absent from the corpus");
+    };
+    Ok(Some(ServedDocument {
+        doc_id: card.document_id.clone(),
+        title: card.title.clone(),
+        snippet: card.snippet.clone(),
+        content: meta.body.clone(),
+        source: "primary".to_string(),
+        metadata: v1_document_metadata(&card),
+    }))
+}
+
+/// The `/v1` document metadata sub-object for a primary compiled-path
+/// document: the card's non-core facts (sensitivity + supersession) plus
+/// `source: "primary"` — exactly what the console card discloses beyond
+/// id/title/snippet, and the source tag every document carries.
 fn v1_document_metadata(card: &answer::DocCard) -> serde_json::Value {
     let mut metadata = serde_json::Map::new();
     metadata.insert(
         "sensitivity".to_string(),
         serde_json::Value::String(card.sensitivity.clone()),
+    );
+    metadata.insert(
+        "source".to_string(),
+        serde_json::Value::String("primary".to_string()),
     );
     if let Some(superseded) = card.superseded {
         metadata.insert("superseded".to_string(), serde_json::Value::Bool(superseded));
@@ -1121,6 +1276,7 @@ async fn handle_v1_retrieve(
             Some(&v1_capped_query(&parsed.query)),
             None,
             None,
+            None,
         ) {
             eprintln!("v1 audit failed: {err:#}");
         }
@@ -1139,6 +1295,7 @@ async fn handle_v1_retrieve(
                 Some(&v1_capped_query(&parsed.query)),
                 None,
                 None,
+                None,
             ) {
                 eprintln!("v1 audit failed: {err:#}");
             }
@@ -1146,9 +1303,61 @@ async fn handle_v1_retrieve(
         }
     };
 
-    // Unknown principal: the empty result — deny by default, identical in
-    // shape to a principal granted nothing (the house rule, unchanged).
-    let candidates: Vec<serde_json::Value> = if !state.identity.is_known(&principal) {
+    // Candidate resolution, composed across the seam:
+    //   * an estate agent → source-spanning estate retrieval (both sources,
+    //     authorize-first);
+    //   * a known primary principal → the existing compiled retrieval;
+    //   * anyone else → the empty result (deny by default, house rule).
+    let is_estate_agent = state
+        .estate
+        .as_ref()
+        .is_some_and(|e| e.is_estate_agent(&principal));
+    let candidates: Vec<serde_json::Value> = if is_estate_agent {
+        let blocking_state = state.clone();
+        let blocking_principal = principal.clone();
+        let blocking_query = parsed.query.clone();
+        let searched = tokio::task::spawn_blocking(move || {
+            let estate = blocking_state
+                .estate
+                .as_ref()
+                .expect("estate agent implies an estate");
+            // Borrow the primary corpus (no body copies) for the union.
+            let primary: Vec<estate::PrimaryRef> = blocking_state
+                .docs
+                .iter()
+                .map(|(id, meta)| estate::PrimaryRef {
+                    doc_id: id,
+                    title: &meta.title,
+                    body: &meta.body,
+                    sensitivity: &meta.sensitivity,
+                })
+                .collect();
+            estate
+                .retrieve(&blocking_principal, &blocking_query, top_k, &primary)
+                .iter()
+                .enumerate()
+                .map(|(index, candidate)| {
+                    serde_json::json!({
+                        "doc_id": candidate.doc_id,
+                        "title": candidate.title,
+                        "snippet": retrieval::vector::snippet_of(
+                            candidate.body,
+                            answer::CONTEXT_SNIPPET_CHARS,
+                        ),
+                        "rank": index as u32 + 1,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .await;
+        match searched {
+            Ok(candidates) => candidates,
+            Err(join_error) => {
+                eprintln!("v1 estate retrieve task failed: {join_error}");
+                return v1_internal();
+            }
+        }
+    } else if !state.identity.is_known(&principal) {
         Vec::new()
     } else {
         let blocking_state = state.clone();
@@ -1213,6 +1422,7 @@ async fn handle_v1_retrieve(
         &context.0,
         Some(&v1_capped_query(&parsed.query)),
         Some(&candidate_ids),
+        None,
         None,
     ) {
         eprintln!("v1 audit failed: {err:#}");
@@ -1988,7 +2198,8 @@ fn v1_action_for(method: &Method, path: &str) -> &'static str {
     let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     match (method.as_str(), segments.as_slice()) {
         ("POST", ["v1", "retrieve"]) => "v1_retrieve",
-        ("GET", ["v1", "documents", _id]) => "v1_document",
+        // The document id is path-like (may span segments — `s3/<bucket>/…`).
+        ("GET", ["v1", "documents", rest @ ..]) if !rest.is_empty() => "v1_document",
         ("GET", ["v1", "whoami"]) => "v1_whoami",
         _ => "v1_unknown_route",
     }
@@ -2091,6 +2302,7 @@ async fn v1_gate(state: Arc<AppState>, mut request: Request, next: Next) -> Resp
                         None,
                         None,
                         None,
+                        None,
                     ) {
                         eprintln!("v1 audit failed: {err:#}");
                         return identity::unauthorized();
@@ -2118,7 +2330,7 @@ fn audit_v1_deny(
 ) {
     if let Some(store) = &state.proposals {
         if let Err(err) =
-            store.audit_v1(action, "unresolved", target, reason, fields, None, None, None)
+            store.audit_v1(action, "unresolved", target, reason, fields, None, None, None, None)
         {
             eprintln!("v1 audit failed: {err:#}");
         }

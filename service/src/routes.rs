@@ -120,7 +120,9 @@ pub fn classify(method: &Method, path: &str) -> Option<RouteClass> {
 
         // --- S1: the /v1 machine surface (agent tokens ONLY) -----------------
         ("POST", ["v1", "retrieve"]) => at(DocumentScope),
-        ("GET", ["v1", "documents", _id]) => at(DocumentScope),
+        // S3: the document id is path-like and may span segments
+        // (`s3/<bucket>/<key>`), so the catch-all captures the remainder.
+        ("GET", ["v1", "documents", rest @ ..]) if !rest.is_empty() => at(DocumentScope),
         ("GET", ["v1", "whoami"]) => at(SelfOnly),
 
         // --- Session: access requests + grants ledgers -----------------------
@@ -179,7 +181,7 @@ pub const REGISTERED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/proposals/{id}/approve"),
     ("POST", "/proposals/{id}/reject"),
     ("POST", "/v1/retrieve"),
-    ("GET", "/v1/documents/{id}"),
+    ("GET", "/v1/documents/{*id}"),
     ("GET", "/v1/whoami"),
 ];
 
