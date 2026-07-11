@@ -316,87 +316,9 @@ impl EstateModel {
     pub fn estate_agents(&self) -> impl Iterator<Item = &String> {
         self.agent_tier_level.keys()
     }
-
-    /// Source-spanning retrieval for an estate agent (EB-5: authorize
-    /// FIRST, then rank — the candidate set is EXACTLY the agent's
-    /// authorized union across BOTH sources, never a post-filter of a
-    /// wider result). Deterministic lexical rank: query-token overlap
-    /// descending, doc-id ascending on ties.
-    ///
-    /// `primary` supplies the first source's docs as lightweight borrows
-    /// (no body copies); each candidate is checked against the SAME tier
-    /// rule before it can rank.
-    pub fn retrieve<'a>(
-        &'a self,
-        principal: &str,
-        query: &str,
-        top_k: usize,
-        primary: &[PrimaryRef<'a>],
-    ) -> Vec<EstateCandidate<'a>> {
-        if !self.is_estate_agent(principal) {
-            return Vec::new();
-        }
-        let query_tokens: std::collections::BTreeSet<String> =
-            retrieval::index::tokenize(query).into_iter().collect();
-
-        let mut scored: Vec<(usize, EstateCandidate<'a>)> = Vec::new();
-
-        // Source 2: the estate objects this agent may read.
-        for object in self.objects.values() {
-            if !self.can_read(principal, &object.sensitivity) {
-                continue;
-            }
-            let overlap = token_overlap(&object.body, &query_tokens);
-            if overlap == 0 {
-                continue;
-            }
-            scored.push((
-                overlap,
-                EstateCandidate {
-                    doc_id: &object.doc_id,
-                    title: &object.title,
-                    body: &object.body,
-                    source: "s3",
-                },
-            ));
-        }
-
-        // Source 1: primary docs this agent may read by tier.
-        for doc in primary {
-            if !self.can_read(principal, doc.sensitivity) {
-                continue;
-            }
-            let overlap = token_overlap(doc.body, &query_tokens);
-            if overlap == 0 {
-                continue;
-            }
-            scored.push((
-                overlap,
-                EstateCandidate {
-                    doc_id: doc.doc_id,
-                    title: doc.title,
-                    body: doc.body,
-                    source: "primary",
-                },
-            ));
-        }
-
-        // Overlap desc, doc_id asc — deterministic.
-        scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.doc_id.cmp(b.1.doc_id)));
-        scored.truncate(top_k);
-        scored.into_iter().map(|(_, candidate)| candidate).collect()
-    }
 }
 
-/// A primary-corpus document, borrowed for estate retrieval (no copies).
-pub struct PrimaryRef<'a> {
-    pub doc_id: &'a str,
-    pub title: &'a str,
-    pub body: &'a str,
-    pub sensitivity: &'a str,
-}
-
-/// One estate retrieval candidate (borrowed from the model / primary).
+/// One estate retrieval candidate (borrowed from the index).
 pub struct EstateCandidate<'a> {
     pub doc_id: &'a str,
     pub title: &'a str,
@@ -404,10 +326,146 @@ pub struct EstateCandidate<'a> {
     pub source: &'a str,
 }
 
-fn token_overlap(body: &str, query_tokens: &std::collections::BTreeSet<String>) -> usize {
-    let body_tokens: std::collections::BTreeSet<String> =
-        retrieval::index::tokenize(body).into_iter().collect();
-    query_tokens.intersection(&body_tokens).count()
+// ---------------------------------------------------------------------------
+// S5a: the estate retrieval index — kill the O(corpus) cliff
+// ---------------------------------------------------------------------------
+
+/// One indexed document (owned; the index is built once at ingest and read
+/// on the request path). `tokens` is the body's token SET, computed ONCE at
+/// build so query time never re-tokenizes a body.
+struct IndexedDoc {
+    title: String,
+    body: String,
+    sensitivity: String,
+    source: String,
+    tokens: std::collections::BTreeSet<String>,
+}
+
+/// The estate's inverted index, built at INGEST over BOTH sources (primary
+/// docs + second-source objects). Request-time retrieval reads the index
+/// only — it never re-tokenizes a corpus body, never touches disk.
+///
+/// EB-5 IS PRESERVED INSIDE QUERY CONSTRUCTION. The authority predicate is
+/// evaluated DURING candidate formation from the posting lists — the
+/// inverted-index analogue of tantivy's `TermSetQuery` MUST clause: a
+/// document is a candidate iff it matches the query AND the caller is
+/// authorized for it. An out-of-scope document is never admitted to the
+/// candidate set — never scored, never ranked, never returned. This is NOT
+/// a post-filter of a wider result set (which would be an EB-5 violation);
+/// scope is a membership condition on candidacy itself.
+///
+/// The build is deterministic for a given estate (same docs → same
+/// candidacy), so a fixed corpus yields fixed candidate sets. Ranking is a
+/// deterministic query-token-overlap score (overlap desc, doc-id asc).
+pub struct EstateIndex {
+    docs: BTreeMap<String, IndexedDoc>,
+    /// token -> the doc ids whose body contains it (sorted, deduplicated).
+    postings: BTreeMap<String, Vec<String>>,
+    doc_count: usize,
+}
+
+impl EstateIndex {
+    /// Build the index from an iterator of
+    /// `(doc_id, title, body, sensitivity, source)`. Tokenization happens
+    /// exactly once per document, here.
+    pub fn build<I>(entries: I) -> EstateIndex
+    where
+        I: IntoIterator<Item = (String, String, String, String, String)>,
+    {
+        let mut docs = BTreeMap::new();
+        let mut postings: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for (doc_id, title, body, sensitivity, source) in entries {
+            let tokens: std::collections::BTreeSet<String> =
+                retrieval::index::tokenize(&body).into_iter().collect();
+            for token in &tokens {
+                postings
+                    .entry(token.clone())
+                    .or_default()
+                    .push(doc_id.clone());
+            }
+            docs.insert(
+                doc_id,
+                IndexedDoc {
+                    title,
+                    body,
+                    sensitivity,
+                    source,
+                    tokens,
+                },
+            );
+        }
+        // Deterministic, deduplicated posting lists.
+        for ids in postings.values_mut() {
+            ids.sort();
+            ids.dedup();
+        }
+        let doc_count = docs.len();
+        EstateIndex {
+            docs,
+            postings,
+            doc_count,
+        }
+    }
+
+    pub fn doc_count(&self) -> usize {
+        self.doc_count
+    }
+
+    /// Retrieve the top-k candidates matching `query`, for a caller whose
+    /// authorization is the `authorized` predicate (`|sensitivity| -> bool`,
+    /// the estate tier rule). Candidate formation walks ONLY the posting
+    /// lists of the query's tokens (query-selective, not corpus-wide), and
+    /// admits a document iff `authorized(sensitivity)` holds — scope inside
+    /// candidate construction, never a post-filter.
+    pub fn retrieve<'a>(
+        &'a self,
+        query: &str,
+        top_k: usize,
+        authorized: impl Fn(&str) -> bool,
+    ) -> Vec<EstateCandidate<'a>> {
+        let query_tokens: std::collections::BTreeSet<String> =
+            retrieval::index::tokenize(query).into_iter().collect();
+        if query_tokens.is_empty() {
+            return Vec::new();
+        }
+        // The query-selective candidate set: the union of the posting lists
+        // for the query's tokens. A document not containing any query token
+        // is never considered.
+        let mut candidate_ids: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for token in &query_tokens {
+            if let Some(ids) = self.postings.get(token) {
+                for id in ids {
+                    candidate_ids.insert(id.as_str());
+                }
+            }
+        }
+
+        let mut scored: Vec<(usize, EstateCandidate<'a>)> = Vec::new();
+        for doc_id in candidate_ids {
+            let doc = &self.docs[doc_id];
+            // Authority as a MUST clause on candidacy (EB-5): an
+            // unauthorized document is never admitted.
+            if !authorized(&doc.sensitivity) {
+                continue;
+            }
+            let overlap = query_tokens.intersection(&doc.tokens).count();
+            if overlap == 0 {
+                continue;
+            }
+            scored.push((
+                overlap,
+                EstateCandidate {
+                    doc_id,
+                    title: &doc.title,
+                    body: &doc.body,
+                    source: &doc.source,
+                },
+            ));
+        }
+        scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.doc_id.cmp(b.1.doc_id)));
+        scored.truncate(top_k);
+        scored.into_iter().map(|(_, candidate)| candidate).collect()
+    }
 }
 
 /// Run a connector at INGEST TIME, refusing the whole source if any object

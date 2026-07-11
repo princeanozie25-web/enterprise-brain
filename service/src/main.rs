@@ -29,6 +29,10 @@ struct Args {
 }
 
 fn parse_args() -> Result<Args> {
+    parse_args_from(std::env::args().skip(1).collect())
+}
+
+fn parse_args_from(argv: Vec<String>) -> Result<Args> {
     let mut fixtures = None;
     let mut artifacts = None;
     let mut idx = None;
@@ -38,7 +42,7 @@ fn parse_args() -> Result<Args> {
     let mut agents_config = None;
     let mut state_dir = None;
 
-    let mut args = std::env::args().skip(1);
+    let mut args = argv.into_iter();
     while let Some(flag) = args.next() {
         let mut path_value = |name: &str| -> Result<PathBuf> {
             args.next()
@@ -171,8 +175,32 @@ fn verify_ledger_cmd(path: &str) -> ExitCode {
     }
 }
 
+/// S5a: `service doctor [--json]` + the usual launch flags — a read-only
+/// preflight over the deployment. Exits 0 all-green / 1 otherwise. Never
+/// mutates state, never makes a network call.
+fn doctor_cmd(args: &Args, json: bool) -> ExitCode {
+    let inputs = service::doctor::DoctorInputs {
+        fixtures: args.fixtures.clone(),
+        artifacts: args.artifacts.clone(),
+        idx: args.idx.clone(),
+        config: args.config.clone(),
+        state_dir: args.state_dir.clone(),
+    };
+    let report = service::doctor::run(&inputs);
+    if json {
+        println!("{}", report.to_json());
+    } else {
+        print!("{}", report.to_human());
+    }
+    if report.all_ok() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
 fn main() -> ExitCode {
-    // S4: the verify-ledger subcommand runs without the async server.
+    // S4/S5a: subcommands run without the async server.
     let mut raw = std::env::args().skip(1);
     if let Some(first) = raw.next() {
         if first == "verify-ledger" {
@@ -181,6 +209,20 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             };
             return verify_ledger_cmd(&path);
+        }
+        if first == "doctor" {
+            // Remaining args are the usual launch flags (+ optional --json).
+            let rest: Vec<String> = raw.collect();
+            let json = rest.iter().any(|a| a == "--json");
+            let flags: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
+            let args = match parse_args_from(flags) {
+                Ok(args) => args,
+                Err(err) => {
+                    eprintln!("REFUSED: {err:#}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            return doctor_cmd(&args, json);
         }
     }
 
