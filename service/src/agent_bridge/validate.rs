@@ -52,6 +52,27 @@ pub enum DenyReason {
 }
 
 impl DenyReason {
+    /// Every deny reason the bridge can produce — the standing wire test
+    /// sweeps this to prove NO reason string ever reaches an HTTP response
+    /// (reasons are ledger-only). Extend this when extending the enum; the
+    /// sweep inherits the new value automatically.
+    pub const ALL: &'static [DenyReason] = &[
+        DenyReason::TokenMalformed,
+        DenyReason::AlgorithmRejected,
+        DenyReason::SignatureInvalid,
+        DenyReason::IssuerMismatch,
+        DenyReason::AudienceMismatch,
+        DenyReason::TokenExpired,
+        DenyReason::TokenNotYetValid,
+        DenyReason::TenantMismatch,
+        DenyReason::UnsupportedTokenTypeDelegated,
+        DenyReason::UnsupportedTokenTypeAgentUser,
+        DenyReason::AgentFacetsMissing,
+        DenyReason::AgentNotRegistered,
+        DenyReason::BridgeDisabled,
+        DenyReason::BridgeUnavailable,
+    ];
+
     pub fn as_str(&self) -> &'static str {
         match self {
             DenyReason::TokenMalformed => "token_malformed",

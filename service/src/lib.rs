@@ -1553,24 +1553,35 @@ async fn agent_token_request(
     let Some(bridge) = state.agent_bridge.clone() else {
         // S0-4 — the default posture: the bridge does not exist; a JWT
         // bearer is denied `bridge_disabled` and nothing else changes.
-        let reason = agent_bridge::DenyReason::BridgeDisabled;
-        audit_token_deny(&state, &target, reason, &Default::default());
-        return bridge_denied(reason);
+        audit_token_deny(
+            &state,
+            &target,
+            agent_bridge::DenyReason::BridgeDisabled,
+            &Default::default(),
+        );
+        return identity::unauthorized();
     };
     let outcome = tokio::task::spawn_blocking(move || bridge.authenticate(&token)).await;
     let outcome = match outcome {
         Ok(outcome) => outcome,
         Err(join_error) => {
             eprintln!("agent token task failed: {join_error}");
-            let reason = agent_bridge::DenyReason::BridgeUnavailable;
-            audit_token_deny(&state, &target, reason, &Default::default());
-            return bridge_denied(reason);
+            audit_token_deny(
+                &state,
+                &target,
+                agent_bridge::DenyReason::BridgeUnavailable,
+                &Default::default(),
+            );
+            return identity::unauthorized();
         }
     };
     match outcome {
         agent_bridge::BridgeOutcome::Denied { reason, claims } => {
+            // The WIRE carries the one generic 401 — which ladder row
+            // denied (and every claim we extracted) lives in the ledger
+            // ONLY. A caller probing the ladder learns nothing.
             audit_token_deny(&state, &target, reason, &token_audit_fields(claims.as_deref()));
-            bridge_denied(reason)
+            identity::unauthorized()
         }
         agent_bridge::BridgeOutcome::Resolved { principal, claims } => {
             let fields = token_audit_fields(Some(&claims));
@@ -1578,12 +1589,12 @@ async fn agent_token_request(
             // request proceeds; an unrecordable allow is a deny.
             let Some(store) = &state.proposals else {
                 eprintln!("agent token allow refused: no audit ledger wired (EB-6)");
-                return bridge_denied(agent_bridge::DenyReason::BridgeUnavailable);
+                return identity::unauthorized();
             };
             if let Err(err) = store.audit_agent_token(&principal, &target, "authorized", &fields)
             {
                 eprintln!("agent token audit failed: {err:#}");
-                return bridge_denied(agent_bridge::DenyReason::BridgeUnavailable);
+                return identity::unauthorized();
             }
             request.extensions_mut().insert(SessionPrincipal(principal));
             next.run(request).await
@@ -1623,19 +1634,6 @@ fn token_audit_fields(
         aud: claims.aud.first().cloned(),
         uti: claims.uti.clone(),
     }
-}
-
-/// S0: the bridge deny — 401, house error shape, the DISTINCT ladder reason
-/// code as the error string.
-fn bridge_denied(reason: agent_bridge::DenyReason) -> Response {
-    json_bytes_response(
-        StatusCode::UNAUTHORIZED,
-        format!(
-            "{{\"demo_identity_mode\":true,\"error\":\"{}\"}}\n",
-            reason.as_str()
-        )
-        .into_bytes(),
-    )
 }
 
 /// Resolve the principal from the request's bearer token or session cookie via
