@@ -50,11 +50,23 @@ pub enum RouteClass {
     Public,
     /// A valid session is required; the named scope is what it stands behind.
     SessionRequired(ScopeKind),
+    /// S1: the machine surface — a valid AGENT TOKEN (JWT bearer) is
+    /// required; sessions are refused. The named scope is what the handler
+    /// stands behind. `/v1` requests authenticate BEFORE routing (AUTH-4
+    /// discipline extended: an unauthenticated probe cannot map the
+    /// namespace), so this classification is consulted only after the
+    /// token resolves.
+    AgentTokenRequired(ScopeKind),
 }
 
 #[inline]
 fn sr(scope: ScopeKind) -> Option<RouteClass> {
     Some(RouteClass::SessionRequired(scope))
+}
+
+#[inline]
+fn at(scope: ScopeKind) -> Option<RouteClass> {
+    Some(RouteClass::AgentTokenRequired(scope))
 }
 
 /// Classify a request route. `Some(class)` is the explicit classification;
@@ -105,6 +117,11 @@ pub fn classify(method: &Method, path: &str) -> Option<RouteClass> {
         ("GET", ["proposals"]) => sr(LedgerScoped),
         ("POST", ["proposals", _id, "approve"]) => sr(OwnerGated),
         ("POST", ["proposals", _id, "reject"]) => sr(OwnerGated),
+
+        // --- S1: the /v1 machine surface (agent tokens ONLY) -----------------
+        ("POST", ["v1", "retrieve"]) => at(DocumentScope),
+        ("GET", ["v1", "documents", _id]) => at(DocumentScope),
+        ("GET", ["v1", "whoami"]) => at(SelfOnly),
 
         // --- Session: access requests + grants ledgers -----------------------
         // `/access-requests/inbox` precedes nothing ambiguous (2-seg literal).
@@ -161,6 +178,9 @@ pub const REGISTERED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/proposals"),
     ("POST", "/proposals/{id}/approve"),
     ("POST", "/proposals/{id}/reject"),
+    ("POST", "/v1/retrieve"),
+    ("GET", "/v1/documents/{id}"),
+    ("GET", "/v1/whoami"),
 ];
 
 #[cfg(test)]

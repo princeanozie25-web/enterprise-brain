@@ -1,9 +1,14 @@
-//! S0 governance over the live router: the bridge is OFF by default and
-//! structurally inert (S0-4); enabled, it resolves a registered agent into
-//! the EXISTING principal seam and audits EVERY token-path decision before
-//! its effect (EB-6/EB-7); the session and bearer paths never fall back to
-//! each other in either direction (S0-5); an allow that cannot be recorded
-//! is a deny (EB-4 × EB-6); the raw token is never at rest in the ledger.
+//! S1 governance over the live router: the bridge's ONE surface is `/v1`.
+//! Console routes are session-only — a machine credential on the human door
+//! is refused generically and never consulted (S1-1); the bridge resolves a
+//! registered agent into the EXISTING principal seam on `/v1` and every
+//! token-path decision is ledgered before its effect (EB-6/EB-7); an
+//! unledgerable surface does not serve (EB-4 × EB-6); the wire carries no
+//! deny reasons anywhere (S1-6); the raw token is never at rest.
+//!
+//! (S0 history: these properties were first proven through the console
+//! `/doc` route; the S1 surface split migrated every JWT-authenticated
+//! assertion to `/v1` — the migration table lives in the S1 closeout.)
 
 mod common;
 
@@ -95,13 +100,13 @@ fn oracle_docs_for(principal: &str) -> (String, String) {
     (allow.expect("an allowed doc"), deny.expect("a denied doc"))
 }
 
-async fn get_doc(router: &axum::Router, doc: &str, bearer: &str) -> (StatusCode, Value) {
+async fn get_with_bearer(router: &axum::Router, uri: &str, bearer: &str) -> (StatusCode, Value) {
     let response = router
         .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/doc/{doc}"))
+                .uri(uri)
                 .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
                 .body(Body::empty())
                 .expect("request"),
@@ -116,140 +121,96 @@ async fn get_doc(router: &axum::Router, doc: &str, bearer: &str) -> (StatusCode,
     (status, value)
 }
 
-// S0-4: the DEFAULT world has no bridge. A JWT-shaped bearer is denied —
-// GENERICALLY, indistinguishable on the wire from any other 401 (the
-// `bridge_disabled` reason exists in the ledger only); opaque bearers and
-// sessions behave exactly as before.
-#[tokio::test]
-async fn disabled_by_default_denies_jwt_bearers_and_nothing_else_changes() {
-    // A ledger is present so the deny REASON is provable where it lives.
-    let dir = scratch("bridge-governance-disabled");
-    let store = Arc::new(ProposalStore::open(&dir.join("state")).expect("store"));
-    let router = app(Arc::new(base_state().with_proposals(store)));
-
-    // A perfectly valid agent token: denied, not validated — and the wire
-    // says only what every other 401 says.
-    let token = TokenSpec::autonomous(FINANCE_OID).sign();
-    let (status, body) = get_doc(&router, "d0001", &token).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(body["error"], "authentication required");
-
-    // A dotless garbage bearer stays on the SESSION path — the same 401 it
-    // always produced (no behaviour change for non-JWT credentials).
-    let (status, body) = get_doc(&router, "d0001", "not-a-session").await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(body["error"], "authentication required");
-
-    // The session flow itself is untouched: login -> authorized read.
-    let session = common::login_as(&router, "p060").await;
-    let (status, _) = get_doc(&router, "d0001", &session).await;
-    assert_ne!(
-        status,
-        StatusCode::UNAUTHORIZED,
-        "session-authenticated requests are untouched by the bridge's existence"
-    );
-
-    // The REASON lives in the ledger, and only there.
-    let audit_text = fs::read_to_string(dir.join("state").join("audit.jsonl")).expect("ledger");
-    assert!(
-        audit_text.contains("\"outcome\":\"bridge_disabled\""),
-        "the disabled-bridge deny is a ledgered monitoring signal"
-    );
-}
-
-// The enabled world: a registered agent resolves into the EXISTING seam,
-// scope decides exactly as the oracle says, and every decision lands in the
-// ledger BEFORE its effect — claims only, never the token.
-#[tokio::test]
-async fn enabled_bridge_resolves_scopes_and_audits_every_decision() {
-    let dir = scratch("bridge-governance-enabled");
-    let store = Arc::new(ProposalStore::open(&dir.join("state")).expect("store"));
-    let state = base_state()
-        .with_proposals(store.clone())
-        .with_agent_bridge(bridge_for(&dir));
-    let router = app(Arc::new(state));
-
-    let (allowed_doc, denied_doc) = oracle_docs_for("agent_finance_analyst");
-    let token = TokenSpec::autonomous(FINANCE_OID).sign();
-
-    // Row 11 (the untouched engine): oracle-ALLOW doc serves; oracle-DENY
-    // doc gets THE one 404, indistinguishable from nonexistence.
-    let (status, body) = get_doc(&router, &allowed_doc, &token).await;
-    assert_eq!(status, StatusCode::OK, "oracle-allowed doc serves: {body}");
-    let (status, body) = get_doc(&router, &denied_doc, &token).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    assert_eq!(body["error"], "not found");
-
-    // A deny-path decision for the ledger: an expired token. The wire says
-    // only the generic 401 — the reason is ledger-only.
-    let expired = TokenSpec::autonomous(FINANCE_OID)
-        .with("exp", json!(jwt::now_unix() - 300))
-        .sign();
-    let (status, body) = get_doc(&router, &allowed_doc, &expired).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(body["error"], "authentication required");
-
-    // The ledger: allow AND deny rows, written with claim attribution.
-    let audit_text = fs::read_to_string(dir.join("state").join("audit.jsonl")).expect("ledger");
-    let rows: Vec<Value> = audit_text
-        .lines()
+fn audit_rows(dir: &Path) -> Vec<Value> {
+    let text = fs::read_to_string(dir.join("state").join("audit.jsonl")).expect("ledger");
+    text.lines()
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(l).expect("audit row"))
-        .collect();
-    let authorized: Vec<&Value> = rows
-        .iter()
-        .filter(|r| r["action"] == "agent_token" && r["outcome"] == "authorized")
-        .collect();
-    assert_eq!(authorized.len(), 2, "both decided requests were recorded");
-    let first = authorized[0];
-    assert_eq!(first["actor_principal"], "agent_finance_analyst");
-    assert_eq!(first["target"], format!("GET /doc/{allowed_doc}"));
-    assert_eq!(first["token_oid"], FINANCE_OID);
-    assert_eq!(first["token_azp"], TEST_APP_ID);
-    assert_eq!(
-        first["token_parent_azp"], TEST_PARENT_APP,
-        "the parent app id is logged (and ONLY logged)"
-    );
-    assert_eq!(first["token_aud"], TEST_AUDIENCE);
-    assert!(first["token_uti"].as_str().is_some());
-    let denied: Vec<&Value> = rows
-        .iter()
-        .filter(|r| r["action"] == "agent_token" && r["outcome"] == "token_expired")
-        .collect();
-    assert_eq!(denied.len(), 1, "the deny is a recorded monitoring signal");
-    assert_eq!(denied[0]["actor_principal"], "unresolved");
-
-    // The raw token (and its signature) is NEVER at rest in the ledger.
-    assert!(
-        !audit_text.contains(&token) && !audit_text.contains(&expired),
-        "raw tokens must never be logged"
-    );
-    let signature = token.rsplit('.').next().expect("jws has a signature");
-    assert!(
-        !audit_text.contains(signature),
-        "token signatures must never be logged"
-    );
+        .collect()
 }
 
-// S0-5: the two authentication paths never fall back to each other.
+// S1-1 (console side): the human surface is session-only. A machine
+// credential — valid OR garbage, bridge present OR absent — is refused
+// generically and NEVER consulted; with a valid session cookie alongside,
+// the session authenticates and the machine credential plays no part.
 #[tokio::test]
-async fn no_fallback_between_bearer_and_session_in_either_direction() {
-    let dir = scratch("bridge-governance-nofallback");
+async fn console_is_session_only_and_never_consults_the_bridge() {
+    // A ledger is present and the bridge is ENABLED — proving the console
+    // refusal is a surface rule, not a disabled-bridge side effect.
+    let dir = scratch("bridge-console-split");
     let store = Arc::new(ProposalStore::open(&dir.join("state")).expect("store"));
-    let state = base_state()
-        .with_proposals(store)
-        .with_agent_bridge(bridge_for(&dir));
-    let router = app(Arc::new(state));
+    let router = app(Arc::new(
+        base_state()
+            .with_proposals(store)
+            .with_agent_bridge(bridge_for(&dir)),
+    ));
 
-    // A VALID session cookie rides along with a garbage JWT-shaped bearer:
-    // the bridge decides (and denies) — the session is never consulted.
+    // A perfectly valid agent token on the console: generic 401 — and the
+    // ledger records the class violation, NOT a ladder outcome (the token
+    // was never validated, its claims never parsed).
+    let token = TokenSpec::autonomous(FINANCE_OID).sign();
+    let (status, body) = get_with_bearer(&router, "/doc/d0001", &token).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"], "authentication required");
+    let rows = audit_rows(&dir);
+    let class_denies: Vec<&Value> = rows
+        .iter()
+        .filter(|r| r["outcome"] == "jwt_on_console_surface")
+        .collect();
+    assert_eq!(
+        class_denies.len(),
+        1,
+        "the knock on the human door is ledgered"
+    );
+    assert_eq!(class_denies[0]["action"], "agent_token");
+    assert_eq!(class_denies[0]["actor_principal"], "unresolved");
+    assert!(
+        class_denies[0].get("token_oid").is_none(),
+        "the refused credential was never parsed — no claims in the row"
+    );
+
+    // A dotless garbage bearer stays on the SESSION path — unchanged 401.
+    let (status, body) = get_with_bearer(&router, "/doc/d0001", "not-a-session").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"], "authentication required");
+
+    // A valid session COOKIE + a JWT bearer: SESSION SEMANTICS APPLY — the
+    // request succeeds via the cookie and the bridge is never consulted
+    // (no new agent_token row appears).
     let session = common::login_as(&router, "p060").await;
+    let rows_before = audit_rows(&dir).len();
     let response = router
         .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/doc/d0001")
+                .uri("/scope")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::COOKIE, format!("eb_session={session}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "the session cookie authenticates; the machine credential plays no part"
+    );
+    assert_eq!(
+        audit_rows(&dir).len(),
+        rows_before,
+        "the bridge was never consulted — no token-path row was written"
+    );
+
+    // The same pairing with a GARBAGE dotted bearer: still session
+    // semantics (the dotted credential is not consulted, valid or not).
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/scope")
                 .header(header::AUTHORIZATION, "Bearer ga.rb.age")
                 .header(header::COOKIE, format!("eb_session={session}"))
                 .body(Body::empty())
@@ -257,26 +218,9 @@ async fn no_fallback_between_bearer_and_session_in_either_direction() {
         )
         .await
         .expect("response");
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("body");
-    let body: Value = serde_json::from_slice(&bytes).expect("json");
-    assert_eq!(
-        body["error"], "authentication required",
-        "a failed bridge credential NEVER falls back to session semantics — and \
-         the wire never says WHY the bridge denied"
-    );
-    // The bridge (not the session store) decided: the ledger holds the row.
-    let audit_text = fs::read_to_string(dir.join("state").join("audit.jsonl")).expect("ledger");
-    assert!(
-        audit_text.contains("\"outcome\":\"token_malformed\""),
-        "the bridge deny is ledgered with its reason"
-    );
+    assert_eq!(response.status(), StatusCode::OK);
 
-    // A JWT in the session COOKIE slot is just an unknown session: the
-    // bridge is bearer-only, and a session credential never reaches it.
-    let token = TokenSpec::autonomous(FINANCE_OID).sign();
+    // A JWT in the session COOKIE slot is just an unknown session — 401.
     let response = router
         .clone()
         .oneshot(
@@ -290,51 +234,166 @@ async fn no_fallback_between_bearer_and_session_in_either_direction() {
         .await
         .expect("response");
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("body");
-    let body: Value = serde_json::from_slice(&bytes).expect("json");
-    assert_eq!(
-        body["error"], "authentication required",
-        "a bearer credential is the ONLY door into the bridge"
-    );
 
     // And the opaque session bearer still authenticates as always.
-    let (status, _) = get_doc(&router, "d0001", &session).await;
+    let (status, _) = get_with_bearer(&router, "/doc/d0001", &session).await;
     assert_ne!(status, StatusCode::UNAUTHORIZED);
 }
 
-// EB-4 × EB-6: an allow that cannot be recorded is a deny. A deny that
-// cannot be recorded is still a deny.
+// The enabled world, on ITS surface: a registered agent resolves on /v1,
+// scope decides exactly as the oracle says, and every decision lands in
+// the ledger BEFORE its effect — claims-attributed, never the token.
 #[tokio::test]
-async fn enabled_bridge_without_a_ledger_refuses_allows() {
+async fn enabled_bridge_resolves_scopes_and_audits_every_decision_on_v1() {
+    let dir = scratch("bridge-governance-enabled");
+    let store = Arc::new(ProposalStore::open(&dir.join("state")).expect("store"));
+    let state = base_state()
+        .with_proposals(store.clone())
+        .with_agent_bridge(bridge_for(&dir));
+    let router = app(Arc::new(state));
+
+    let (allowed_doc, denied_doc) = oracle_docs_for("agent_finance_analyst");
+    let token = TokenSpec::autonomous(FINANCE_OID).sign();
+
+    // Row 11 (the untouched engine) through the machine surface:
+    // oracle-ALLOW serves; oracle-DENY gets THE one 404.
+    let (status, body) =
+        get_with_bearer(&router, &format!("/v1/documents/{allowed_doc}"), &token).await;
+    assert_eq!(status, StatusCode::OK, "oracle-allowed doc serves: {body}");
+    let (status, body) =
+        get_with_bearer(&router, &format!("/v1/documents/{denied_doc}"), &token).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "not found");
+
+    // A deny-path decision for the ledger: an expired token — the wire
+    // says only the generic 401; the reason is ledger-only.
+    let expired = TokenSpec::autonomous(FINANCE_OID)
+        .with("exp", json!(jwt::now_unix() - 300))
+        .sign();
+    let (status, body) =
+        get_with_bearer(&router, &format!("/v1/documents/{allowed_doc}"), &expired).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"], "authentication required");
+
+    // The ledger: allow AND deny rows with claim attribution.
+    let rows = audit_rows(&dir);
+    let authorized: Vec<&Value> = rows
+        .iter()
+        .filter(|r| r["action"] == "v1_document" && r["outcome"] == "authorized")
+        .collect();
+    assert_eq!(authorized.len(), 1, "the served document was recorded");
+    let first = authorized[0];
+    assert_eq!(first["actor_principal"], "agent_finance_analyst");
+    assert_eq!(first["target"], format!("GET /v1/documents/{allowed_doc}"));
+    assert_eq!(first["token_oid"], FINANCE_OID);
+    assert_eq!(first["token_azp"], TEST_APP_ID);
+    assert_eq!(
+        first["token_parent_azp"], TEST_PARENT_APP,
+        "the parent app id is logged (and ONLY logged)"
+    );
+    assert_eq!(first["token_aud"], TEST_AUDIENCE);
+    assert!(first["token_uti"].as_str().is_some());
+    let not_found: Vec<&Value> = rows
+        .iter()
+        .filter(|r| r["action"] == "v1_document" && r["outcome"] == "not_found")
+        .collect();
+    assert_eq!(not_found.len(), 1, "the scope deny is a recorded signal");
+    assert_eq!(not_found[0]["actor_principal"], "agent_finance_analyst");
+    let expired_rows: Vec<&Value> = rows
+        .iter()
+        .filter(|r| r["action"] == "v1_document" && r["outcome"] == "token_expired")
+        .collect();
+    assert_eq!(expired_rows.len(), 1, "the auth deny is a recorded signal");
+    assert_eq!(expired_rows[0]["actor_principal"], "unresolved");
+
+    // The raw token (and its signature) is NEVER at rest in the ledger.
+    let audit_text = fs::read_to_string(dir.join("state").join("audit.jsonl")).expect("ledger");
+    assert!(
+        !audit_text.contains(&token) && !audit_text.contains(&expired),
+        "raw tokens must never be logged"
+    );
+    let signature = token.rsplit('.').next().expect("jws has a signature");
+    assert!(
+        !audit_text.contains(signature),
+        "token signatures must never be logged"
+    );
+}
+
+// EB-4 × EB-6 on the machine surface: no ledger, no /v1 — allows AND denies
+// alike answer the generic 401 (the surface cannot meet its audit
+// obligation, so it does not serve).
+#[tokio::test]
+async fn v1_without_a_ledger_does_not_serve() {
     let dir = scratch("bridge-governance-noledger");
     // Bridge wired, NO proposals store.
     let state = base_state().with_agent_bridge(bridge_for(&dir));
     let router = app(Arc::new(state));
 
     let token = TokenSpec::autonomous(FINANCE_OID).sign();
-    let (status, body) = get_doc(&router, "d0001", &token).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        body["error"], "authentication required",
-        "an unrecordable allow must not proceed — and the wire does not say why"
-    );
-
-    // Denies stand even without the ledger, equally generic.
-    let expired = TokenSpec::autonomous(FINANCE_OID)
-        .with("exp", json!(jwt::now_unix() - 300))
-        .sign();
-    let (status, body) = get_doc(&router, "d0001", &expired).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(body["error"], "authentication required");
+    for uri in ["/v1/documents/d0001", "/v1/whoami"] {
+        let (status, body) = get_with_bearer(&router, uri, &token).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{uri}");
+        assert_eq!(
+            body["error"], "authentication required",
+            "{uri}: an unledgerable surface does not serve, and does not say why"
+        );
+    }
 }
 
-// THE STANDING WIRE LAW (merge condition on the S0 verdict): deny reasons
-// never reach the wire. Every ladder deny — whichever of the 10+ rows fired
-// — produces the ONE generic 401, byte-identical across reasons, with no
-// ladder enum string in any response body or header. Which row denied is a
-// ledger fact, not a wire fact: a caller probing the ladder learns nothing.
+// S0-2 downstream, on /v1: a registration pointing at a principal the
+// identity model does not know compiles to the EMPTY scope — every
+// document is THE 404, every retrieve is the empty 200. No default
+// principal, no anonymous scope, no public fallback.
+#[tokio::test]
+async fn registration_to_an_unknown_principal_fails_closed_on_v1() {
+    let dir = scratch("bridge-governance-probe");
+    let store = Arc::new(ProposalStore::open(&dir.join("state")).expect("store"));
+    let state = base_state()
+        .with_proposals(store)
+        .with_agent_bridge(bridge_for(&dir));
+    let router = app(Arc::new(state));
+
+    let token = TokenSpec::autonomous(PROBE_OID).sign();
+    let (allowed_for_finance, _) = oracle_docs_for("agent_finance_analyst");
+    // Even a doc other agents can read: empty statement, THE 404.
+    let (status, body) = get_with_bearer(
+        &router,
+        &format!("/v1/documents/{allowed_for_finance}"),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "not found");
+
+    // And retrieval for the ghost is the EMPTY 200 — indistinguishable in
+    // shape from a principal granted nothing.
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/retrieve")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"query":"temperature range storage"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let body: Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(body["principal"], "agent_probe_no_such_principal");
+    assert_eq!(body["candidates"].as_array().map(Vec::len), Some(0));
+}
+
+// THE STANDING WIRE LAW (S1-6, carried from the S0 merge condition): deny
+// reasons never reach the wire — now proven on the bridge's ONE surface.
+// Every ladder deny, the class denies, and the operational denies produce
+// the ONE generic 401, byte-identical across reasons, with no reason
+// string in any response body or header.
 #[tokio::test]
 async fn wire_deny_is_generic() {
     let dir = scratch("bridge-governance-wire");
@@ -344,7 +403,9 @@ async fn wire_deny_is_generic() {
             .with_proposals(store)
             .with_agent_bridge(bridge_for(&dir)),
     ));
-    let disabled = app(Arc::new(base_state()));
+    let disabled_dir = scratch("bridge-governance-wire-disabled");
+    let disabled_store = Arc::new(ProposalStore::open(&disabled_dir.join("state")).expect("store"));
+    let disabled = app(Arc::new(base_state().with_proposals(disabled_store)));
     let no_ledger_dir = scratch("bridge-governance-wire-noledger");
     let no_ledger = app(Arc::new(
         base_state().with_agent_bridge(bridge_for(&no_ledger_dir)),
@@ -352,18 +413,16 @@ async fn wire_deny_is_generic() {
 
     async fn raw_get(
         router: &axum::Router,
-        bearer: &str,
+        uri: &str,
+        bearer: Option<&str>,
     ) -> (StatusCode, Vec<(String, String)>, Vec<u8>) {
+        let mut builder = Request::builder().method("GET").uri(uri);
+        if let Some(bearer) = bearer {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {bearer}"));
+        }
         let response = router
             .clone()
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri("/doc/d0001")
-                    .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
-                    .body(Body::empty())
-                    .expect("request"),
-            )
+            .oneshot(builder.body(Body::empty()).expect("request"))
             .await
             .expect("response");
         let status = response.status();
@@ -384,127 +443,162 @@ async fn wire_deny_is_generic() {
     }
 
     let now = jwt::now_unix();
-    // One credential per ladder row (and per operational deny), labelled by
-    // the reason the LEDGER will record — the wire must not distinguish them.
-    let deny_set: Vec<(&str, &axum::Router, String)> = vec![
-        ("token_malformed", &enabled, "ga.rb.age".to_string()),
+    let uri = "/v1/documents/d0001";
+    // One credential per deny class, labelled by the reason the LEDGER
+    // records — the wire must not distinguish any of them.
+    let deny_set: Vec<(&str, &axum::Router, Option<String>)> = vec![
+        ("credential_missing", &enabled, None),
+        ("session_credential_on_v1", &enabled, Some("a".repeat(64))),
+        ("token_malformed", &enabled, Some("ga.rb.age".to_string())),
         (
             "algorithm_rejected/none",
             &enabled,
-            TokenSpec::autonomous(FINANCE_OID).alg_none(),
+            Some(TokenSpec::autonomous(FINANCE_OID).alg_none()),
         ),
         (
             "algorithm_rejected/hs256",
             &enabled,
-            TokenSpec::autonomous(FINANCE_OID).sign_hs256(),
+            Some(TokenSpec::autonomous(FINANCE_OID).sign_hs256()),
         ),
         (
             "signature_invalid",
             &enabled,
-            jwt::tamper_signature(&TokenSpec::autonomous(FINANCE_OID).sign()),
+            Some(jwt::tamper_signature(
+                &TokenSpec::autonomous(FINANCE_OID).sign(),
+            )),
         ),
         (
             "issuer_mismatch",
             &enabled,
-            TokenSpec::autonomous(FINANCE_OID)
-                .with("ver", json!("1.0"))
-                .sign(),
+            Some(
+                TokenSpec::autonomous(FINANCE_OID)
+                    .with("ver", json!("1.0"))
+                    .sign(),
+            ),
         ),
         (
             "audience_mismatch",
             &enabled,
-            TokenSpec::autonomous(FINANCE_OID)
-                .with("aud", json!("api://someone-else"))
-                .sign(),
+            Some(
+                TokenSpec::autonomous(FINANCE_OID)
+                    .with("aud", json!("api://someone-else"))
+                    .sign(),
+            ),
         ),
         (
             "token_expired",
             &enabled,
-            TokenSpec::autonomous(FINANCE_OID)
-                .with("exp", json!(now - 300))
-                .sign(),
+            Some(
+                TokenSpec::autonomous(FINANCE_OID)
+                    .with("exp", json!(now - 300))
+                    .sign(),
+            ),
         ),
         (
             "token_not_yet_valid",
             &enabled,
-            TokenSpec::autonomous(FINANCE_OID)
-                .with("nbf", json!(now + 300))
-                .sign(),
+            Some(
+                TokenSpec::autonomous(FINANCE_OID)
+                    .with("nbf", json!(now + 300))
+                    .sign(),
+            ),
         ),
         (
             "tenant_mismatch",
             &enabled,
-            TokenSpec::autonomous(FINANCE_OID)
-                .with("tid", json!("9e2b5c14-77aa-4f01-8c3d-2b9d01f7a6e4"))
-                .sign(),
+            Some(
+                TokenSpec::autonomous(FINANCE_OID)
+                    .with("tid", json!("9e2b5c14-77aa-4f01-8c3d-2b9d01f7a6e4"))
+                    .sign(),
+            ),
         ),
         (
             "unsupported_token_type_delegated",
             &enabled,
-            TokenSpec::autonomous(FINANCE_OID)
-                .with("idtyp", json!("user"))
-                .without("xms_sub_fct")
-                .sign(),
+            Some(
+                TokenSpec::autonomous(FINANCE_OID)
+                    .with("idtyp", json!("user"))
+                    .without("xms_sub_fct")
+                    .sign(),
+            ),
         ),
         (
             "unsupported_token_type_agent_user",
             &enabled,
-            TokenSpec::autonomous(FINANCE_OID)
-                .with("idtyp", json!("user"))
-                .with("xms_sub_fct", json!("13"))
-                .sign(),
+            Some(
+                TokenSpec::autonomous(FINANCE_OID)
+                    .with("idtyp", json!("user"))
+                    .with("xms_sub_fct", json!("13"))
+                    .sign(),
+            ),
         ),
         (
             "agent_facets_missing",
             &enabled,
-            TokenSpec::autonomous(FINANCE_OID)
-                .without("xms_sub_fct")
-                .without("xms_act_fct")
-                .sign(),
+            Some(
+                TokenSpec::autonomous(FINANCE_OID)
+                    .without("xms_sub_fct")
+                    .without("xms_act_fct")
+                    .sign(),
+            ),
         ),
         (
             "agent_not_registered",
             &enabled,
-            TokenSpec::autonomous("ffff9999-0000-4000-8000-0000000000f9").sign(),
+            Some(TokenSpec::autonomous("ffff9999-0000-4000-8000-0000000000f9").sign()),
         ),
         (
             "bridge_disabled",
             &disabled,
-            TokenSpec::autonomous(FINANCE_OID).sign(),
+            Some(TokenSpec::autonomous(FINANCE_OID).sign()),
         ),
         (
             "bridge_unavailable",
             &no_ledger,
-            TokenSpec::autonomous(FINANCE_OID).sign(),
+            Some(TokenSpec::autonomous(FINANCE_OID).sign()),
         ),
     ];
 
+    // Every reason string that exists ONLY in the ledger — the ladder enum
+    // plus the S1 surface/validation reasons. None may appear on the wire.
+    let mut forbidden: Vec<String> = DenyReason::ALL
+        .iter()
+        .map(|reason| reason.as_str().to_string())
+        .collect();
+    for extra in [
+        "jwt_on_console_surface",
+        "session_credential_on_v1",
+        "credential_missing",
+        "unknown_route",
+        "payload_oversize",
+        "query_out_of_range",
+        "top_k_out_of_range",
+    ] {
+        forbidden.push(extra.to_string());
+    }
+
     let mut bodies: Vec<(String, Vec<u8>)> = Vec::new();
     for (label, router, credential) in &deny_set {
-        let (status, headers, body) = raw_get(router, credential).await;
+        let (status, headers, body) = raw_get(router, uri, credential.as_deref()).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{label} must 401");
-        // (b) NO ladder reason string anywhere in the response — body or
-        // any header value.
         let body_text = String::from_utf8_lossy(&body).to_string();
-        for reason in DenyReason::ALL {
+        for reason in &forbidden {
             assert!(
                 !body_text.contains(reason.as_str()),
-                "{label}: reason {} leaked into the response body",
-                reason.as_str()
+                "{label}: reason {reason} leaked into the response body"
             );
             for (name, value) in &headers {
                 assert!(
                     !value.contains(reason.as_str()),
-                    "{label}: reason {} leaked into header {name}",
-                    reason.as_str()
+                    "{label}: reason {reason} leaked into header {name}"
                 );
             }
         }
         bodies.push((label.to_string(), body));
     }
 
-    // (a) EVERY deny body is byte-identical — signature_invalid vs
-    // agent_not_registered explicitly, and the whole set for good measure.
+    // EVERY deny body is byte-identical — signature_invalid vs
+    // agent_not_registered explicitly, and the whole set.
     let sig = &bodies
         .iter()
         .find(|(label, _)| label == "signature_invalid")
@@ -520,10 +614,7 @@ async fn wire_deny_is_generic() {
         "signature_invalid and agent_not_registered must be byte-identical on the wire"
     );
     for (label, body) in &bodies {
-        assert_eq!(
-            body, sig,
-            "{label}: every ladder deny shares ONE generic body"
-        );
+        assert_eq!(body, sig, "{label}: every deny shares ONE generic body");
     }
 }
 
@@ -539,24 +630,4 @@ fn example_bridge_config_parses_and_is_disabled() {
         .expect("example documents the agent_bridge section");
     assert!(!bridge.enabled, "the example ships disabled (S0-4)");
     assert_eq!(bridge.allowed_algs, vec!["RS256"]);
-}
-
-// S0-2 downstream: a registration pointing at a principal the identity
-// model does not know compiles to the EMPTY scope — every document is THE
-// 404. No default principal, no anonymous scope, no public fallback.
-#[tokio::test]
-async fn registration_to_an_unknown_principal_fails_closed() {
-    let dir = scratch("bridge-governance-probe");
-    let store = Arc::new(ProposalStore::open(&dir.join("state")).expect("store"));
-    let state = base_state()
-        .with_proposals(store)
-        .with_agent_bridge(bridge_for(&dir));
-    let router = app(Arc::new(state));
-
-    let token = TokenSpec::autonomous(PROBE_OID).sign();
-    let (allowed_for_finance, _) = oracle_docs_for("agent_finance_analyst");
-    // Even a doc other agents can read: empty statement, THE 404.
-    let (status, body) = get_doc(&router, &allowed_for_finance, &token).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    assert_eq!(body["error"], "not found");
 }

@@ -71,7 +71,14 @@ impl CorsConfig {
 
 /// Middleware: answers preflights for allowed origins and stamps the CORS
 /// headers onto responses. Disallowed origins pass through untouched.
+///
+/// S1-5: the `/v1` namespace is NOT a browser surface — no preflight is
+/// answered and no CORS header is ever stamped there, whatever the origin.
+/// A browser cannot be granted what the layer never offers.
 pub async fn apply(cors: CorsConfig, request: Request<Body>, next: Next) -> Response {
+    if is_v1_path(request.uri().path()) {
+        return next.run(request).await;
+    }
     let origin = request.headers().get(header::ORIGIN).cloned();
     let allowed_origin = origin.filter(|o| cors.allow(o));
 
@@ -106,4 +113,9 @@ pub async fn apply(cors: CorsConfig, request: Request<Body>, next: Next) -> Resp
             .insert(header::VARY, HeaderValue::from_static("Origin"));
     }
     response
+}
+
+/// The machine namespace: `/v1` and everything under it.
+pub fn is_v1_path(path: &str) -> bool {
+    path == "/v1" || path.starts_with("/v1/")
 }

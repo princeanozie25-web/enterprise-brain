@@ -1,6 +1,6 @@
-//! S0 conformance: the full fixture-agent × 600-document matrix THROUGH THE
-//! BEARER-TOKEN PATH, end-to-end — a real locally-signed Entra-shaped JWT
-//! in, a live-router document decision out — judged against
+//! S1 conformance: the full fixture-agent × 600-document matrix THROUGH THE
+//! /v1 MACHINE SURFACE, end-to-end — a real locally-signed Entra-shaped JWT
+//! in, a live-router `GET /v1/documents/{id}` decision out — judged against
 //! /fixtures/ground_truth.jsonl, the oracle computed INDEPENDENTLY from raw
 //! company.json (never from the service's own projection). 4 × 600 = 2,400
 //! decisions; a single false-allow or false-deny fails the build.
@@ -93,7 +93,7 @@ async fn doc_status(router: &axum::Router, doc: &str, bearer: &str) -> StatusCod
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/doc/{doc}"))
+                .uri(format!("/v1/documents/{doc}"))
                 .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
                 .body(Body::empty())
                 .expect("request"),
@@ -143,7 +143,7 @@ async fn bridge_conformance_full_agent_matrix_is_zero_false_allow_zero_false_den
         distinct.len()
     );
     println!(
-        "S0 conformance scopes: {} distinct non-empty allow-sets across {} agents ({})",
+        "S1 conformance scopes: {} distinct non-empty allow-sets across {} agents ({})",
         distinct.len(),
         allow_sets.len(),
         allow_sets
@@ -217,7 +217,7 @@ async fn bridge_conformance_full_agent_matrix_is_zero_false_allow_zero_false_den
         }
     }
     println!(
-        "S0 conformance summary: pairs={pairs} false_allows={} false_denies={} served_allow_total={served_allow_total}",
+        "S1 conformance summary: pairs={pairs} false_allows={} false_denies={} served_allow_total={served_allow_total}",
         false_allows.len(),
         false_denies.len(),
     );
@@ -246,7 +246,7 @@ async fn bridge_conformance_full_agent_matrix_is_zero_false_allow_zero_false_den
         probe_denies += 1;
     }
     println!(
-        "S0 conformance supplementary: empty-scope probe denied {probe_denies}/600 (all-deny pole)"
+        "S1 conformance supplementary: empty-scope probe denied {probe_denies}/600 (all-deny pole)"
     );
     assert_eq!(probe_denies, 600);
 }
