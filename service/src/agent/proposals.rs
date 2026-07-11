@@ -126,6 +126,11 @@ pub struct AuditEvent {
     /// pre-S2b row parses and every pre-S2b writer stays byte-identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<String>,
+    /// S3: which source a `/v1` document/retrieve row concerns
+    /// (`"primary"` | `"s3"`). Optional + defaulted so every pre-S3 row
+    /// parses and every pre-S3 writer stays byte-identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// S0: the claim attribution carried on one `agent_token` audit row.
@@ -335,6 +340,7 @@ impl ProposalStore {
             query: None,
             candidates: None,
             payload: None,
+            source: None,
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;
@@ -364,6 +370,7 @@ impl ProposalStore {
             query: None,
             candidates: None,
             payload: None,
+            source: None,
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;
@@ -403,6 +410,7 @@ impl ProposalStore {
             query: None,
             candidates: None,
             payload: None,
+            source: None,
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;
@@ -428,6 +436,7 @@ impl ProposalStore {
         query: Option<&str>,
         candidates: Option<&[String]>,
         payload: Option<&str>,
+        source: Option<&str>,
     ) -> Result<u64> {
         let mut state = self.state.lock().expect("store mutex");
         let ordinal = state.next_audit_ordinal;
@@ -448,6 +457,7 @@ impl ProposalStore {
             query: query.map(str::to_string),
             candidates: candidates.map(<[String]>::to_vec),
             payload: payload.map(str::to_string),
+            source: source.map(str::to_string),
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;

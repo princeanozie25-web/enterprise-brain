@@ -1,0 +1,617 @@
+{
+  "_note": "Authority for the S3 estate. Objects carry ZERO permission metadata; all authority is here. Estate agents read a resource (either source) iff its sensitivity level <= the agent's tier level. Principals absent from `agent_tiers` have no estate grant and are denied every object (fail-closed seam default).",
+  "content_sha256": "be7a61bc45e688344165678ec9e52018d689a14a850584c5b0c42ad0b06e5927",
+  "tier_levels": {
+    "public": 0,
+    "internal": 1,
+    "confidential": 2,
+    "restricted": 3,
+    "special_category": 4
+  },
+  "agent_tiers": {
+    "agent_estate_confidential": "confidential",
+    "agent_estate_internal": "internal"
+  },
+  "objects": [
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/budget-variance-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/car-park-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/charity-week-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/cost-centre-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/goods-in-check-keldonbury-2.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/goods-in-check-keldonbury.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/invoice-matching-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/opening-hours-draymoor.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/opening-hours-keldonbury.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/recycling-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/returns-reconciliation-marrowfen-2.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/returns-reconciliation-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/site-notice-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/town-hall-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/warehouse-rota-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q1/wellbeing-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/budget-variance-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/canteen-menu-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/car-park-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/cost-centre-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/cost-centre-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/credit-terms-keldonbury.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/goods-in-check-keldonbury.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/goods-in-check-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/invoice-matching-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/payment-run-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/picking-accuracy-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/quarantine-hold-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/quarterly-forecast-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/recycling-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/supplier-audit-draymoor.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q2/supplier-rebate-keldonbury.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/canteen-menu-draymoor.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/car-park-keldonbury.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/charity-week-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/credit-terms-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/despatch-cutoff-draymoor.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/despatch-cutoff-keldonbury-2.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/despatch-cutoff-keldonbury.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/fire-drill-keldonbury.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/fire-drill-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/goods-in-check-keldonbury.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/opening-hours-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/picking-accuracy-marrowfen-2.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/picking-accuracy-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/quarterly-forecast-keldonbury.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/returns-reconciliation-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/supplier-rebate-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/town-hall-ashcombe.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/finance-restricted/2026/q3/wellbeing-marrowfen.md",
+      "sensitivity": "confidential"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/car-park-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/cost-centre-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/despatch-cutoff-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/goods-in-check-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/goods-in-check-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/invoice-matching-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/invoice-matching-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/opening-hours-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/opening-hours-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/picking-accuracy-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/returns-reconciliation-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/supplier-audit-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/supplier-rebate-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/warehouse-rota-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q1/wellbeing-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/budget-variance-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/car-park-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/cold-chain-transit-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/cold-chain-transit-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/cost-centre-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/cost-centre-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/despatch-cutoff-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/fire-drill-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/fire-drill-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/invoice-matching-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/invoice-matching-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/invoice-matching-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/picking-accuracy-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/quarantine-hold-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/recycling-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/returns-reconciliation-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/supplier-rebate-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/town-hall-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/visitor-policy-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/wellbeing-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q2/wellbeing-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/car-park-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/cold-chain-transit-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/cold-chain-transit-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/cost-centre-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/fire-drill-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/margin-review-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/margin-review-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/opening-hours-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/opening-hours-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/quarantine-hold-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/quarterly-forecast-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/quarterly-forecast-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/recycling-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/returns-reconciliation-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/returns-reconciliation-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/site-notice-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/stock-rotation-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/supplier-audit-ashcombe.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/supplier-audit-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/temperature-excursion-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/town-hall-draymoor.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/town-hall-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/town-hall-marrowfen.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/ops-shared/2026/q3/visitor-policy-keldonbury.md",
+      "sensitivity": "internal"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/car-park-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/charity-week-keldonbury.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/credit-terms-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/despatch-cutoff-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/despatch-cutoff-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/goods-in-check-keldonbury.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/picking-accuracy-draymoor.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/quarantine-hold-draymoor.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/quarterly-forecast-ashcombe-2.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/quarterly-forecast-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/supplier-audit-keldonbury-2.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/supplier-audit-keldonbury.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/temperature-excursion-draymoor.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/town-hall-keldonbury.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/warehouse-rota-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/wellbeing-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q1/wellbeing-draymoor.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q2/canteen-menu-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q2/goods-in-check-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q2/margin-review-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q2/payment-run-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q2/quarantine-hold-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q2/recycling-draymoor.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q2/returns-reconciliation-keldonbury.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q2/stock-rotation-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/budget-variance-draymoor.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/budget-variance-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/charity-week-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/invoice-matching-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/picking-accuracy-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/quarantine-hold-keldonbury.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/quarantine-hold-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/quarterly-forecast-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/recycling-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/supplier-audit-ashcombe.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/town-hall-draymoor.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/town-hall-keldonbury.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/warehouse-rota-keldonbury.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/warehouse-rota-marrowfen.md",
+      "sensitivity": "public"
+    },
+    {
+      "doc_id": "s3/public-notices/2026/q3/wellbeing-marrowfen.md",
+      "sensitivity": "public"
+    }
+  ]
+}

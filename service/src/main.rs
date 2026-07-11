@@ -77,6 +77,10 @@ fn build_state(args: &Args) -> Result<AppState> {
     // AR-1: load + prove the humanization layer (display only; fails closed
     // if people.json disagrees with what the live skeleton derives).
     state = state.with_people()?;
+    // S3: load the multi-source estate when the fixtures ship one
+    // (fixtures/estate/). Absent, the world stays single-source. A config
+    // `estate_dir` overrides this default location.
+    state = state.with_estate_from(&args.fixtures.join("estate"))?;
     if let Some(config_path) = &args.config {
         let config = ServiceConfig::load(config_path)?;
         state = config.apply(state)?;
