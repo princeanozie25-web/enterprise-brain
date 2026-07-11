@@ -48,7 +48,7 @@ fn token_for<'a>(output: &'a BootstrapOutput, principal: &str) -> &'a str {
 #[test]
 fn fresh_world_is_complete_and_tokens_validate_through_the_real_ladder() {
     let out = scratch("bootstrap-fresh").join("dev-out");
-    let output = bootstrap_dev(&out, false).expect("bootstrap");
+    let output = bootstrap_dev(&out, false, false).expect("bootstrap");
 
     assert!(output.config_path.exists(), "config.json");
     assert!(output.jwks_path.exists(), "jwks.json");
@@ -104,8 +104,8 @@ fn fresh_world_is_complete_and_tokens_validate_through_the_real_ladder() {
 #[test]
 fn existing_nonempty_dir_refuses_without_force() {
     let out = scratch("bootstrap-refuse").join("dev-out");
-    bootstrap_dev(&out, false).expect("first run");
-    let again = bootstrap_dev(&out, false);
+    bootstrap_dev(&out, false, false).expect("first run");
+    let again = bootstrap_dev(&out, false, false);
     assert!(
         again.is_err(),
         "a non-empty out-dir must refuse without --force"
@@ -116,10 +116,10 @@ fn existing_nonempty_dir_refuses_without_force() {
 #[test]
 fn force_regenerates_a_clean_world() {
     let out = scratch("bootstrap-force").join("dev-out");
-    let first = bootstrap_dev(&out, false).expect("first run");
+    let first = bootstrap_dev(&out, false, false).expect("first run");
     let first_token = token_for(&first, "agent_finance_analyst").to_string();
 
-    let second = bootstrap_dev(&out, true).expect("--force regenerates");
+    let second = bootstrap_dev(&out, true, false).expect("--force regenerates");
     assert_eq!(second.tokens.len(), 4);
     assert_ne!(
         first_token,
@@ -168,7 +168,7 @@ fn no_key_material_is_tracked() {
 #[test]
 fn doctor_passes_on_generated_config_and_names_an_induced_fault() {
     let out = scratch("bootstrap-doctor").join("dev-out");
-    let output = bootstrap_dev(&out, false).expect("bootstrap");
+    let output = bootstrap_dev(&out, false, false).expect("bootstrap");
     let inputs = DoctorInputs {
         fixtures: common::repo_fixtures_dir(),
         artifacts: repo_root().join("compiler").join("artifacts"),
@@ -219,7 +219,7 @@ fn doctor_passes_on_generated_config_and_names_an_induced_fault() {
 #[tokio::test]
 async fn tokens_drive_the_real_router_whoami_and_the_seam() {
     let out = scratch("bootstrap-router").join("dev-out");
-    let output = bootstrap_dev(&out, false).expect("bootstrap");
+    let output = bootstrap_dev(&out, false, false).expect("bootstrap");
 
     // Build the state production builds: fixtures + people + estate, then the
     // generated config APPLIED (bridge + ledger + alerting from the file).
@@ -268,6 +268,77 @@ async fn tokens_drive_the_real_router_whoami_and_the_seam() {
         StatusCode::NOT_FOUND,
         "the internal agent gets THE 404 — the access model decided, not the document"
     );
+}
+
+// -- 7. S5b bind amendment: --container sets an explicit wide bind AND says
+//       why it is safe; the native world never carries a `bind` key at all
+//       (the loopback invariant untouched by omission).
+#[test]
+fn container_mode_binds_wide_and_says_why_native_stays_loopback() {
+    let dir = scratch("bootstrap-bind");
+    let native = bootstrap_dev(&dir.join("native"), false, false).expect("native world");
+    let container = bootstrap_dev(&dir.join("container"), false, true).expect("container world");
+
+    // Native: NO bind key — the default (loopback_listener) path.
+    let native_cfg = ServiceConfig::load(&native.config_path).expect("native config");
+    assert!(
+        native_cfg.bind.is_none(),
+        "the native demo config must not carry a bind key"
+    );
+
+    // Container: bind 0.0.0.0:8787, and the profile states the compose
+    // host-loopback mapping that makes it safe.
+    let container_cfg = ServiceConfig::load(&container.config_path).expect("container config");
+    assert_eq!(
+        container_cfg.bind.as_deref(),
+        Some("0.0.0.0:8787"),
+        "the container demo config binds wide, explicitly"
+    );
+    let profile = container_cfg.profile.unwrap_or_default();
+    assert!(
+        profile.contains("127.0.0.1:8787:8787"),
+        "the generated file states WHY 0.0.0.0 is safe (the compose mapping): {profile}"
+    );
+}
+
+// -- 8. STANDING (1.4): every published port in docker-compose.yml is
+//       host-loopback. An unqualified mapping ("8787:8787") would expose the
+//       gateway to the network and fails the build forever.
+#[test]
+fn compose_ports_are_host_loopback() {
+    let compose = std::fs::read_to_string(repo_root().join("docker-compose.yml"))
+        .expect("docker-compose.yml at the repo root");
+    // Hand-rolled scan (no yaml dep): a `ports:` line opens a block; the
+    // block's `- ` list items are the mappings; any other line closes it.
+    let mut in_ports = false;
+    let mut mappings = Vec::new();
+    for line in compose.lines() {
+        let trimmed = line.trim();
+        if trimmed == "ports:" {
+            in_ports = true;
+            continue;
+        }
+        if in_ports {
+            if let Some(item) = trimmed.strip_prefix("- ") {
+                mappings.push(item.trim_matches(['"', '\'']).to_string());
+                continue;
+            }
+            if !trimmed.starts_with('#') && !trimmed.is_empty() {
+                in_ports = false;
+            }
+        }
+    }
+    assert!(
+        !mappings.is_empty(),
+        "the gateway publishes a host-loopback port (none found — did ports: move?)"
+    );
+    for mapping in &mappings {
+        assert!(
+            mapping.starts_with("127.0.0.1:"),
+            "compose port mapping {mapping:?} is not host-loopback; \
+             every published port must carry the 127.0.0.1: prefix"
+        );
+    }
 }
 
 /// GET `uri` with a Bearer token through the router; return (status, body).

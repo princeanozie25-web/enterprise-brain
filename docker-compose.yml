@@ -1,22 +1,25 @@
 # Enterprise Brain — one-command demo stack.
 #
 #   docker compose up --build          # build, bootstrap, serve
-#   docker compose logs bootstrap      # the four agent tokens, copy-paste curls
-#   docker compose exec gateway \
-#     curl -s -H "Authorization: Bearer <TOKEN>" http://127.0.0.1:8787/v1/whoami
+#   docker compose logs bootstrap      # the agent tokens, copy-paste curls
+#   curl -s -H "Authorization: Bearer <TOKEN>" http://127.0.0.1:8787/v1/whoami
 #
-# The gateway binds loopback ONLY (a security invariant: the server refuses a
-# non-loopback bind, enforced by a test). A container cannot publish a loopback
-# port to the host, so the demo surface is reached from INSIDE the container
-# via `docker compose exec` — not a limitation, the invariant made visible.
+# EXPOSURE (S5b bind amendment): inside the container the gateway binds
+# 0.0.0.0:8787 (loopback-in-a-container is fail-useless); the port mapping
+# below publishes it HOST-LOOPBACK ONLY (`127.0.0.1:8787:8787`), so host curls
+# and the SDK reach it while the network cannot. The no-external-exposure
+# intent of the native loopback invariant is enforced at the host boundary —
+# a standing test (`compose_ports_are_host_loopback`) fails the build if any
+# ports entry here ever loses its `127.0.0.1:` prefix.
 
 services:
-  # One-shot: mint the demo world (RSA key, four 24 h agent tokens, a
-  # DEMO-labelled config) onto the shared volume, print the tokens, exit 0.
+  # One-shot: mint the demo world (RSA key, 24 h agent tokens, a DEMO-labelled
+  # config with the container bind) onto the shared volume, print the tokens,
+  # exit 0.
   bootstrap:
     build: .
     image: enterprise-brain-gateway:demo
-    command: ["bootstrap-dev", "--out", "/data/dev-out", "--force"]
+    command: ["bootstrap-dev", "--out", "/data/dev-out", "--force", "--container"]
     volumes:
       - demo:/data
 
@@ -31,6 +34,9 @@ services:
         condition: service_completed_successfully
     volumes:
       - demo:/data
+    ports:
+      # Host-loopback ONLY. Never remove the 127.0.0.1: prefix.
+      - "127.0.0.1:8787:8787"
     healthcheck:
       test:
         - CMD-SHELL
@@ -42,11 +48,9 @@ services:
       timeout: 10s
       retries: 6
       start_period: 30s
-    # No published port: the server is loopback-only by invariant. Reach it via
-    # `docker compose exec gateway curl http://127.0.0.1:8787/...`.
 
 # The demo world — including the ledger and alert sink — persists here, so
-# `docker compose run --rm gateway service verify-ledger /data/dev-out/ledger/audit.jsonl`
+# `docker compose run --rm gateway verify-ledger /data/dev-out/ledger/audit.jsonl`
 # can audit the chain against a stopped stack.
 volumes:
   demo:

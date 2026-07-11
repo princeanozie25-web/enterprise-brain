@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
 
-use service::{app, loopback_listener, AppState, ServiceConfig, BIND_ADDR};
+use service::{app, configured_listener, loopback_listener, AppState, ServiceConfig, BIND_ADDR};
 
 struct Args {
     fixtures: PathBuf,
@@ -76,7 +76,10 @@ fn parse_args_from(argv: Vec<String>) -> Result<Args> {
     })
 }
 
-fn build_state(args: &Args) -> Result<AppState> {
+/// Builds the app state, returning alongside it the config's explicit `bind`
+/// (None = the loopback default — the native invariant unchanged).
+fn build_state(args: &Args) -> Result<(AppState, Option<String>)> {
+    let mut bind = None;
     let mut state = AppState::build(&args.fixtures, &args.artifacts, &args.idx)?;
     // AR-1: load + prove the humanization layer (display only; fails closed
     // if people.json disagrees with what the live skeleton derives).
@@ -87,6 +90,8 @@ fn build_state(args: &Args) -> Result<AppState> {
     state = state.with_estate_from(&args.fixtures.join("estate"))?;
     if let Some(config_path) = &args.config {
         let config = ServiceConfig::load(config_path)?;
+        // S5b bind amendment: the listen address is config, read here once.
+        bind = config.bind.clone();
         state = config.apply(state)?;
     }
     if args.no_cache {
@@ -129,12 +134,13 @@ fn build_state(args: &Args) -> Result<AppState> {
             state = state.with_proposals(std::sync::Arc::new(store));
         }
     }
-    Ok(state)
+    Ok((state, bind))
 }
 
 async fn run() -> Result<()> {
     let args = parse_args()?;
-    let state = Arc::new(build_state(&args)?);
+    let (state, bind) = build_state(&args)?;
+    let state = Arc::new(state);
     eprintln!(
         "ask-brain: {} principals, {} docs, cache={}, embedder={}, judge={}, generator={}",
         state.identity_count(),
@@ -145,9 +151,16 @@ async fn run() -> Result<()> {
         state.generator.is_some(),
     );
 
-    let listener = loopback_listener(BIND_ADDR)?;
+    // S5b bind amendment: absent config -> the loopback default, EXACTLY as
+    // ever; an explicit `bind` in config -> the configured listener (which
+    // announces a non-loopback bind loudly).
+    let bind_addr = bind.as_deref().unwrap_or(BIND_ADDR).to_string();
+    let listener = match &bind {
+        None => loopback_listener(BIND_ADDR)?,
+        Some(addr) => configured_listener(addr)?,
+    };
     let listener = tokio::net::TcpListener::from_std(listener).context("tokio listener")?;
-    eprintln!("ask-brain: serving on http://{BIND_ADDR} (demo identity mode)");
+    eprintln!("ask-brain: serving on http://{bind_addr} (demo identity mode)");
     axum::serve(listener, app(state))
         .await
         .context("server error")?;
@@ -206,23 +219,28 @@ fn doctor_cmd(args: &Args, json: bool) -> ExitCode {
 fn bootstrap_dev_cmd(argv: Vec<String>) -> ExitCode {
     let mut out: Option<String> = None;
     let mut force = false;
+    let mut container = false;
     let mut args = argv.into_iter();
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--out" => out = args.next(),
             "--force" => force = true,
+            // S5b bind amendment: the compose bootstrap passes --container so
+            // the generated config binds 0.0.0.0 BEHIND the host-loopback
+            // compose port mapping. Native worlds never set it.
+            "--container" => container = true,
             other => {
                 eprintln!("bootstrap-dev: unknown flag {other:?}");
-                eprintln!("usage: service bootstrap-dev --out <dir> [--force]");
+                eprintln!("usage: service bootstrap-dev --out <dir> [--force] [--container]");
                 return ExitCode::FAILURE;
             }
         }
     }
     let Some(out) = out else {
-        eprintln!("usage: service bootstrap-dev --out <dir> [--force]");
+        eprintln!("usage: service bootstrap-dev --out <dir> [--force] [--container]");
         return ExitCode::FAILURE;
     };
-    match service::bootstrap::bootstrap_dev(std::path::Path::new(&out), force) {
+    match service::bootstrap::bootstrap_dev(std::path::Path::new(&out), force, container) {
         Ok(output) => {
             output.print_launch_guide();
             ExitCode::SUCCESS

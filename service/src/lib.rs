@@ -652,6 +652,14 @@ pub struct ServiceConfig {
     /// change). A malformed section fails startup LOUDLY naming the field.
     #[serde(default)]
     pub alerting: Option<AlertingConfig>,
+    /// S5b bind amendment: the explicit listen address. ABSENT = the loopback
+    /// default (`127.0.0.1:8787`) — the native invariant, byte-for-byte
+    /// unchanged. PRESENT = the operator's explicit, config-recorded choice
+    /// (the containerized demo binds `0.0.0.0:8787` INSIDE the container while
+    /// the compose port mapping pins exposure to host-loopback). Config, not
+    /// env magic: the deployment's exposure is readable in one file.
+    #[serde(default)]
+    pub bind: Option<String>,
 }
 
 /// S4: the `alerting` config section. `deny_unknown_fields` + the required
@@ -773,6 +781,30 @@ pub fn loopback_listener(addr: &str) -> Result<TcpListener> {
         .with_context(|| format!("invalid bind address {addr:?}"))?;
     if !is_loopback(&socket_addr.ip()) {
         bail!("bind address {addr} is not loopback; the Ask Brain service binds 127.0.0.1 only");
+    }
+    let listener = TcpListener::bind(socket_addr).with_context(|| format!("cannot bind {addr}"))?;
+    listener.set_nonblocking(true).context("set_nonblocking")?;
+    Ok(listener)
+}
+
+/// S5b bind amendment: a listener at an EXPLICITLY CONFIGURED address.
+/// [`loopback_listener`] remains the default path and its refusal stands
+/// untouched; this one exists only for a config that NAMES its bind
+/// (`ServiceConfig.bind`) — loopback-inside-a-container is fail-useless, so
+/// the containerized gateway binds `0.0.0.0` and the intent of the invariant
+/// (no external exposure by default) is enforced at the host boundary by the
+/// compose mapping `127.0.0.1:8787:8787`. A non-loopback bind announces
+/// itself loudly so no operator discovers it by accident.
+pub fn configured_listener(addr: &str) -> Result<TcpListener> {
+    let socket_addr: SocketAddr = addr
+        .parse()
+        .with_context(|| format!("invalid bind address {addr:?}"))?;
+    if !is_loopback(&socket_addr.ip()) {
+        eprintln!(
+            "ask-brain: WARNING binding non-loopback {addr} (explicit `bind` config) — \
+             exposure control now lives at the host boundary (compose host-loopback \
+             port mapping / firewall); never expose this port to a network directly"
+        );
     }
     let listener = TcpListener::bind(socket_addr).with_context(|| format!("cannot bind {addr}"))?;
     listener.set_nonblocking(true).context("set_nonblocking")?;

@@ -84,7 +84,13 @@ pub struct BootstrapOutput {
 /// `force`; under `force` it removes the artifacts it owns and regenerates a
 /// clean world (freshly-minted keys each time — "idempotent" means a clean,
 /// complete result, not byte-identical keys).
-pub fn bootstrap_dev(out: &Path, force: bool) -> Result<BootstrapOutput> {
+///
+/// `container` (the compose bootstrap passes `--container`): the generated
+/// config sets `bind: 0.0.0.0:8787` — loopback inside a container is
+/// fail-useless — and the profile states why that is safe ONLY under the
+/// compose host-loopback port mapping. The native demo world (default) keeps
+/// the loopback invariant untouched: no `bind` key at all.
+pub fn bootstrap_dev(out: &Path, force: bool, container: bool) -> Result<BootstrapOutput> {
     if out.exists() {
         let non_empty = out
             .read_dir()
@@ -156,11 +162,22 @@ pub fn bootstrap_dev(out: &Path, force: bool) -> Result<BootstrapOutput> {
     // 3. The DEMO/DEV ServiceConfig: bridge ENABLED (demo only), FileJwks ->
     //    the generated jwks, the four registrations, a chained ledger, an
     //    always-on alert sink. The `profile` field is the file's DEMO header
-    //    (JSON has no comments, and the config schema is deny_unknown_fields).
+    //    AND its comment channel (JSON has no comments, and the config schema
+    //    is deny_unknown_fields — prose lives in `profile`).
+    let mut profile = "DEMO/DEV — enterprise-brain bootstrap-dev world. DO NOT DEPLOY. \
+                       The agent bridge is ENABLED here with a throwaway key minted locally; \
+                       the shipped default config remains bridge-DISABLED (S0-4)."
+        .to_string();
+    if container {
+        // The 1.2 comment line: why 0.0.0.0 is safe HERE and only here.
+        profile.push_str(
+            " CONTAINER PROFILE: bind 0.0.0.0:8787 is safe ONLY because the compose \
+             mapping publishes it host-loopback (127.0.0.1:8787:8787) — the no-external-\
+             exposure intent moves to the host boundary; never map this port unqualified.",
+        );
+    }
     let config = json!({
-        "profile": "DEMO/DEV — enterprise-brain bootstrap-dev world. DO NOT DEPLOY. \
-                    The agent bridge is ENABLED here with a throwaway key minted locally; \
-                    the shipped default config remains bridge-DISABLED (S0-4).",
+        "profile": profile,
         "agent_bridge": {
             "enabled": true,
             "tenant_id": DEMO_TENANT,
@@ -179,6 +196,12 @@ pub fn bootstrap_dev(out: &Path, force: bool) -> Result<BootstrapOutput> {
             "alerts_path": slashed(&alerts_dir.join("alerts.jsonl")),
         },
     });
+    let mut config = config;
+    if container {
+        // Explicit bind (ServiceConfig.bind) — the native default stays
+        // loopback by OMITTING the key entirely.
+        config["bind"] = json!("0.0.0.0:8787");
+    }
     let config_path = abs_out.join("config.json");
     std::fs::write(
         &config_path,

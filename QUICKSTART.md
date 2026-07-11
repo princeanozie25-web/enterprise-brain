@@ -1,7 +1,7 @@
 # Quickstart — a governed gateway in one command
 
 From a clone to a healthy gateway serving the governed fixture estate, with
-four demo agents whose tokens are minted **locally and never committed**. Then
+demo agents whose tokens are minted **locally and never committed**. Then
 prove the invariant the product exists to enforce: *a document does not decide
 who may read it — the access model does.*
 
@@ -14,18 +14,21 @@ who may read it — the access model does.*
 ```sh
 git clone https://github.com/princeanozie25-web/enterprise-brain.git
 cd enterprise-brain
-docker compose up --build          # build, bootstrap, serve — healthy in ~a minute
+docker compose up --build -d       # build, bootstrap, serve — healthy in ~a minute
 ```
 
 `compose up` runs two services: a one-shot **bootstrap** that mints the demo
-world (an RSA key, four 24-hour agent tokens, and a `DEMO`-labelled config)
-onto a volume, and the **gateway**, which serves once bootstrap has finished.
-The gateway is `healthy` only when its healthcheck — `doctor` (config sound)
+world (an RSA key, 24-hour agent tokens, and a `DEMO`-labelled config) onto a
+volume, and the **gateway**, which serves once bootstrap has finished. The
+gateway is `healthy` only when its healthcheck — `doctor` (config sound)
 **and** a port probe (serving) — both pass.
+
+The gateway is published **host-loopback only** (`127.0.0.1:8787`): your
+machine can reach it, the network cannot.
 
 ## Where the tokens are
 
-The bootstrap service prints the four tokens as copy-paste curls:
+The bootstrap service prints the tokens as copy-paste curls:
 
 ```sh
 docker compose logs bootstrap
@@ -36,15 +39,10 @@ keys, so re-read the logs after each start.)
 
 ## Prove the invariant
 
-The gateway binds **loopback only** (a security invariant — it refuses a
-non-loopback bind). So reach it from inside the container with
-`docker compose exec`.
-
 **Who am I?** — the SDK handshake, one agent:
 
 ```sh
-docker compose exec gateway \
-  curl -s -H "Authorization: Bearer <TOKEN_FOR_agent_estate_confidential>" \
+curl -s -H "Authorization: Bearer <TOKEN_FOR_agent_estate_confidential>" \
   http://127.0.0.1:8787/v1/whoami
 # {"principal_id":"agent_estate_confidential"}
 ```
@@ -55,15 +53,13 @@ docker compose exec gateway \
 DOC=s3/finance-restricted/2026/q1/budget-variance-ashcombe.md
 
 # agent_estate_confidential (tier: confidential) -> 200, full body, source "s3"
-docker compose exec gateway \
-  curl -s -o /dev/null -w "%{http_code}\n" \
+curl -s -o /dev/null -w "%{http_code}\n" \
   -H "Authorization: Bearer <TOKEN_FOR_agent_estate_confidential>" \
   http://127.0.0.1:8787/v1/documents/$DOC
 # 200
 
 # agent_estate_internal (tier: internal) -> 404
-docker compose exec gateway \
-  curl -s -o /dev/null -w "%{http_code}\n" \
+curl -s -o /dev/null -w "%{http_code}\n" \
   -H "Authorization: Bearer <TOKEN_FOR_agent_estate_internal>" \
   http://127.0.0.1:8787/v1/documents/$DOC
 # 404
@@ -78,8 +74,7 @@ Every one of those decisions — the 200 and the 404 — is a row in a hash-chai
 ledger on the volume. Verify the chain, even against a stopped stack:
 
 ```sh
-docker compose run --rm gateway \
-  service verify-ledger /data/dev-out/ledger/audit.jsonl
+docker compose run --rm gateway verify-ledger /data/dev-out/ledger/audit.jsonl
 # CLEAN: N rows (… hash-chained) verify intact
 ```
 
@@ -87,13 +82,15 @@ docker compose run --rm gateway \
 
 ## Without Docker (native)
 
-The same flow as plain processes — no container runtime required.
+The same flow as plain processes — no container runtime required. Natively the
+gateway keeps its **loopback-only** bind (`127.0.0.1:8787`); the config knob
+that lets a container bind wider is never set here.
 
 ```sh
 # 1. Provision artifacts + index, then mint the demo world.
 cargo run -p scope-compiler -- compile --fixtures fixtures --out compiler/artifacts
 cargo run -p retrieval     -- index   --fixtures fixtures --out retrieval/idx
-cargo run -p service -- bootstrap-dev --out dev-out       # prints the four token curls
+cargo run -p service -- bootstrap-dev --out dev-out       # prints the token curls
 
 # 2. Serve (loopback 127.0.0.1:8787).
 cargo run --release -p service -- \
