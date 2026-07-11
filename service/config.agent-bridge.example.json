@@ -1,0 +1,19 @@
+{
+  "profile": "EXAMPLE — S0 Entra agent-token bridge, NOT a live config. The bridge is OFF unless `agent_bridge.enabled` is explicitly true; absent the section, nothing changes.",
+  "agent_bridge": {
+    "enabled": false,
+    "tenant_id": "00000000-0000-0000-0000-000000000000",
+    "audience": "api://enterprise-brain-gateway",
+    "jwks": {
+      "url": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/discovery/v2.0/keys"
+    },
+    "allowed_algs": ["RS256"],
+    "agents": [
+      {
+        "tid": "00000000-0000-0000-0000-000000000000",
+        "oid": "11111111-1111-1111-1111-111111111111",
+        "principal": "agent_finance_analyst"
+      }
+    ]
+  }
+}

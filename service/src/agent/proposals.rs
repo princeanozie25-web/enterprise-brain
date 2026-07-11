@@ -95,6 +95,35 @@ pub struct AuditEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub right: Option<String>,
     pub target: String,
+    /// S0: token-path attribution (`agent_token` rows only; optional +
+    /// defaulted so every pre-S0 row parses and every pre-S0 writer stays
+    /// byte-identical). Claims only — never the token or its signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_tid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_oid: Option<String>,
+    /// Normalized client attribution (`azp`, v1 `appid`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_azp: Option<String>,
+    /// `xms_par_app_azp` when present — logged per Microsoft's guidance
+    /// (sign-in logs always include the parent id); NEVER an authority key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_parent_azp: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_aud: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_uti: Option<String>,
+}
+
+/// S0: the claim attribution carried on one `agent_token` audit row.
+#[derive(Debug, Clone, Default)]
+pub struct TokenAuditFields {
+    pub tid: Option<String>,
+    pub oid: Option<String>,
+    pub azp: Option<String>,
+    pub parent_azp: Option<String>,
+    pub aud: Option<String>,
+    pub uti: Option<String>,
 }
 
 struct StoreState {
@@ -284,6 +313,12 @@ impl ProposalStore {
             outcome: outcome.to_string(),
             right: None,
             target: target.to_string(),
+            token_tid: None,
+            token_oid: None,
+            token_azp: None,
+            token_parent_azp: None,
+            token_aud: None,
+            token_uti: None,
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;
@@ -304,6 +339,48 @@ impl ProposalStore {
             outcome: outcome.to_string(),
             right: Some(right.to_string()),
             target: format!("{left}|{right}"),
+            token_tid: None,
+            token_oid: None,
+            token_azp: None,
+            token_parent_azp: None,
+            token_aud: None,
+            token_uti: None,
+        };
+        Self::append(&self.audit_path, &event)?;
+        state.next_audit_ordinal += 1;
+        Ok(ordinal)
+    }
+
+    /// S0: one `agent_token` audit row — EVERY token-path decision, allow
+    /// AND deny, written through the same append+sync ledger (EB-6; denies
+    /// double as the EB-7 monitoring signal). `actor` is the resolved EB
+    /// principal when resolution was reached, else the literal
+    /// `"unresolved"`; `target` is the attempted `METHOD /path`; `outcome`
+    /// is the ladder reason code (or `authorized`). Attribution claims only
+    /// — the raw token and its signature are NEVER logged.
+    pub fn audit_agent_token(
+        &self,
+        actor: &str,
+        target: &str,
+        outcome: &str,
+        token: &TokenAuditFields,
+    ) -> Result<u64> {
+        let mut state = self.state.lock().expect("store mutex");
+        let ordinal = state.next_audit_ordinal;
+        let event = AuditEvent {
+            action: "agent_token".to_string(),
+            actor_principal: actor.to_string(),
+            left: None,
+            ordinal,
+            outcome: outcome.to_string(),
+            right: None,
+            target: target.to_string(),
+            token_tid: token.tid.clone(),
+            token_oid: token.oid.clone(),
+            token_azp: token.azp.clone(),
+            token_parent_azp: token.parent_azp.clone(),
+            token_aud: token.aud.clone(),
+            token_uti: token.uti.clone(),
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;

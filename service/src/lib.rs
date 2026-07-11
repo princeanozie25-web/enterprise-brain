@@ -13,6 +13,7 @@
 pub mod access_grants;
 pub mod access_requests;
 pub mod agent;
+pub mod agent_bridge;
 pub mod answer;
 pub mod atlas;
 pub mod cache;
@@ -229,6 +230,11 @@ pub struct AppState {
     /// AUTH-4 (D1): fixed-window rate limiter guarding `/auth/login` — cheap-reject
     /// login floods before any session-minting work.
     pub login_rate: Arc<ratelimit::RateLimiter>,
+    /// S0: the Entra agent-token bridge. `None` IS the disabled state
+    /// (S0-4, the default): a JWT-shaped bearer credential is denied
+    /// `bridge_disabled` and nothing else changes behaviour. Built only
+    /// from an explicitly-enabled `agent_bridge` config section.
+    pub agent_bridge: Option<Arc<agent_bridge::Bridge>>,
 }
 
 impl AppState {
@@ -388,6 +394,7 @@ impl AppState {
             sessions: Arc::new(session::SessionStore::new()),
             demo_identity_mode: true,
             login_rate: Arc::new(ratelimit::RateLimiter::default_login()),
+            agent_bridge: None,
         })
     }
 
@@ -395,6 +402,13 @@ impl AppState {
     /// seconds). Tests dial this down to exercise the 429 branch.
     pub fn with_login_rate(mut self, max: u32, window_secs: u64) -> AppState {
         self.login_rate = Arc::new(ratelimit::RateLimiter::new(max, window_secs));
+        self
+    }
+
+    /// S0: enable the Entra agent-token bridge. The ONLY way the bridge
+    /// exists at runtime — absent this call it is structurally off (S0-4).
+    pub fn with_agent_bridge(mut self, bridge: Arc<agent_bridge::Bridge>) -> AppState {
+        self.agent_bridge = Some(bridge);
         self
     }
 
@@ -520,6 +534,11 @@ pub struct ServiceConfig {
     pub generate_model: Option<String>,
     #[serde(default)]
     pub judge_timeout_ms: Option<u64>,
+    /// S0: the Entra agent-token bridge section. Absent — or present with
+    /// `enabled: false` — wires NOTHING (default OFF; existing deployments
+    /// are untouched until this is deliberately enabled).
+    #[serde(default)]
+    pub agent_bridge: Option<agent_bridge::AgentBridgeConfig>,
 }
 
 impl ServiceConfig {
@@ -556,6 +575,13 @@ impl ServiceConfig {
         if let Some(generate_model) = &self.generate_model {
             let client = LocalLlmClient::new(self.endpoint())?;
             state = state.with_generator(Arc::new(OllamaGenerator::new(client, generate_model)));
+        }
+        // S0: the bridge exists only behind an EXPLICIT `enabled: true`.
+        if let Some(bridge_config) = &self.agent_bridge {
+            if bridge_config.enabled {
+                let bridge = agent_bridge::Bridge::from_config(bridge_config)?;
+                state = state.with_agent_bridge(Arc::new(bridge));
+            }
         }
         Ok(state)
     }
@@ -1487,6 +1513,16 @@ async fn require_session(
         None => identity::route_denied(),
         Some(routes::RouteClass::Public) => next.run(request).await,
         Some(routes::RouteClass::SessionRequired(_scope)) => {
+            // S0: a JWT-SHAPED bearer credential (dotted — opaque session
+            // tokens are 64 hex chars by construction and can never contain
+            // a dot) selects the agent-token bridge EXCLUSIVELY. A failed
+            // bridge credential never falls back to session semantics, and
+            // a session credential never reaches the bridge (S0-5).
+            if let Some(credential) = bearer_token(request.headers()) {
+                if credential.contains('.') {
+                    return agent_token_request(state, credential, request, next).await;
+                }
+            }
             match session_principal(request.headers(), &state) {
                 Some(principal) => {
                     request.extensions_mut().insert(SessionPrincipal(principal));
@@ -1496,6 +1532,110 @@ async fn require_session(
             }
         }
     }
+}
+
+/// S0: one bearer-token request through the bridge. The ladder runs inside
+/// `spawn_blocking` (CPU-bound crypto plus a possible JWKS refresh); EVERY
+/// token-path decision — allow AND deny — is written to the audit ledger
+/// BEFORE its effect, and an allow that cannot be recorded is DENIED
+/// (EB-4 × EB-6). On success the resolved principal enters the SAME
+/// request-extension seam the session path fills, so every downstream
+/// scope / oracle / audit behaviour is identical to a session-authenticated
+/// caller (S0-1, S0-5). The token layer resolved identity; it decided no
+/// resource.
+async fn agent_token_request(
+    state: Arc<AppState>,
+    token: String,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let target = format!("{} {}", request.method(), request.uri().path());
+    let Some(bridge) = state.agent_bridge.clone() else {
+        // S0-4 — the default posture: the bridge does not exist; a JWT
+        // bearer is denied `bridge_disabled` and nothing else changes.
+        let reason = agent_bridge::DenyReason::BridgeDisabled;
+        audit_token_deny(&state, &target, reason, &Default::default());
+        return bridge_denied(reason);
+    };
+    let outcome = tokio::task::spawn_blocking(move || bridge.authenticate(&token)).await;
+    let outcome = match outcome {
+        Ok(outcome) => outcome,
+        Err(join_error) => {
+            eprintln!("agent token task failed: {join_error}");
+            let reason = agent_bridge::DenyReason::BridgeUnavailable;
+            audit_token_deny(&state, &target, reason, &Default::default());
+            return bridge_denied(reason);
+        }
+    };
+    match outcome {
+        agent_bridge::BridgeOutcome::Denied { reason, claims } => {
+            audit_token_deny(&state, &target, reason, &token_audit_fields(claims.as_deref()));
+            bridge_denied(reason)
+        }
+        agent_bridge::BridgeOutcome::Resolved { principal, claims } => {
+            let fields = token_audit_fields(Some(&claims));
+            // EB-6: no ledger, no allow. The audit row lands BEFORE the
+            // request proceeds; an unrecordable allow is a deny.
+            let Some(store) = &state.proposals else {
+                eprintln!("agent token allow refused: no audit ledger wired (EB-6)");
+                return bridge_denied(agent_bridge::DenyReason::BridgeUnavailable);
+            };
+            if let Err(err) = store.audit_agent_token(&principal, &target, "authorized", &fields)
+            {
+                eprintln!("agent token audit failed: {err:#}");
+                return bridge_denied(agent_bridge::DenyReason::BridgeUnavailable);
+            }
+            request.extensions_mut().insert(SessionPrincipal(principal));
+            next.run(request).await
+        }
+    }
+}
+
+/// Deny-side ledger write. The deny stands whether or not it could be
+/// recorded — a missing ledger never turns a deny into anything else; a
+/// write failure is an stderr signal (the EB-7 channel stays the ledger).
+fn audit_token_deny(
+    state: &AppState,
+    target: &str,
+    reason: agent_bridge::DenyReason,
+    fields: &agent::proposals::TokenAuditFields,
+) {
+    if let Some(store) = &state.proposals {
+        if let Err(err) = store.audit_agent_token("unresolved", target, reason.as_str(), fields) {
+            eprintln!("agent token audit failed: {err:#}");
+        }
+    }
+}
+
+/// Attribution claims for the audit row — ids only, never the raw token or
+/// its signature (rows 1–3 deny before any claim is trusted: empty fields).
+fn token_audit_fields(
+    claims: Option<&agent_bridge::ClaimSet>,
+) -> agent::proposals::TokenAuditFields {
+    let Some(claims) = claims else {
+        return Default::default();
+    };
+    agent::proposals::TokenAuditFields {
+        tid: claims.tid.clone(),
+        oid: claims.oid.clone(),
+        azp: claims.azp.clone(),
+        parent_azp: claims.parent_app_azp.clone(),
+        aud: claims.aud.first().cloned(),
+        uti: claims.uti.clone(),
+    }
+}
+
+/// S0: the bridge deny — 401, house error shape, the DISTINCT ladder reason
+/// code as the error string.
+fn bridge_denied(reason: agent_bridge::DenyReason) -> Response {
+    json_bytes_response(
+        StatusCode::UNAUTHORIZED,
+        format!(
+            "{{\"demo_identity_mode\":true,\"error\":\"{}\"}}\n",
+            reason.as_str()
+        )
+        .into_bytes(),
+    )
 }
 
 /// Resolve the principal from the request's bearer token or session cookie via

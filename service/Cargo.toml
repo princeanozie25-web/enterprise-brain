@@ -9,17 +9,22 @@ publish = false
 [dependencies]
 anyhow = "1"
 axum = "0.8"
+base64 = "0.22"
 genpdf = "0.2.0"
 # FC-A1: OS CSPRNG for minting unguessable session tokens (already in the
 # workspace lockfile; promoted to a direct dep for the session layer).
 getrandom = "0.3"
+jsonwebtoken = "9"
 retrieval = { path = "../retrieval" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 pdf-extract = "0.10.0"
+rand = "0.8"
+rsa = "0.9"
 # The A-suite compiles fresh M1 artifacts (frozen compiler crate) and drives
 # the axum router in-memory via tower::ServiceExt — no sockets. sha2 powers
 # the synthetic embedding fixture generator (same projection as M2b's).

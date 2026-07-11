@@ -5,6 +5,8 @@
 //! non-loopback socket.
 #![allow(dead_code)]
 
+pub mod jwt;
+
 use std::path::{Path, PathBuf};
 
 use axum::body::{to_bytes, Body};
