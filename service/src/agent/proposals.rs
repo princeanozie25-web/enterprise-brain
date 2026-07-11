@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, Context, Result};
 use retrieval::index::{canonical_json_bytes, sha256_hex};
@@ -131,6 +131,18 @@ pub struct AuditEvent {
     /// parses and every pre-S3 writer stays byte-identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// S4: RFC3339 UTC millisecond timestamp, from the injected clock.
+    /// Present ONLY on rows written by a clock-configured (S4-era) store;
+    /// absent on every pre-S4 row and on any store opened without a clock,
+    /// so the exact-byte determinism of the legacy writers is preserved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ts: Option<String>,
+    /// S4: the tamper-evidence link — sha256 (hex) of the PREVIOUS line's
+    /// raw bytes as written (the first row of a fresh file links to
+    /// sha256 of the empty string). Present only on S4-era rows; the chain
+    /// anchors OVER legacy rows without rewriting them. Absent = pre-S4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prev: Option<String>,
 }
 
 /// S0: the claim attribution carried on one `agent_token` audit row.
@@ -150,12 +162,22 @@ struct StoreState {
     by_key: BTreeMap<(String, String), String>,
     next_ordinal: u64,
     next_audit_ordinal: u64,
+    /// S4: sha256 (hex) of the LAST audit line's raw bytes as written —
+    /// the value the next S4-era row's `prev` links to. Computed at open
+    /// from the existing file (or sha256 of the empty string for a fresh
+    /// one), so the chain anchors over any legacy tail without rewriting it.
+    audit_chain_tip: String,
 }
 
 pub struct ProposalStore {
     proposals_path: PathBuf,
     audit_path: PathBuf,
     state: Mutex<StoreState>,
+    /// S4: the timestamp/chain clock. `None` = legacy mode (no `ts`, no
+    /// `prev` — pre-S4 byte-identical output, used by every existing
+    /// caller and the legacy exact-JSON pin). `Some` = S4 mode: rows carry
+    /// `ts` + `prev` and the ledger is hash-chained.
+    clock: Option<Arc<dyn crate::clock::Clock>>,
 }
 
 pub enum CreateOutcome {
@@ -172,7 +194,24 @@ pub enum DecideError {
 
 impl ProposalStore {
     /// Opens (or creates) the store under `dir`, replaying the event log.
+    /// Legacy mode: no clock — rows carry no `ts`/`prev` and every writer
+    /// stays byte-identical to pre-S4 (the exact-JSON pin depends on this).
     pub fn open(dir: &Path) -> Result<ProposalStore> {
+        Self::open_inner(dir, None)
+    }
+
+    /// S4: opens the store in CHAINED mode — every new audit row carries an
+    /// injected-clock `ts` and a `prev` hash, and the ledger is
+    /// tamper-evident. The chain anchors over any pre-S4 tail already in
+    /// the file without rewriting it.
+    pub fn open_chained(dir: &Path, clock: Arc<dyn crate::clock::Clock>) -> Result<ProposalStore> {
+        Self::open_inner(dir, Some(clock))
+    }
+
+    fn open_inner(
+        dir: &Path,
+        clock: Option<Arc<dyn crate::clock::Clock>>,
+    ) -> Result<ProposalStore> {
         std::fs::create_dir_all(dir)
             .with_context(|| format!("cannot create proposal store dir {}", dir.display()))?;
         let proposals_path = dir.join("proposals.jsonl");
@@ -183,6 +222,7 @@ impl ProposalStore {
             by_key: BTreeMap::new(),
             next_ordinal: 0,
             next_audit_ordinal: 0,
+            audit_chain_tip: sha256_hex(b""),
         };
         if proposals_path.exists() {
             let text = std::fs::read_to_string(&proposals_path)
@@ -224,15 +264,50 @@ impl ProposalStore {
             }
         }
         if audit_path.exists() {
-            let text = std::fs::read_to_string(&audit_path)
+            let raw = std::fs::read(&audit_path)
                 .with_context(|| format!("cannot read {}", audit_path.display()))?;
-            state.next_audit_ordinal = text.lines().filter(|l| !l.trim().is_empty()).count() as u64;
+            state.next_audit_ordinal = count_lines(&raw);
+            // S4: anchor the chain to the LAST line's raw bytes as written
+            // (whatever era it belongs to), so the next S4 row links over it.
+            if let Some(last) = last_line_bytes(&raw) {
+                state.audit_chain_tip = sha256_hex(last);
+            }
         }
         Ok(ProposalStore {
             proposals_path,
             audit_path,
             state: Mutex::new(state),
+            clock,
         })
+    }
+
+    /// S4: append one audit row under the store lock, stamping `ts` + `prev`
+    /// and advancing the chain tip when in chained mode. In legacy mode
+    /// (no clock) the event is written exactly as before — byte-identical.
+    /// Returns the row's ordinal.
+    fn append_audit(&self, state: &mut StoreState, mut event: AuditEvent) -> Result<u64> {
+        let ordinal = state.next_audit_ordinal;
+        event.ordinal = ordinal;
+        if let Some(clock) = &self.clock {
+            event.ts = Some(clock.now_rfc3339_ms());
+            event.prev = Some(state.audit_chain_tip.clone());
+        }
+        let bytes = canonical_json_bytes(&event)?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.audit_path)
+            .with_context(|| format!("cannot open {}", self.audit_path.display()))?;
+        file.write_all(&bytes)
+            .with_context(|| format!("cannot append to {}", self.audit_path.display()))?;
+        file.sync_data()
+            .with_context(|| format!("cannot sync {}", self.audit_path.display()))?;
+        // The tip becomes THIS row's bytes — the next row links to it.
+        if self.clock.is_some() {
+            state.audit_chain_tip = sha256_hex(&bytes);
+        }
+        state.next_audit_ordinal += 1;
+        Ok(ordinal)
     }
 
     fn append(path: &Path, value: &impl Serialize) -> Result<()> {
@@ -341,10 +416,10 @@ impl ProposalStore {
             candidates: None,
             payload: None,
             source: None,
+            ts: None,
+            prev: None,
         };
-        Self::append(&self.audit_path, &event)?;
-        state.next_audit_ordinal += 1;
-        Ok(ordinal)
+        self.append_audit(&mut state, event)
     }
 
     /// AP-4: the `lens_diff` audit row — ONE act with TWO subjects, never
@@ -371,10 +446,10 @@ impl ProposalStore {
             candidates: None,
             payload: None,
             source: None,
+            ts: None,
+            prev: None,
         };
-        Self::append(&self.audit_path, &event)?;
-        state.next_audit_ordinal += 1;
-        Ok(ordinal)
+        self.append_audit(&mut state, event)
     }
 
     /// S0: one `agent_token` audit row — EVERY token-path decision, allow
@@ -411,10 +486,10 @@ impl ProposalStore {
             candidates: None,
             payload: None,
             source: None,
+            ts: None,
+            prev: None,
         };
-        Self::append(&self.audit_path, &event)?;
-        state.next_audit_ordinal += 1;
-        Ok(ordinal)
+        self.append_audit(&mut state, event)
     }
 
     /// S1: one `/v1` surface audit row — EVERY `/v1` request, allow AND
@@ -458,10 +533,10 @@ impl ProposalStore {
             candidates: candidates.map(<[String]>::to_vec),
             payload: payload.map(str::to_string),
             source: source.map(str::to_string),
+            ts: None,
+            prev: None,
         };
-        Self::append(&self.audit_path, &event)?;
-        state.next_audit_ordinal += 1;
-        Ok(ordinal)
+        self.append_audit(&mut state, event)
     }
 
     /// Applies an approve/reject. Authority (owner-only, human-only) is the
@@ -563,4 +638,98 @@ pub fn render(proposal: &Proposal, current_snapshot: &str) -> Result<Value> {
     );
     withheld.insert("status".into(), proposal.status.clone().into());
     Ok(Value::Object(withheld))
+}
+
+// ---------------------------------------------------------------------------
+// S4: hash-chain helpers + tamper-evidence verification
+// ---------------------------------------------------------------------------
+
+/// Count non-empty lines in raw ledger bytes (the audit ordinal at open).
+fn count_lines(raw: &[u8]) -> u64 {
+    raw.split(|b| *b == b'\n')
+        .filter(|line| !line.is_empty())
+        .count() as u64
+}
+
+/// The last line's raw bytes AS WRITTEN — including its trailing newline
+/// (every row is written by `canonical_json_bytes`, which appends `\n`, so
+/// the chain tip hashes the newline too). `None` for an empty file. Rows
+/// always end in `\n`, so the last line runs from just after the
+/// second-to-last newline through the final one.
+fn last_line_bytes(raw: &[u8]) -> Option<&[u8]> {
+    let last_nl = raw.iter().rposition(|b| *b == b'\n')?;
+    let start = raw[..last_nl]
+        .iter()
+        .rposition(|b| *b == b'\n')
+        .map(|p| p + 1)
+        .unwrap_or(0);
+    Some(&raw[start..=last_nl])
+}
+
+/// The outcome of verifying a ledger's hash chain.
+#[derive(Debug, PartialEq, Eq)]
+pub enum LedgerVerification {
+    /// The chain is intact: every S4-era row's `prev` matches the sha256 of
+    /// the previous line's bytes as written (legacy rows are anchored over,
+    /// never rewritten).
+    Clean { rows: u64, chained_rows: u64 },
+    /// The chain breaks at this 0-based ordinal — the first row whose `prev`
+    /// does not match the recomputed hash of its predecessor (a flipped
+    /// byte, a deleted line, an inserted row).
+    Broken { ordinal: u64, detail: String },
+}
+
+/// S4 `verify-ledger`: walk a ledger file and recompute the hash chain.
+/// Every row carrying a `prev` (S4-era) must link to the sha256 of the
+/// previous line's raw bytes as written; the very first row of a file links
+/// to sha256 of the empty string. Legacy rows (no `prev`) are not checked
+/// against a predecessor but ARE hashed as predecessors, so the chain
+/// anchors across the era boundary. Reports the first breaking ordinal or
+/// CLEAN. (Exposed as a library fn; a test-invocable path and the
+/// `service verify-ledger <path>` binary subcommand both call it.)
+pub fn verify_ledger(path: &Path) -> Result<LedgerVerification> {
+    let raw = std::fs::read(path).with_context(|| format!("cannot read {}", path.display()))?;
+    // Reconstruct each row's bytes-as-written (segment + '\n').
+    let mut rows: Vec<&[u8]> = Vec::new();
+    let mut start = 0usize;
+    for (i, b) in raw.iter().enumerate() {
+        if *b == b'\n' {
+            if i + 1 > start {
+                let seg = &raw[start..=i];
+                // Skip a purely-empty line (just "\n").
+                if seg.len() > 1 {
+                    rows.push(seg);
+                }
+            }
+            start = i + 1;
+        }
+    }
+    let empty_hash = sha256_hex(b"");
+    let mut chained = 0u64;
+    for (ordinal, row) in rows.iter().enumerate() {
+        // Parse just the optional `prev` field (ignore everything else).
+        let text = std::str::from_utf8(row)
+            .with_context(|| format!("row {ordinal} is not valid UTF-8"))?;
+        let value: Value = serde_json::from_str(text.trim_end())
+            .with_context(|| format!("row {ordinal} fails parse"))?;
+        let Some(prev) = value.get("prev").and_then(Value::as_str) else {
+            continue; // legacy row — anchored over, not checked
+        };
+        chained += 1;
+        let expected = if ordinal == 0 {
+            empty_hash.clone()
+        } else {
+            sha256_hex(rows[ordinal - 1])
+        };
+        if prev != expected {
+            return Ok(LedgerVerification::Broken {
+                ordinal: ordinal as u64,
+                detail: format!("prev={prev} but predecessor hashes to {expected}"),
+            });
+        }
+    }
+    Ok(LedgerVerification::Clean {
+        rows: rows.len() as u64,
+        chained_rows: chained,
+    })
 }
