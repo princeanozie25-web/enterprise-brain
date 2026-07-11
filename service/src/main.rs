@@ -140,7 +140,40 @@ async fn run() -> Result<()> {
     Ok(())
 }
 
+/// S4: `service verify-ledger <path>` — walk a ledger and recompute its
+/// hash chain, reporting CLEAN or the first breaking ordinal. Exits 0 on
+/// CLEAN, 1 on a broken chain (so it slots into CI / an operator check).
+fn verify_ledger_cmd(path: &str) -> ExitCode {
+    use service::agent::proposals::{verify_ledger, LedgerVerification};
+    match verify_ledger(std::path::Path::new(path)) {
+        Ok(LedgerVerification::Clean { rows, chained_rows }) => {
+            println!("CLEAN: {rows} rows ({chained_rows} hash-chained) verify intact");
+            ExitCode::SUCCESS
+        }
+        Ok(LedgerVerification::Broken { ordinal, detail }) => {
+            eprintln!("BROKEN: chain breaks at ordinal {ordinal} ({detail})");
+            ExitCode::FAILURE
+        }
+        Err(err) => {
+            eprintln!("REFUSED: {err:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
+    // S4: the verify-ledger subcommand runs without the async server.
+    let mut raw = std::env::args().skip(1);
+    if let Some(first) = raw.next() {
+        if first == "verify-ledger" {
+            let Some(path) = raw.next() else {
+                eprintln!("usage: service verify-ledger <ledger-path>");
+                return ExitCode::FAILURE;
+            };
+            return verify_ledger_cmd(&path);
+        }
+    }
+
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,
         Err(err) => {

@@ -14,9 +14,11 @@ pub mod access_grants;
 pub mod access_requests;
 pub mod agent;
 pub mod agent_bridge;
+pub mod alerts;
 pub mod answer;
 pub mod atlas;
 pub mod cache;
+pub mod clock;
 pub mod cors;
 pub mod diff;
 pub mod estate;
@@ -241,6 +243,11 @@ pub struct AppState {
     /// exactly the pre-S3 behaviour. Loaded from `fixtures/estate` when
     /// present; the estate agents and `s3/...` ids exist only when it does.
     pub estate: Option<Arc<estate::EstateModel>>,
+    /// S4: the policy-deny alert dispatcher. `None` = alerting off (the
+    /// default; zero behaviour change). Alerts derive from ledger deny
+    /// rows and dispatch OFF the request path — never a second decision
+    /// point, never a source of latency.
+    pub alerts: Option<Arc<alerts::AlertDispatcher>>,
 }
 
 impl AppState {
@@ -402,7 +409,14 @@ impl AppState {
             login_rate: Arc::new(ratelimit::RateLimiter::default_login()),
             agent_bridge: None,
             estate: None,
+            alerts: None,
         })
+    }
+
+    /// S4: attach the policy-deny alert dispatcher (config- or test-wired).
+    pub fn with_alerts(mut self, dispatcher: Arc<alerts::AlertDispatcher>) -> AppState {
+        self.alerts = Some(dispatcher);
+        self
     }
 
     /// S3: load the multi-source estate from `fixtures/estate` (the second
@@ -575,6 +589,24 @@ pub struct ServiceConfig {
     /// deployment single-source until the estate is deliberately wired.
     #[serde(default)]
     pub estate_dir: Option<PathBuf>,
+    /// S4: policy-deny alerting. Absent = alerting off (zero behaviour
+    /// change). A malformed section fails startup LOUDLY naming the field.
+    #[serde(default)]
+    pub alerting: Option<AlertingConfig>,
+}
+
+/// S4: the `alerting` config section. `deny_unknown_fields` + the required
+/// `alerts_path` mean a malformed section is a loud, field-named startup
+/// failure (the explain-loudly-to-the-operator principle).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AlertingConfig {
+    pub enabled: bool,
+    /// The always-on durable file sink (append-only, fsync).
+    pub alerts_path: PathBuf,
+    /// Optional best-effort webhook (POST JSON, 3s timeout, 3 attempts).
+    #[serde(default)]
+    pub webhook_url: Option<String>,
 }
 
 /// S2b: where the decision ledger lives. Same store type, same file
@@ -629,15 +661,35 @@ impl ServiceConfig {
             }
         }
         // S2b: the decision ledger from config — the machine surface's
-        // audit sink no longer rides the M4 --agents-config flag.
+        // audit sink no longer rides the M4 --agents-config flag. S4: a
+        // config-wired ledger is CHAINED (tamper-evident) and TIMESTAMPED
+        // via the wall clock — an S4-era deployment gets tamper-evidence by
+        // construction. The legacy `open()` writer (used by the exact-JSON
+        // pin) stays byte-identical.
         if let Some(ledger) = &self.ledger {
-            let store = agent::proposals::ProposalStore::open(&ledger.dir)
+            let clock: Arc<dyn crate::clock::Clock> = Arc::new(crate::clock::WallClock);
+            let store = agent::proposals::ProposalStore::open_chained(&ledger.dir, clock)
                 .with_context(|| format!("config.ledger.dir {}", ledger.dir.display()))?;
             state = state.with_proposals(Arc::new(store));
         }
         // S3: the multi-source estate, when the config names its directory.
         if let Some(estate_dir) = &self.estate_dir {
             state = state.with_estate_from(estate_dir)?;
+        }
+        // S4: policy-deny alerting, when the config enables it. Off the
+        // request path; a wall clock stamps the alert `ts`, a `ureq` webhook
+        // delivers best-effort.
+        if let Some(alerting) = &self.alerting {
+            if alerting.enabled {
+                let clock: Arc<dyn crate::clock::Clock> = Arc::new(crate::clock::WallClock);
+                let dispatcher = alerts::AlertDispatcher::new(
+                    alerting.alerts_path.clone(),
+                    alerting.webhook_url.clone(),
+                    Arc::new(alerts::UreqWebhook),
+                    clock,
+                );
+                state = state.with_alerts(Arc::new(dispatcher));
+            }
         }
         Ok(state)
     }
@@ -1012,7 +1064,8 @@ async fn handle_v1_document(
     let Some(served) = served else {
         // Out-of-scope OR nonexistent OR across-the-seam-denied — the
         // ledger records the deny; the wire cannot tell them apart (S1-3).
-        if let Err(err) = store.audit_v1(
+        let source = source_of(&doc_id);
+        match store.audit_v1(
             "v1_document",
             &principal,
             &target,
@@ -1021,16 +1074,31 @@ async fn handle_v1_document(
             None,
             None,
             None,
-            Some(source_of(&doc_id)),
+            Some(source),
         ) {
-            eprintln!("v1 audit failed: {err:#}");
-            return v1_internal();
+            // S4: a validated principal denied a resource-level decision —
+            // the policy-class deny the security team wants to see. The
+            // alert is DERIVED FROM the ledger row (by its ordinal) and
+            // dispatched OFF the request path.
+            Ok(ordinal) => alert_policy_deny(
+                &state,
+                &principal,
+                &context.0,
+                &doc_id,
+                source,
+                "not in compiled scope (out-of-scope or nonexistent — indistinguishable)",
+                ordinal,
+            ),
+            Err(err) => {
+                eprintln!("v1 audit failed: {err:#}");
+                return v1_internal();
+            }
         }
         return doc_not_found();
     };
     if served.content.len() > V1_CONTENT_MAX_BYTES {
         // Fail LOUD: ledgered, generic 500, never truncated, never 404.
-        if let Err(err) = store.audit_v1(
+        match store.audit_v1(
             "v1_document",
             &principal,
             &target,
@@ -1041,7 +1109,16 @@ async fn handle_v1_document(
             None,
             Some(&served.source),
         ) {
-            eprintln!("v1 audit failed: {err:#}");
+            Ok(ordinal) => alert_policy_deny(
+                &state,
+                &principal,
+                &context.0,
+                &doc_id,
+                &served.source,
+                "body exceeds the response cap (not in compiled scope for delivery)",
+                ordinal,
+            ),
+            Err(err) => eprintln!("v1 audit failed: {err:#}"),
         }
         return v1_internal();
     }
@@ -1075,6 +1152,37 @@ async fn handle_v1_document(
             v1_internal()
         }
     }
+}
+
+/// S4: derive a policy-deny alert from a just-written ledger deny row and
+/// hand it to the dispatcher (which fires OFF the request path). A no-op
+/// when alerting is disabled. Called ONLY from the resource-level deny
+/// branches of `handle_v1_document` — a validated principal denied a
+/// document — never for auth-ladder denies (those are fenced).
+fn alert_policy_deny(
+    state: &AppState,
+    principal: &str,
+    claims: &agent::proposals::TokenAuditFields,
+    resource: &str,
+    source: &str,
+    reason: &str,
+    ledger_ordinal: u64,
+) {
+    let Some(dispatcher) = &state.alerts else {
+        return;
+    };
+    dispatcher.dispatch(alerts::AlertInput {
+        principal_id: principal.to_string(),
+        claims: alerts::AlertClaims {
+            tid: claims.tid.clone(),
+            oid: claims.oid.clone(),
+            azp: claims.azp.clone(),
+        },
+        resource: resource.to_string(),
+        source: source.to_string(),
+        decision_basis: reason.to_string(),
+        ledger_ordinal,
+    });
 }
 
 /// S3 conformance seam: the composed `/v1` document authorization decision
