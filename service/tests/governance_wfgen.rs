@@ -68,9 +68,14 @@ fn world() -> &'static World {
 }
 
 /// Base state with a MockGenerator + a fresh workflow-proposal store in `dir`.
+/// wf-gen S4 condition: the store is CHAINED with an injected deterministic
+/// clock (no test reads the wall clock), so every WF-G row carries ts + prev
+/// and the mutation ledger is tamper-evident — as production runs it.
 fn state_with(behavior: MockBehavior, dir: &std::path::Path) -> AppState {
     let world = world();
-    let store = WorkflowProposalStore::open(dir).expect("open wf proposal store");
+    let clock: Arc<dyn service::clock::Clock> =
+        Arc::new(service::clock::FixedClock::new(1_783_762_923_500, 1000));
+    let store = WorkflowProposalStore::open_chained(dir, clock).expect("open wf proposal store");
     AppState::build(&world.fixtures_dir, &world.artifacts_dir, &world.idx_dir)
         .expect("build service state")
         .with_generator(Arc::new(MockGenerator::new(behavior)) as Arc<dyn Generator>)
@@ -204,8 +209,10 @@ async fn wf_g3_no_approver_refuses_before_generation() {
     // The refusal itself is audited.
     let audit = std::fs::read_to_string(dir.join("wf_proposals_audit.jsonl")).expect("audit log");
     assert!(
-        audit.lines().any(|l| l.contains("\"action\":\"proposal_generate\"")
-            && l.contains("\"outcome\":\"refused_no_approver\"")),
+        audit
+            .lines()
+            .any(|l| l.contains("\"action\":\"proposal_generate\"")
+                && l.contains("\"outcome\":\"refused_no_approver\"")),
         "the no-approver refusal is audited"
     );
 }

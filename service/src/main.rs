@@ -105,7 +105,13 @@ fn build_state(args: &Args) -> Result<AppState> {
         let boxes = service::lane::BoxStore::open(state_dir)?;
         // SHOWCASE-III: the grounded-workflow proposal store shares the state dir
         // (distinct wf_proposals.jsonl, so it never collides with M4's store).
-        let wf_proposals = service::proposals::WorkflowProposalStore::open(state_dir)?;
+        // wf-gen S4 condition: the mutation ledger is CHAINED (tamper-evident,
+        // timestamped) — approval records are the most tamper-sensitive rows,
+        // so a production deployment gets tamper-evidence by construction.
+        let wf_clock: std::sync::Arc<dyn service::clock::Clock> =
+            std::sync::Arc::new(service::clock::WallClock);
+        let wf_proposals =
+            service::proposals::WorkflowProposalStore::open_chained(state_dir, wf_clock)?;
         state = state
             .with_agents(registry)
             .with_lane_boxes(std::sync::Arc::new(boxes))

@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
@@ -141,12 +141,23 @@ struct StoreState {
     next_audit_ordinal: u64,
     next_ordinal: u64,
     proposals: BTreeMap<String, Proposal>,
+    /// wf-gen S4 condition: sha256 (hex) of the last line of each ledger
+    /// file, the value the next chained row's `prev` links to. Computed at
+    /// open; the event log and the audit log chain independently.
+    event_chain_tip: String,
+    audit_chain_tip: String,
 }
 
 pub struct WorkflowProposalStore {
     audit_path: PathBuf,
     proposals_path: PathBuf,
     state: Mutex<StoreState>,
+    /// wf-gen S4 condition: the timestamp/chain clock. `None` = legacy
+    /// (byte-identical, the exact pre-condition writer). `Some` = chained:
+    /// every stored workflow-proposal AND audit row carries `ts` + `prev`,
+    /// so approval records are tamper-evident (the standing S4 law, applied
+    /// to the mutation ledger).
+    clock: Option<Arc<dyn crate::clock::Clock>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,6 +171,24 @@ impl WorkflowProposalStore {
     /// Distinct filenames from M4's `proposals.jsonl` so both stores share one
     /// `--state-dir` safely (flagged in the closeout).
     pub fn open(dir: &Path) -> Result<WorkflowProposalStore> {
+        Self::open_inner(dir, None)
+    }
+
+    /// wf-gen S4 condition: open the store CHAINED — every workflow-proposal
+    /// and audit row carries an injected-clock `ts` and a `prev` hash, so
+    /// the mutation ledger is tamper-evident. Anchors over any pre-condition
+    /// rows without rewriting them (the standing S4 anchoring pattern).
+    pub fn open_chained(
+        dir: &Path,
+        clock: Arc<dyn crate::clock::Clock>,
+    ) -> Result<WorkflowProposalStore> {
+        Self::open_inner(dir, Some(clock))
+    }
+
+    fn open_inner(
+        dir: &Path,
+        clock: Option<Arc<dyn crate::clock::Clock>>,
+    ) -> Result<WorkflowProposalStore> {
         std::fs::create_dir_all(dir).with_context(|| {
             format!(
                 "cannot create workflow proposal store dir {}",
@@ -172,14 +201,28 @@ impl WorkflowProposalStore {
             next_audit_ordinal: 0,
             next_ordinal: 0,
             proposals: BTreeMap::new(),
+            event_chain_tip: sha256_hex(b""),
+            audit_chain_tip: sha256_hex(b""),
         };
 
         if proposals_path.exists() {
-            let text = std::fs::read_to_string(&proposals_path)
+            let raw = std::fs::read(&proposals_path)
                 .with_context(|| format!("cannot read {}", proposals_path.display()))?;
+            if let Some(last) = last_line_bytes(&raw) {
+                state.event_chain_tip = sha256_hex(last);
+            }
+            let text = String::from_utf8(raw).context("event log is not UTF-8")?;
             for line in text.lines().filter(|l| !l.trim().is_empty()) {
+                // Strip the chain metadata (ts/prev) before the strict
+                // StoreEvent parse, so the event type stays deny_unknown_fields.
+                let mut value: serde_json::Value =
+                    serde_json::from_str(line).context("workflow proposal row fails parse")?;
+                if let Some(obj) = value.as_object_mut() {
+                    obj.remove("ts");
+                    obj.remove("prev");
+                }
                 let event: StoreEvent =
-                    serde_json::from_str(line).context("workflow proposal event fails parse")?;
+                    serde_json::from_value(value).context("workflow proposal event fails parse")?;
                 state.next_ordinal += 1;
                 match event {
                     StoreEvent::Created { proposal } => {
@@ -214,30 +257,61 @@ impl WorkflowProposalStore {
             }
         }
         if audit_path.exists() {
-            let text = std::fs::read_to_string(&audit_path)
+            let raw = std::fs::read(&audit_path)
                 .with_context(|| format!("cannot read {}", audit_path.display()))?;
-            state.next_audit_ordinal = text.lines().filter(|l| !l.trim().is_empty()).count() as u64;
+            state.next_audit_ordinal = count_lines(&raw);
+            if let Some(last) = last_line_bytes(&raw) {
+                state.audit_chain_tip = sha256_hex(last);
+            }
         }
 
         Ok(WorkflowProposalStore {
             audit_path,
             proposals_path,
             state: Mutex::new(state),
+            clock,
         })
     }
 
     fn append(path: &Path, value: &impl Serialize) -> Result<()> {
         let bytes = canonical_json_bytes(value)?;
+        Self::write_bytes(path, &bytes)
+    }
+
+    fn write_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(path)
             .with_context(|| format!("cannot open {}", path.display()))?;
-        file.write_all(&bytes)
+        file.write_all(bytes)
             .with_context(|| format!("cannot append to {}", path.display()))?;
         file.sync_data()
             .with_context(|| format!("cannot sync {}", path.display()))?;
         Ok(())
+    }
+
+    /// Append one row to a ledger file, chaining it when a clock is present.
+    /// Legacy mode (no clock) takes the exact pre-condition path — the
+    /// output is byte-identical. Chained mode injects `ts` + `prev` at the
+    /// JSON layer (so `StoreEvent`/`AuditEvent` stay `deny_unknown_fields`)
+    /// and advances the file's chain tip.
+    fn append_chained(&self, path: &Path, tip: &mut String, value: &impl Serialize) -> Result<()> {
+        match &self.clock {
+            None => Self::append(path, value),
+            Some(clock) => {
+                let mut v = serde_json::to_value(value).context("ledger row serialization")?;
+                let obj = v
+                    .as_object_mut()
+                    .context("a ledger row must be a JSON object")?;
+                obj.insert("ts".to_string(), clock.now_rfc3339_ms().into());
+                obj.insert("prev".to_string(), tip.clone().into());
+                let bytes = canonical_json_bytes(&v)?;
+                Self::write_bytes(path, &bytes)?;
+                *tip = sha256_hex(&bytes);
+                Ok(())
+            }
+        }
     }
 
     /// AUDIT-BEFORE-EFFECT (lens.rs precedent): the row is written AND flushed
@@ -253,7 +327,7 @@ impl WorkflowProposalStore {
             outcome: outcome.to_string(),
             target: target.to_string(),
         };
-        Self::append(&self.audit_path, &event)?;
+        self.append_chained(&self.audit_path, &mut state.audit_chain_tip, &event)?;
         state.next_audit_ordinal += 1;
         Ok(ordinal)
     }
@@ -287,8 +361,9 @@ impl WorkflowProposalStore {
             snapshot_version: draft.snapshot_version,
             materialized: false,
         };
-        Self::append(
+        self.append_chained(
             &self.proposals_path,
+            &mut state.event_chain_tip,
             &StoreEvent::Created {
                 proposal: proposal.clone(),
             },
@@ -330,8 +405,9 @@ impl WorkflowProposalStore {
             return Ok(Err(DecideError::AlreadyDecided));
         }
         let decided_ordinal = state.next_ordinal;
-        Self::append(
+        self.append_chained(
             &self.proposals_path,
+            &mut state.event_chain_tip,
             &StoreEvent::Decided {
                 actor_principal: actor_principal.to_string(),
                 decided_ordinal,
@@ -362,8 +438,9 @@ impl WorkflowProposalStore {
             return Ok(Some(proposal.clone()));
         }
         let ordinal = state.next_ordinal;
-        Self::append(
+        self.append_chained(
             &self.proposals_path,
+            &mut state.event_chain_tip,
             &StoreEvent::Materialized {
                 proposal_id: proposal_id.to_string(),
                 ordinal,
@@ -652,4 +729,28 @@ pub fn redact_boxes_for(
         });
     }
     Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// wf-gen S4 condition: chain readers (mirror agent::proposals)
+// ---------------------------------------------------------------------------
+
+/// Count non-empty lines in raw ledger bytes.
+fn count_lines(raw: &[u8]) -> u64 {
+    raw.split(|b| *b == b'\n')
+        .filter(|line| !line.is_empty())
+        .count() as u64
+}
+
+/// The last line's raw bytes AS WRITTEN (including its trailing newline).
+/// Rows always end in `\n`, so the last line runs from just after the
+/// second-to-last newline through the final one. `None` for an empty file.
+fn last_line_bytes(raw: &[u8]) -> Option<&[u8]> {
+    let last_nl = raw.iter().rposition(|b| *b == b'\n')?;
+    let start = raw[..last_nl]
+        .iter()
+        .rposition(|b| *b == b'\n')
+        .map(|p| p + 1)
+        .unwrap_or(0);
+    Some(&raw[start..=last_nl])
 }
