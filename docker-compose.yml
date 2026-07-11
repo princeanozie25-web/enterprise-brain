@@ -1,0 +1,60 @@
+# Enterprise Brain — one-command demo stack.
+#
+#   docker compose up --build          # build, bootstrap, serve
+#   docker compose logs bootstrap      # the agent tokens, copy-paste curls
+#   curl -s -H "Authorization: Bearer <TOKEN>" http://127.0.0.1:8787/v1/whoami
+#
+# EXPOSURE (S5b bind amendment): inside the container the gateway binds
+# 0.0.0.0:8787 (loopback-in-a-container is fail-useless); the port mapping
+# below publishes it HOST-LOOPBACK ONLY (`127.0.0.1:8787:8787`), so host curls
+# and the SDK reach it while the network cannot. The no-external-exposure
+# intent of the native loopback invariant is enforced at the host boundary —
+# a standing test (`compose_ports_are_host_loopback`) fails the build if any
+# ports entry here ever loses its `127.0.0.1:` prefix.
+
+services:
+  # One-shot: mint the demo world (RSA key, 24 h agent tokens, a DEMO-labelled
+  # config with the container bind) onto the shared volume, print the tokens,
+  # exit 0.
+  bootstrap:
+    build: .
+    image: enterprise-brain-gateway:demo
+    command: ["bootstrap-dev", "--out", "/data/dev-out", "--force", "--container"]
+    volumes:
+      - demo:/data
+
+  # The governed gateway. Healthy IFF `doctor` passes (config sound — a
+  # misconfig fails it with the offending field named) AND the port serves
+  # (liveness). Both halves must pass, so a hung or misconfigured container is
+  # UNHEALTHY, not silently up.
+  gateway:
+    image: enterprise-brain-gateway:demo
+    # The demo world on the volume outlives the daemon; so should the
+    # gateway — a docker/host restart brings it back without ceremony.
+    restart: unless-stopped
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - demo:/data
+    ports:
+      # Host-loopback ONLY. Never remove the 127.0.0.1: prefix.
+      - "127.0.0.1:8787:8787"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          service doctor --json --fixtures fixtures --artifacts compiler/artifacts
+          --idx retrieval/idx --config /data/dev-out/config.json
+          && curl -fsS http://127.0.0.1:8787/healthz
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+# The demo world — including the ledger and alert sink — persists here, so
+# `docker compose run --rm --no-deps gateway verify-ledger /data/dev-out/ledger/audit.jsonl`
+# can audit the chain against a stopped stack. (--no-deps: the audit command
+# must never re-run the bootstrap one-shot, which regenerates the world.)
+volumes:
+  demo:

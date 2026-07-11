@@ -1,0 +1,25 @@
+# Keep the build context lean and correct: the builder REGENERATES the
+# artifacts + index from fixtures, so never ship a host copy of them; never
+# ship build output, the console app, secrets, or VCS/editor state.
+.git
+.gitignore
+target
+**/target
+compiler/artifacts
+retrieval/idx
+.state
+console
+**/node_modules
+**/.next
+**/__pycache__
+**/.pytest_cache
+synth
+# Demo credentials + any minted key material must never enter an image layer.
+dev-out
+**/dev-out
+*.pem
+tokens.json
+# Session / tooling / capture artefacts.
+.claude
+*.png
+QUICKSTART.md

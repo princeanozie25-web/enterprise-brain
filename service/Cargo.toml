@@ -15,6 +15,11 @@ genpdf = "0.2.0"
 # workspace lockfile; promoted to a direct dep for the session layer).
 getrandom = "0.3"
 jsonwebtoken = "9"
+# S5b: `bootstrap-dev` mints a throwaway RSA-2048 demo key + agent JWTs. These
+# were dev-dependencies (fixture token minting); promoted to the binary behind
+# the `bootstrap-dev` subcommand ONLY — nothing on the request path uses them.
+rand = "0.8"
+rsa = "0.9"
 retrieval = { path = "../retrieval" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -23,8 +28,6 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 pdf-extract = "0.10.0"
-rand = "0.8"
-rsa = "0.9"
 # The A-suite compiles fresh M1 artifacts (frozen compiler crate) and drives
 # the axum router in-memory via tower::ServiceExt — no sockets. sha2 powers
 # the synthetic embedding fixture generator (same projection as M2b's).

@@ -8,3 +8,8 @@ __pycache__/
 /.state/
 /target-graph/
 /enterprise-brain-target-graph-*.png
+# S5b: bootstrap-dev mints demo credentials into an out-dir — NEVER committed.
+/dev-out/
+**/dev-out/
+*.pem
+tokens.json
