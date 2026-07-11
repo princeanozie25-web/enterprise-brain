@@ -976,10 +976,12 @@ async fn handle_v1_document(
 /// POST /v1/retrieve — the core: governed retrieval scoped AT QUERY
 /// CONSTRUCTION to the resolved principal's compiled allowlist (EB-5). An
 /// out-of-scope document is never a candidate — not as an id, a title, a
-/// snippet, or a score. Empty results are a 200, not an error. The `score`
-/// field carries the 1-based fused rank (1 = best): raw similarity scores
-/// are never serialized (the M2a envelope invariant), and the rank is the
-/// deterministic ordering key a machine actually needs.
+/// snippet, or a rank entry. Empty results are a 200, not an error. The
+/// `rank` field is the 1-based fused rank (1 = best) — named for what it
+/// IS: under the name "score" every consumer would sort descending and
+/// silently invert the ordering. Raw similarity scores are never
+/// serialized (the M2a envelope invariant); `/v1` serializes rank only,
+/// never raw similarity.
 async fn handle_v1_retrieve(
     State(state): State<Arc<AppState>>,
     DemoPrincipal(principal): DemoPrincipal,
@@ -1082,7 +1084,7 @@ async fn handle_v1_retrieve(
                     "doc_id": result.document_id,
                     "title": meta.title,
                     "snippet": retrieval::vector::snippet_of(&meta.body, answer::CONTEXT_SNIPPET_CHARS),
-                    "score": result.score_rank,
+                    "rank": result.score_rank,
                 }));
             }
             anyhow::Ok(out)

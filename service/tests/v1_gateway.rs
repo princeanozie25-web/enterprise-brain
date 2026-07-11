@@ -448,6 +448,47 @@ async fn retrieve_limits_are_hard() {
     );
 }
 
+// The /v1/retrieve candidate CONTRACT pin (pre-SDK): each candidate
+// carries exactly {doc_id, title, snippet, rank}; `rank` is the 1-based
+// fused rank in ascending wire order (1 = best) — never a similarity
+// score, never descending.
+#[tokio::test]
+async fn retrieve_candidates_pin_the_rank_contract() {
+    let (router, _dir) = enabled_world("v1-rank-pin");
+    let token = TokenSpec::autonomous(FINANCE_OID).sign();
+    let reply = send(
+        &router,
+        retrieve_request(
+            r#"{"query":"site stock value report","top_k":5}"#,
+            Some(&token),
+        ),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::OK);
+    let body = reply.json();
+    let candidates = body["candidates"].as_array().expect("candidates");
+    assert!(!candidates.is_empty(), "the fixture query has hits");
+    for (index, candidate) in candidates.iter().enumerate() {
+        let object = candidate.as_object().expect("candidate object");
+        let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec!["doc_id", "rank", "snippet", "title"],
+            "the candidate contract is exactly these four fields"
+        );
+        assert_eq!(
+            candidate["rank"].as_u64(),
+            Some(index as u64 + 1),
+            "rank is 1-based and ascending in wire order"
+        );
+    }
+    assert!(
+        !body.to_string().contains("\"score\""),
+        "the retired `score` spelling never reappears on the wire"
+    );
+}
+
 // D13: whoami is a handshake, not an enumeration surface — principal id
 // (plus display name), and NOTHING scope-shaped.
 #[tokio::test]

@@ -265,10 +265,13 @@ async fn probe_corpus_proves_scope_candidacy_and_zero_leaks() {
         // 12 out-of-scope targets: distinctiveness bound, PLUS the anchor
         // token's ENTIRE host set disjoint from the allowlist, PLUS the
         // anchor must be an alphabetic word of ≥5 chars — a numeric or
-        // short anchor (a "22") collides with rank values and JSON
-        // scaffolding in the response and cannot detect anything. With
-        // these constraints, the anchor appearing ANYWHERE in a response
-        // body is a leak by construction.
+        // short anchor (a "22") collides with the candidates' `rank`
+        // field values ("rank":22) and JSON scaffolding in the response
+        // and cannot detect anything. (Historical note: the collision was
+        // first hit when this field was briefly named `score`; the anchor
+        // constraint is field-name-independent and stays.) With these
+        // constraints, the anchor appearing ANYWHERE in a response body
+        // is a leak by construction.
         let mut out_of_scope_targets: Vec<(&String, String, String)> = Vec::new();
         for id in &deny_pool {
             if corpus.superseded.contains(*id) {
