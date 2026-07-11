@@ -539,6 +539,22 @@ pub struct ServiceConfig {
     /// are untouched until this is deliberately enabled).
     #[serde(default)]
     pub agent_bridge: Option<agent_bridge::AgentBridgeConfig>,
+    /// S2b: the decision ledger, independently wired. Absent = no ledger
+    /// from config (and, absent every other wiring, no `/v1` — the
+    /// no-ledger ⇒ no-machine-surface invariant stands; only WHICH
+    /// configuration brings the ledger to life changed). The `/v1` surface
+    /// no longer depends on the M4 `--agents-config` flag to have a ledger.
+    #[serde(default)]
+    pub ledger: Option<LedgerConfig>,
+}
+
+/// S2b: where the decision ledger lives. Same store type, same file
+/// format, same row schemas as ever — this is wiring, not schema.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LedgerConfig {
+    /// Directory holding the append-only ledger files.
+    pub dir: PathBuf,
 }
 
 impl ServiceConfig {
@@ -582,6 +598,13 @@ impl ServiceConfig {
                 let bridge = agent_bridge::Bridge::from_config(bridge_config)?;
                 state = state.with_agent_bridge(Arc::new(bridge));
             }
+        }
+        // S2b: the decision ledger from config — the machine surface's
+        // audit sink no longer rides the M4 --agents-config flag.
+        if let Some(ledger) = &self.ledger {
+            let store = agent::proposals::ProposalStore::open(&ledger.dir)
+                .with_context(|| format!("config.ledger.dir {}", ledger.dir.display()))?;
+            state = state.with_proposals(Arc::new(store));
         }
         Ok(state)
     }
@@ -882,6 +905,7 @@ async fn handle_v1_whoami(
         &context.0,
         None,
         None,
+        None,
     ) {
         eprintln!("v1 audit failed: {err:#}");
         return v1_internal();
@@ -901,10 +925,24 @@ async fn handle_v1_whoami(
     }
 }
 
+/// S2b: the `/v1` document response body cap — 2 MiB. A body past the cap
+/// FAILS LOUD (generic 500 + ledger reason `body_exceeds_cap`): never
+/// truncated (a partial document silently poisons downstream generation)
+/// and never a 404 (which would lie about existence to an AUTHORIZED
+/// principal). The fixture corpus tops out ~2.8 KB; a recon test pins the
+/// margin.
+pub const V1_CONTENT_MAX_BYTES: usize = 2 * 1024 * 1024;
+
 /// GET /v1/documents/{id} — the machine-surface document fetch: the SAME
-/// compiled-scope decision and the SAME payload shape as the console `/doc`
-/// (S0's row 11, unmoved). Unauthorized and nonexistent share THE one 404,
-/// byte-identical (S1-3).
+/// compiled-scope decision as the console `/doc` (S0's row 11, unmoved),
+/// serving the FULL authorized body. The compiled allowlist is the
+/// boundary; truncating an authorized read is not defense-in-depth
+/// (S2b product ruling). The console's DocCard snippet law is a CONSOLE
+/// law and stands there untouched — two surfaces, two consumers, two
+/// laws. `content` comes from the hash-verified in-memory corpus (the
+/// same bytes the M1 pin verified at startup), never an ad-hoc disk
+/// read. Unauthorized and nonexistent share THE one 404, byte-identical
+/// (S1-3).
 async fn handle_v1_document(
     State(state): State<Arc<AppState>>,
     DemoPrincipal(principal): DemoPrincipal,
@@ -923,28 +961,62 @@ async fn handle_v1_document(
     })
     .await;
     match result {
-        Ok(Ok(Some(card))) => match retrieval::index::canonical_json_bytes(&card) {
-            Ok(bytes) => {
-                // The allow is ledgered BEFORE it reaches the wire.
+        Ok(Ok(Some(card))) => {
+            let Some(meta) = state.docs.get(&doc_id) else {
+                // doc_card just proved the id exists in the verified
+                // corpus; its absence here is state corruption.
+                eprintln!("v1 document: {doc_id} authorized but absent from the corpus");
+                return v1_internal();
+            };
+            if meta.body.len() > V1_CONTENT_MAX_BYTES {
+                // Fail LOUD: ledgered, generic 500, never truncated,
+                // never 404.
                 if let Err(err) = store.audit_v1(
                     "v1_document",
                     &principal,
                     &target,
-                    "authorized",
+                    "body_exceeds_cap",
                     &context.0,
+                    None,
                     None,
                     None,
                 ) {
                     eprintln!("v1 audit failed: {err:#}");
-                    return v1_internal();
                 }
-                json_bytes_response(StatusCode::OK, bytes)
+                return v1_internal();
             }
-            Err(err) => {
-                eprintln!("v1 document serialization failed: {err:#}");
-                v1_internal()
+            let body = serde_json::json!({
+                "doc_id": card.document_id,
+                "title": card.title,
+                "snippet": card.snippet,
+                "content": meta.body,
+                "metadata": v1_document_metadata(&card),
+            });
+            match retrieval::index::canonical_json_bytes(&body) {
+                Ok(bytes) => {
+                    // The allow is ledgered BEFORE it reaches the wire —
+                    // and records that the FULL payload was served.
+                    if let Err(err) = store.audit_v1(
+                        "v1_document",
+                        &principal,
+                        &target,
+                        "authorized",
+                        &context.0,
+                        None,
+                        None,
+                        Some("full"),
+                    ) {
+                        eprintln!("v1 audit failed: {err:#}");
+                        return v1_internal();
+                    }
+                    json_bytes_response(StatusCode::OK, bytes)
+                }
+                Err(err) => {
+                    eprintln!("v1 document serialization failed: {err:#}");
+                    v1_internal()
+                }
             }
-        },
+        }
         Ok(Ok(None)) => {
             // Out-of-scope OR nonexistent — the ledger records the deny;
             // the wire cannot tell the two apart (S1-3).
@@ -954,6 +1026,7 @@ async fn handle_v1_document(
                 &target,
                 "not_found",
                 &context.0,
+                None,
                 None,
                 None,
             ) {
@@ -971,6 +1044,27 @@ async fn handle_v1_document(
             v1_internal()
         }
     }
+}
+
+/// The `/v1` document metadata sub-object: the card's non-core facts
+/// (sensitivity + supersession), exactly what the console card discloses
+/// beyond id/title/snippet — no more.
+fn v1_document_metadata(card: &answer::DocCard) -> serde_json::Value {
+    let mut metadata = serde_json::Map::new();
+    metadata.insert(
+        "sensitivity".to_string(),
+        serde_json::Value::String(card.sensitivity.clone()),
+    );
+    if let Some(superseded) = card.superseded {
+        metadata.insert("superseded".to_string(), serde_json::Value::Bool(superseded));
+    }
+    if let Some(successor) = &card.effective_successor {
+        metadata.insert(
+            "effective_successor".to_string(),
+            serde_json::Value::String(successor.clone()),
+        );
+    }
+    serde_json::Value::Object(metadata)
 }
 
 /// POST /v1/retrieve — the core: governed retrieval scoped AT QUERY
@@ -1026,6 +1120,7 @@ async fn handle_v1_retrieve(
             &context.0,
             Some(&v1_capped_query(&parsed.query)),
             None,
+            None,
         ) {
             eprintln!("v1 audit failed: {err:#}");
         }
@@ -1042,6 +1137,7 @@ async fn handle_v1_retrieve(
                 "top_k_out_of_range",
                 &context.0,
                 Some(&v1_capped_query(&parsed.query)),
+                None,
                 None,
             ) {
                 eprintln!("v1 audit failed: {err:#}");
@@ -1117,6 +1213,7 @@ async fn handle_v1_retrieve(
         &context.0,
         Some(&v1_capped_query(&parsed.query)),
         Some(&candidate_ids),
+        None,
     ) {
         eprintln!("v1 audit failed: {err:#}");
         return v1_internal();
@@ -1993,6 +2090,7 @@ async fn v1_gate(state: Arc<AppState>, mut request: Request, next: Next) -> Resp
                         &fields,
                         None,
                         None,
+                        None,
                     ) {
                         eprintln!("v1 audit failed: {err:#}");
                         return identity::unauthorized();
@@ -2019,7 +2117,9 @@ fn audit_v1_deny(
     fields: &agent::proposals::TokenAuditFields,
 ) {
     if let Some(store) = &state.proposals {
-        if let Err(err) = store.audit_v1(action, "unresolved", target, reason, fields, None, None) {
+        if let Err(err) =
+            store.audit_v1(action, "unresolved", target, reason, fields, None, None, None)
+        {
             eprintln!("v1 audit failed: {err:#}");
         }
     }

@@ -331,6 +331,7 @@ async fn probe_corpus_proves_scope_candidacy_and_zero_leaks() {
 
         // (c) out-of-scope-targeted phrases: target absent, anchor token
         // absent from the ENTIRE response body; (a) still holds.
+        let mut leak_anchors: Vec<String> = Vec::new();
         for (target, phrase, anchor) in out_of_scope_targets {
             let (status, body) = retrieve(&router, &token, &phrase).await;
             assert_eq!(status, StatusCode::OK, "{agent} probe {phrase:?}");
@@ -351,7 +352,40 @@ async fn probe_corpus_proves_scope_candidacy_and_zero_leaks() {
                 "{agent}: out-of-scope content leaked — anchor token {anchor:?} \
                  (host docs all outside scope) appears in the response body"
             );
+            leak_anchors.push(anchor);
             probes_run += 1;
+        }
+
+        // S2b extension: full BODIES now flow on /v1/documents — sweep the
+        // leak detectors over them too. Fetch this agent's first three
+        // allowed docs (full content) and assert none of its out-of-scope
+        // anchors (whose host sets are scope-disjoint by construction)
+        // appear anywhere in the full-body responses.
+        for doc in allow_set.iter().take(3) {
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("GET")
+                        .uri(format!("/v1/documents/{doc}"))
+                        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                        .body(Body::empty())
+                        .expect("request"),
+                )
+                .await
+                .expect("response");
+            assert_eq!(response.status(), StatusCode::OK, "{agent} owns {doc}");
+            let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("body");
+            let text = String::from_utf8_lossy(&bytes).to_lowercase();
+            for anchor in &leak_anchors {
+                assert!(
+                    !text.contains(&anchor.to_lowercase()),
+                    "{agent}: out-of-scope anchor {anchor:?} leaked into the \
+                     FULL BODY response for {doc}"
+                );
+            }
         }
     }
 

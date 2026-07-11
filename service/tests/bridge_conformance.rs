@@ -103,6 +103,46 @@ async fn doc_status(router: &axum::Router, doc: &str, bearer: &str) -> StatusCod
         .status()
 }
 
+async fn doc_response(router: &axum::Router, doc: &str, bearer: &str) -> (StatusCode, Vec<u8>) {
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/v1/documents/{doc}"))
+                .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    (status, bytes.to_vec())
+}
+
+/// doc id -> full fixture body, straight from raw documents.json (the
+/// content-leak oracle: what full-body bytes SHOULD look like, and where
+/// they must never appear).
+fn fixture_bodies() -> BTreeMap<String, String> {
+    let text = fs::read_to_string(common::repo_fixtures_dir().join("documents.json"))
+        .expect("documents.json");
+    let parsed: Value = serde_json::from_str(&text).expect("documents parse");
+    parsed["documents"]
+        .as_array()
+        .expect("documents array")
+        .iter()
+        .map(|d| {
+            (
+                d["id"].as_str().expect("id").to_string(),
+                d["body"].as_str().expect("body").to_string(),
+            )
+        })
+        .collect()
+}
+
 #[tokio::test]
 async fn bridge_conformance_full_agent_matrix_is_zero_false_allow_zero_false_deny() {
     let oracle = oracle();
@@ -191,15 +231,23 @@ async fn bridge_conformance_full_agent_matrix_is_zero_false_allow_zero_false_den
     // The matrix: one real signed token per agent, every document, decision
     // compared against the oracle. ALLOW = 200; DENY = THE 404. Anything
     // else is a harness fault, not a conformance datum.
+    //
+    // S2b content-leak extension: an ALLOWED pair must carry the FULL
+    // fixture body (byte-for-byte) in `content`; a DENIED pair must stay
+    // the byte-identical THE-404 — full-body bytes appear on oracle-allowed
+    // pairs ONLY. The payload change must not move a single decision.
+    let bodies = fixture_bodies();
     let mut pairs = 0u32;
     let mut false_allows: Vec<String> = Vec::new();
     let mut false_denies: Vec<String> = Vec::new();
+    let mut content_faults: Vec<String> = Vec::new();
     let mut served_allow_total = 0u32;
+    let mut the_404: Option<Vec<u8>> = None;
     for (agent, oid) in AGENTS {
         let token = TokenSpec::autonomous(oid).sign();
         let rows = &oracle[agent];
         for (doc, expected_allow) in rows {
-            let status = doc_status(&router, doc, &token).await;
+            let (status, bytes) = doc_response(&router, doc, &token).await;
             let served_allow = match status {
                 StatusCode::OK => true,
                 StatusCode::NOT_FOUND => false,
@@ -208,6 +256,20 @@ async fn bridge_conformance_full_agent_matrix_is_zero_false_allow_zero_false_den
             pairs += 1;
             if served_allow {
                 served_allow_total += 1;
+                let payload: Value =
+                    serde_json::from_slice(&bytes).expect("allowed response is JSON");
+                if payload["content"].as_str() != Some(bodies[doc].as_str()) {
+                    content_faults.push(format!("{agent} x {doc}: content != fixture body"));
+                }
+            } else {
+                match &the_404 {
+                    None => the_404 = Some(bytes),
+                    Some(reference) => {
+                        if &bytes != reference {
+                            content_faults.push(format!("{agent} x {doc}: 404 not byte-identical"));
+                        }
+                    }
+                }
             }
             match (served_allow, *expected_allow) {
                 (true, false) => false_allows.push(format!("{agent} x {doc}")),
@@ -217,9 +279,10 @@ async fn bridge_conformance_full_agent_matrix_is_zero_false_allow_zero_false_den
         }
     }
     println!(
-        "S1 conformance summary: pairs={pairs} false_allows={} false_denies={} served_allow_total={served_allow_total}",
+        "S2b conformance summary: pairs={pairs} false_allows={} false_denies={} served_allow_total={served_allow_total} content_faults={}",
         false_allows.len(),
         false_denies.len(),
+        content_faults.len(),
     );
     assert_eq!(pairs, 2_400, "4 agents x 600 documents");
     assert!(
@@ -230,18 +293,27 @@ async fn bridge_conformance_full_agent_matrix_is_zero_false_allow_zero_false_den
         false_denies.is_empty(),
         "FALSE DENIES through the token path: {false_denies:?}"
     );
+    assert!(
+        content_faults.is_empty(),
+        "content-leak extension faults: {content_faults:?}"
+    );
 
     // The all-deny pole (supplementary, beyond the 2,400): the probe
     // registration resolves at the bridge but compiles to the EMPTY
     // statement — all 600 documents are THE 404.
     let probe_token = TokenSpec::autonomous(PROBE_OID).sign();
+    let the_404 = the_404.expect("the matrix produced denies");
     let mut probe_denies = 0u32;
     for doc in oracle[AGENTS[0].0].keys() {
-        let status = doc_status(&router, doc, &probe_token).await;
+        let (status, bytes) = doc_response(&router, doc, &probe_token).await;
         assert_eq!(
             status,
             StatusCode::NOT_FOUND,
             "the empty-scope registration must deny {doc}"
+        );
+        assert_eq!(
+            bytes, the_404,
+            "the ghost's {doc} deny is THE byte-identical 404 — zero content bytes"
         );
         probe_denies += 1;
     }

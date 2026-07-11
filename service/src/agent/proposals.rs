@@ -121,6 +121,11 @@ pub struct AuditEvent {
     pub query: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidates: Option<Vec<String>>,
+    /// S2b: what a successful `v1_document` served (`"full"` once the
+    /// machine surface serves whole bodies). Optional + defaulted: every
+    /// pre-S2b row parses and every pre-S2b writer stays byte-identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<String>,
 }
 
 /// S0: the claim attribution carried on one `agent_token` audit row.
@@ -329,6 +334,7 @@ impl ProposalStore {
             token_uti: None,
             query: None,
             candidates: None,
+            payload: None,
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;
@@ -357,6 +363,7 @@ impl ProposalStore {
             token_uti: None,
             query: None,
             candidates: None,
+            payload: None,
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;
@@ -395,6 +402,7 @@ impl ProposalStore {
             token_uti: token.uti.clone(),
             query: None,
             candidates: None,
+            payload: None,
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;
@@ -419,6 +427,7 @@ impl ProposalStore {
         token: &TokenAuditFields,
         query: Option<&str>,
         candidates: Option<&[String]>,
+        payload: Option<&str>,
     ) -> Result<u64> {
         let mut state = self.state.lock().expect("store mutex");
         let ordinal = state.next_audit_ordinal;
@@ -438,6 +447,7 @@ impl ProposalStore {
             token_uti: token.uti.clone(),
             query: query.map(str::to_string),
             candidates: candidates.map(<[String]>::to_vec),
+            payload: payload.map(str::to_string),
         };
         Self::append(&self.audit_path, &event)?;
         state.next_audit_ordinal += 1;
