@@ -20,6 +20,7 @@ pub mod atlas;
 pub mod bootstrap;
 pub mod cache;
 pub mod clock;
+pub mod conformance_kit;
 pub mod cors;
 pub mod doctor;
 pub mod diff;

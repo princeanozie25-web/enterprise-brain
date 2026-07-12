@@ -213,10 +213,31 @@ fn doctor_cmd(args: &Args, json: bool) -> ExitCode {
 }
 
 /// S5b: `service bootstrap-dev --out <dir> [--force]` — mint a complete local
-/// demo world (RSA key, four agent tokens, a DEMO-labelled config) so a
+/// demo world (RSA key, six agent tokens, a DEMO-labelled config) so a
 /// stranger goes from clone to a healthy gateway in one command. Writes files
 /// and exits: it never starts the server and never touches the request path.
+/// S5c: NON-DESTRUCTIVE BY DEFAULT — a complete world is left untouched
+/// (exit 0), a partial world is an error naming the missing files, and
+/// `--force` is the only destructive path.
 fn bootstrap_dev_cmd(argv: Vec<String>) -> ExitCode {
+    fn print_usage() {
+        eprintln!("usage: service bootstrap-dev --out <dir> [--force] [--container]");
+        eprintln!(
+            "  default      non-destructive: mints a world if <dir> holds none; a COMPLETE world"
+        );
+        eprintln!(
+            "               is left untouched (exit 0); a PARTIAL world is an error naming the"
+        );
+        eprintln!("               missing files — never a silent partial overwrite");
+        eprintln!(
+            "  --force      the ONLY destructive path: keys rotated, tokens reissued, ledger and"
+        );
+        eprintln!("               alert sink reset, then a clean world regenerated");
+        eprintln!(
+            "  --container  the generated config binds 0.0.0.0:8787 (safe only behind the compose"
+        );
+        eprintln!("               host-loopback port mapping); native worlds stay loopback-only");
+    }
     let mut out: Option<String> = None;
     let mut force = false;
     let mut container = false;
@@ -231,18 +252,29 @@ fn bootstrap_dev_cmd(argv: Vec<String>) -> ExitCode {
             "--container" => container = true,
             other => {
                 eprintln!("bootstrap-dev: unknown flag {other:?}");
-                eprintln!("usage: service bootstrap-dev --out <dir> [--force] [--container]");
+                print_usage();
                 return ExitCode::FAILURE;
             }
         }
     }
     let Some(out) = out else {
-        eprintln!("usage: service bootstrap-dev --out <dir> [--force] [--container]");
+        print_usage();
         return ExitCode::FAILURE;
     };
+    use service::bootstrap::BootstrapOutcome;
     match service::bootstrap::bootstrap_dev(std::path::Path::new(&out), force, container) {
-        Ok(output) => {
+        Ok(BootstrapOutcome::Created(output)) => {
             output.print_launch_guide();
+            ExitCode::SUCCESS
+        }
+        // S5c: the non-destructive default — a complete world is a one-line
+        // no-op, so repeated compose cycles cannot rotate keys or touch
+        // ledgers. Rotation is a deliberate --force.
+        Ok(BootstrapOutcome::Untouched { out_dir }) => {
+            println!(
+                "bootstrap-dev: world exists at {} — leaving it untouched (use --force to rotate)",
+                out_dir.to_string_lossy().replace('\\', "/")
+            );
             ExitCode::SUCCESS
         }
         Err(err) => {

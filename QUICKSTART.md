@@ -34,8 +34,17 @@ The bootstrap service prints the tokens as copy-paste curls:
 docker compose logs bootstrap
 ```
 
-Copy the `Bearer …` token for the agent you want. (Every `up` mints fresh
-keys, so re-read the logs after each start.)
+Copy the `Bearer …` token for the agent you want. The world **persists across
+restarts** — a re-run bootstrap leaves a complete world untouched (a one-line
+no-op, never a key rotation), so tokens stay valid for their 24-hour life. To
+re-print a persisted world's tokens from the volume:
+
+```sh
+docker compose run --rm --no-deps --entrypoint cat gateway /data/dev-out/tokens.json
+```
+
+Expired (a day later)? Rotate deliberately —
+[rotate-dev-keys](docs/how-to/rotate-dev-keys.md).
 
 ## Prove the invariant
 
@@ -78,9 +87,10 @@ docker compose run --rm --no-deps gateway verify-ledger /data/dev-out/ledger/aud
 # CLEAN: N rows (… hash-chained) verify intact
 ```
 
-(`--no-deps` matters: without it, compose would first re-run the bootstrap
-one-shot — which regenerates the demo world — before verifying. An audit
-command must never touch the evidence it audits.)
+(`--no-deps` is hygiene: the bootstrap one-shot is non-destructive by default
+— a complete world is left untouched — so a dependency re-run can no longer
+wipe the evidence; an audit command still has no reason to wake other
+services.)
 
 ---
 
@@ -92,12 +102,13 @@ that lets a container bind wider is never set here.
 
 ```sh
 # 1. Provision artifacts + index, then mint the demo world.
+#    (Re-provisioning: the indexer refuses a non-empty retrieval/idx — delete it first.)
 cargo run -p scope-compiler -- compile --fixtures fixtures --out compiler/artifacts
 cargo run -p retrieval     -- index   --fixtures fixtures --out retrieval/idx
-cargo run -p service -- bootstrap-dev --out dev-out       # prints the token curls
+cargo run -p service --bin service -- bootstrap-dev --out dev-out   # prints the token curls
 
 # 2. Serve (loopback 127.0.0.1:8787).
-cargo run --release -p service -- \
+cargo run --release -p service --bin service -- \
   --fixtures fixtures --artifacts compiler/artifacts --idx retrieval/idx \
   --config dev-out/config.json
 

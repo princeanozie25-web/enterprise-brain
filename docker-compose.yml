@@ -15,11 +15,14 @@
 services:
   # One-shot: mint the demo world (RSA key, 24 h agent tokens, a DEMO-labelled
   # config with the container bind) onto the shared volume, print the tokens,
-  # exit 0.
+  # exit 0. NON-DESTRUCTIVE BY DEFAULT (S5c): a complete world already on the
+  # volume is left untouched (a one-line no-op), so repeated `up` / `compose
+  # run` cycles can never rotate keys or reset the ledger. Rotation is a
+  # deliberate --force: see docs/how-to/rotate-dev-keys.md.
   bootstrap:
     build: .
     image: enterprise-brain-gateway:demo
-    command: ["bootstrap-dev", "--out", "/data/dev-out", "--force", "--container"]
+    command: ["bootstrap-dev", "--out", "/data/dev-out", "--container"]
     volumes:
       - demo:/data
 
@@ -54,7 +57,8 @@ services:
 
 # The demo world — including the ledger and alert sink — persists here, so
 # `docker compose run --rm --no-deps gateway verify-ledger /data/dev-out/ledger/audit.jsonl`
-# can audit the chain against a stopped stack. (--no-deps: the audit command
-# must never re-run the bootstrap one-shot, which regenerates the world.)
+# can audit the chain against a stopped stack. (--no-deps is hygiene: the
+# bootstrap one-shot is non-destructive by default since S5c, but an audit
+# command still has no reason to wake other services.)
 volumes:
   demo:

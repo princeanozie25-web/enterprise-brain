@@ -14,6 +14,12 @@
 //!     bridge is enabled ONLY in this generated, DEMO-labelled config.
 //!   * S5b-4 zero request-path changes — this is a CLI that writes files and
 //!     exits; it never runs inside the server, never adds a route.
+//!   * S5c NON-DESTRUCTIVE BY DEFAULT — create-if-absent, no-op-if-present:
+//!     a COMPLETE world is left untouched (one line, exit 0), a PARTIAL world
+//!     is an error naming the missing files, and `--force` is the ONLY
+//!     destructive path (keys rotated, tokens reissued, ledger/alerts reset).
+//!     The audit-wipes-evidence class (a dependency re-run of this one-shot
+//!     regenerating the world mid-audit) is structurally impossible.
 //!
 //! The Entra claim shape is the S0/S2 fixture shape VERBATIM (`idtyp: app`,
 //! `xms_idrel: "7"`, facets `11`, v2 issuer/tid/aud) so the minted tokens
@@ -74,6 +80,30 @@ const DEMO_AGENTS: [(&str, &str); 6] = [
 /// agent reads it (200), the internal agent cannot (404).
 const SEAM_CONFIDENTIAL_DOC: &str = "s3/finance-restricted/2026/q1/budget-variance-ashcombe.md";
 
+/// The four files that CONSTITUTE a world. This list is both the completeness
+/// test for the non-destructive default path (all present → untouched no-op;
+/// some present → the partial-world error) and what `--force` removes (plus
+/// the `ledger`/`alerts` dirs).
+const WORLD_FILES: [&str; 4] = [
+    "config.json",
+    "jwks.json",
+    "private_key.pem",
+    "tokens.json",
+];
+
+/// What a bootstrap run did. The CLI prints the launch guide for `Created`
+/// and a single "leaving it untouched" line (exit 0) for `Untouched`.
+pub enum BootstrapOutcome {
+    /// A fresh world was minted (the out-dir held none, or `--force`).
+    Created(BootstrapOutput),
+    /// A COMPLETE world already lives in the out-dir and NOTHING was touched
+    /// — the S5c non-destructive default. Rotation is a deliberate `--force`.
+    Untouched {
+        /// The out-dir as the caller gave it (echoed in the CLI one-liner).
+        out_dir: PathBuf,
+    },
+}
+
 /// The result of a bootstrap run: where everything landed, plus the minted
 /// `(principal, token)` pairs (so a caller — or a test — can drive the
 /// gateway without re-reading the files).
@@ -86,9 +116,19 @@ pub struct BootstrapOutput {
     pub tokens: Vec<(String, String)>,
 }
 
-/// Mint the demo world into `out`. Refuses a non-empty out-dir without
-/// `force`; under `force` it removes the artifacts it owns and regenerates a
-/// clean world (freshly-minted keys each time — "idempotent" means a clean,
+/// Mint the demo world into `out` — NON-DESTRUCTIVE BY DEFAULT (S5c):
+///
+///   * no world there → mint one ([`BootstrapOutcome::Created`]);
+///   * a COMPLETE world there (all of [`WORLD_FILES`]) → touch NOTHING and
+///     say so ([`BootstrapOutcome::Untouched`], exit 0 at the CLI) — repeated
+///     `docker compose up` / `compose run` cycles cannot rotate keys or reset
+///     ledgers;
+///   * a PARTIAL world there → an error NAMING the missing files — never a
+///     silent partial overwrite.
+///
+/// `force` is the only destructive path: it removes the artifacts bootstrap
+/// owns (keys rotated, tokens reissued, ledger/alerts reset) and regenerates
+/// a clean world (freshly-minted keys each time — "idempotent" means a clean,
 /// complete result, not byte-identical keys).
 ///
 /// `container` (the compose bootstrap passes `--container`): the generated
@@ -96,22 +136,32 @@ pub struct BootstrapOutput {
 /// fail-useless — and the profile states why that is safe ONLY under the
 /// compose host-loopback port mapping. The native demo world (default) keeps
 /// the loopback invariant untouched: no `bind` key at all.
-pub fn bootstrap_dev(out: &Path, force: bool, container: bool) -> Result<BootstrapOutput> {
-    if out.exists() {
-        let non_empty = out
-            .read_dir()
-            .map(|mut d| d.next().is_some())
-            .unwrap_or(false);
-        if non_empty && !force {
+pub fn bootstrap_dev(out: &Path, force: bool, container: bool) -> Result<BootstrapOutcome> {
+    if force {
+        remove_owned_artifacts(out);
+    } else {
+        let (present, missing): (Vec<&str>, Vec<&str>) = WORLD_FILES
+            .iter()
+            .copied()
+            .partition(|file| out.join(file).is_file());
+        if missing.is_empty() {
+            return Ok(BootstrapOutcome::Untouched {
+                out_dir: out.to_path_buf(),
+            });
+        }
+        if !present.is_empty() {
             bail!(
-                "out-dir {} exists and is not empty; pass --force to regenerate \
-                 (this deletes the demo keys/tokens/config it owns)",
-                out.display()
+                "out-dir {} holds a PARTIAL world — missing: {}; present: {}. \
+                 Never overwriting part of a world; pass --force to regenerate \
+                 all of it (keys rotated, tokens reissued, ledger/alerts reset)",
+                out.display(),
+                missing.join(", "),
+                present.join(", ")
             );
         }
-        if force {
-            remove_owned_artifacts(out);
-        }
+        // No world files at all: create-if-absent proceeds. Foreign files an
+        // operator may keep in the out-dir are left alone — this path never
+        // deletes anything.
     }
     std::fs::create_dir_all(out)
         .with_context(|| format!("cannot create out-dir {}", out.display()))?;
@@ -215,14 +265,14 @@ pub fn bootstrap_dev(out: &Path, force: bool, container: bool) -> Result<Bootstr
     )
     .context("write config.json")?;
 
-    Ok(BootstrapOutput {
+    Ok(BootstrapOutcome::Created(BootstrapOutput {
         out_dir: abs_out,
         config_path,
         jwks_path,
         private_key_path,
         tokens_path,
         tokens,
-    })
+    }))
 }
 
 impl BootstrapOutput {
@@ -285,9 +335,11 @@ impl BootstrapOutput {
 }
 
 /// Remove ONLY the artifacts this command owns (never the whole out-dir — it
-/// may be a mounted volume the operator put other things in).
+/// may be a mounted volume the operator put other things in). This is the
+/// `--force` path and the single place a world dies: keys rotated, tokens
+/// reissued, ledger/alerts reset.
 fn remove_owned_artifacts(out: &Path) {
-    for file in ["config.json", "jwks.json", "private_key.pem", "tokens.json"] {
+    for file in WORLD_FILES {
         let _ = std::fs::remove_file(out.join(file));
     }
     for dir in ["ledger", "alerts"] {
