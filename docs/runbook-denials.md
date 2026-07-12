@@ -21,7 +21,7 @@ misconfigurations before they become mystery denies.
 | `token_malformed` | Not a decodable compact JWS | Send the raw JWT, not a wrapper or fragment of one |
 | `algorithm_rejected` | Header `alg` outside the allowlist (default RS256; `none`/HS rejected) | Issue RS256 tokens; never widen `allowed_algs` casually |
 | `signature_invalid` | Signature fails against the JWKS (incl. unknown `kid`) | Wrong or rotated key: re-mint the token; check `agent_bridge.jwks` points at the CURRENT key set — doctor validates the file |
-| `token_expired` | `exp` in the past (60 s skew allowed) | Mint a fresh token (`bootstrap-dev` tokens live 24 h) |
+| `token_expired` | `exp` in the past (60 s skew allowed) | Tokens live 24 h; reissuing = rotating the world (`bootstrap-dev … --force`, the only destructive path — see [rotate-dev-keys](how-to/rotate-dev-keys.md)) |
 | `token_not_yet_valid` | `nbf`/`iat` in the future | Fix clock skew at the issuer, or wait |
 | `issuer_mismatch` | `iss` is not the configured tenant's issuer | Token from the wrong tenant/authority; check `agent_bridge.tenant_id` |
 | `audience_mismatch` | `aud` is not this gateway | Request the token FOR this gateway (`agent_bridge.audience`) |

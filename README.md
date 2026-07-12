@@ -37,7 +37,7 @@ cd enterprise-brain
 docker compose up --build -d     # healthy in ~a minute; tokens: docker compose logs bootstrap
 ```
 
-The gateway publishes **host-loopback only** (`127.0.0.1:8787`). Demo agent tokens are minted locally on a volume — never committed, fresh every `up`. See [QUICKSTART.md](QUICKSTART.md) for the two curls that prove the invariant, and [docs/quickstart.md](docs/quickstart.md) for the native and SDK paths.
+The gateway publishes **host-loopback only** (`127.0.0.1:8787`). Demo agent tokens are minted locally on a volume — never committed, and the world persists across restarts (bootstrap is non-destructive by default; rotation is a deliberate `--force`). See [QUICKSTART.md](QUICKSTART.md) for the two curls that prove the invariant, and [docs/quickstart.md](docs/quickstart.md) for the native and SDK paths.
 
 ---
 

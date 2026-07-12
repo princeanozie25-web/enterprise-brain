@@ -18,8 +18,13 @@ Mints a complete demo world into `<dir>`: RSA-2048 keypair → `jwks.json` +
 `tokens.json` and copy-paste curls on stdout; a DEMO-labelled ServiceConfig
 (bridge enabled, ledger, alert sink).
 
-- Refuses a non-empty `<dir>` without `--force`; `--force` removes only the
-  artifacts it owns (keys, tokens, config, ledger, alerts) and regenerates.
+- **Non-destructive by default**: no world in `<dir>` → mints one; a COMPLETE
+  world (keys, tokens, config) → exit 0, one line, nothing touched — repeated
+  `docker compose up` cycles cannot rotate keys or reset ledgers; a PARTIAL
+  world → an error naming the missing files (never a silent partial overwrite).
+- `--force` is the only destructive path: keys rotated, tokens reissued,
+  ledger/alerts reset (removes only the artifacts bootstrap owns, then
+  regenerates) — see [rotate-dev-keys](../how-to/rotate-dev-keys.md).
 - `--container`: the config binds `0.0.0.0:8787` and its profile states why
   that is safe only under the compose host-loopback mapping. Native worlds
   never set `bind`.
@@ -38,6 +43,7 @@ container healthcheck. Details: [run-doctor](../how-to/run-doctor.md).
 
 Recomputes a ledger's hash chain. `CLEAN: N rows (M hash-chained) verify
 intact` (exit 0) or `BROKEN: chain breaks at ordinal K (…)` (exit 1).
-Container form **requires `--no-deps`**:
+Container form keeps `--no-deps` (hygiene — an audit has no reason to wake
+other services; the old wipe-the-evidence footgun is structurally fixed):
 `docker compose run --rm --no-deps gateway verify-ledger /data/dev-out/ledger/audit.jsonl`
-— see [verify-a-ledger](../how-to/verify-a-ledger.md) for why.
+— see [verify-a-ledger](../how-to/verify-a-ledger.md).

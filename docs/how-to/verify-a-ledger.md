@@ -17,10 +17,12 @@ service verify-ledger dev-out/ledger/audit.jsonl
 docker compose run --rm --no-deps gateway verify-ledger /data/dev-out/ledger/audit.jsonl
 ```
 
-**`--no-deps` is not optional.** `docker compose run` starts the service's
-dependencies by default — here, the bootstrap one-shot, which would
-*regenerate the demo world and delete the very ledger you are auditing*
-before the verification runs. An audit command must never touch the evidence.
+**Keep `--no-deps`.** `docker compose run` starts the service's dependencies
+by default — here, the bootstrap one-shot. The footgun that used to live here
+(bootstrap regenerating the world and *deleting the very ledger under audit*)
+is **structurally fixed**: since S5c the one-shot is non-destructive by
+default and leaves a complete world untouched. `--no-deps` stays in the
+command as hygiene — an audit has no reason to wake anything.
 
 ## Reading a failure
 

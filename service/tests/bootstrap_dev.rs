@@ -1,9 +1,14 @@
 //! S5b: `bootstrap-dev` — the generated demo world is COMPLETE, its tokens
-//! validate through the REAL ladder (not a test-only relaxation), it refuses
-//! to clobber without `--force`, no key material is ever tracked (S5b-1), the
-//! doctor passes on it (the container healthcheck), and — the acceptance
-//! proof — the six minted tokens drive the real router: whoami ×6 and the
-//! tier seam (a confidential estate object one agent reads and another cannot).
+//! validate through the REAL ladder (not a test-only relaxation), no key
+//! material is ever tracked (S5b-1), the doctor passes on it (the container
+//! healthcheck), and — the acceptance proof — the six minted tokens drive the
+//! real router: whoami ×6 and the tier seam (a confidential estate object one
+//! agent reads and another cannot).
+//!
+//! S5c (verdict condition): the default path is NON-DESTRUCTIVE — a complete
+//! world is an untouched no-op (byte-identical keys, ledger intact), a partial
+//! world is an error naming the missing files, `--force` is the only
+//! destructive path, and the compose one-shot runs WITHOUT --force (standing).
 
 mod common;
 
@@ -14,7 +19,7 @@ use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use serde_json::Value;
 use service::agent_bridge::{Bridge, BridgeOutcome};
-use service::bootstrap::{bootstrap_dev, BootstrapOutput};
+use service::bootstrap::{bootstrap_dev, BootstrapOutcome, BootstrapOutput};
 use service::doctor::{run, DoctorInputs};
 use service::{app, AppState, ServiceConfig};
 use tower::ServiceExt;
@@ -43,12 +48,43 @@ fn token_for<'a>(output: &'a BootstrapOutput, principal: &str) -> &'a str {
         .unwrap_or_else(|| panic!("no token for {principal}"))
 }
 
+/// Bootstrap and assert the run actually CREATED a world (not the S5c
+/// untouched no-op) — what every "fresh world" test in this file means.
+fn mint(out: &Path, force: bool, container: bool) -> BootstrapOutput {
+    match bootstrap_dev(out, force, container).expect("bootstrap") {
+        BootstrapOutcome::Created(output) => output,
+        BootstrapOutcome::Untouched { out_dir } => panic!(
+            "expected a fresh world, found an untouched one at {}",
+            out_dir.display()
+        ),
+    }
+}
+
+/// Snapshot the bytes of every world file (plus the ledger) — the
+/// byte-identity oracle for the non-destructive default.
+fn world_bytes(out: &Path) -> Vec<(String, Vec<u8>)> {
+    [
+        "config.json",
+        "jwks.json",
+        "private_key.pem",
+        "tokens.json",
+        "ledger/audit.jsonl",
+    ]
+    .iter()
+    .map(|name| {
+        let bytes = std::fs::read(out.join(name))
+            .unwrap_or_else(|e| panic!("world file {name} unreadable: {e}"));
+        (name.to_string(), bytes)
+    })
+    .collect()
+}
+
 // -- 1. A fresh world is complete, and its tokens validate through the REAL
 //       bridge ladder (the same TokenValidator + Registry production runs).
 #[test]
 fn fresh_world_is_complete_and_tokens_validate_through_the_real_ladder() {
     let out = scratch("bootstrap-fresh").join("dev-out");
-    let output = bootstrap_dev(&out, false, false).expect("bootstrap");
+    let output = mint(&out, false, false);
 
     assert!(output.config_path.exists(), "config.json");
     assert!(output.jwks_path.exists(), "jwks.json");
@@ -99,27 +135,77 @@ fn fresh_world_is_complete_and_tokens_validate_through_the_real_ladder() {
     }
 }
 
-// -- 2. A non-empty out-dir is refused without --force (never silently
-//       clobbers a world the operator may be using).
+// -- 2. S5c THE CONDITION: the default path is NON-DESTRUCTIVE. A second run
+//       without --force on a COMPLETE world is a no-op that exits 0 — keys,
+//       tokens and config stay BYTE-IDENTICAL and a live ledger is untouched.
+//       The audit-wipes-evidence class (`compose up` re-running the one-shot
+//       over a world in use) is structurally impossible, not flag-guarded.
 #[test]
-fn existing_nonempty_dir_refuses_without_force() {
-    let out = scratch("bootstrap-refuse").join("dev-out");
-    bootstrap_dev(&out, false, false).expect("first run");
-    let again = bootstrap_dev(&out, false, false);
+fn double_run_without_force_is_a_noop_world_byte_identical() {
+    let out = scratch("bootstrap-noop").join("dev-out");
+    mint(&out, false, false);
+
+    // Live evidence: a ledger row the OLD semantics (--force in compose)
+    // would have deleted on the next cycle.
+    std::fs::write(
+        out.join("ledger").join("audit.jsonl"),
+        "{\"act\":\"evidence-of-use\"}\n",
+    )
+    .expect("seed the ledger");
+
+    let before = world_bytes(&out);
+    let again = bootstrap_dev(&out, false, false).expect("a complete world is exit 0, not an error");
     assert!(
-        again.is_err(),
-        "a non-empty out-dir must refuse without --force"
+        matches!(again, BootstrapOutcome::Untouched { .. }),
+        "the second run reports the world untouched"
+    );
+    assert_eq!(
+        before,
+        world_bytes(&out),
+        "byte-identical after the no-op: keys, tokens, config, AND the ledger"
     );
 }
 
-// -- 3. --force regenerates a clean, still-valid world (fresh keys each time).
+// -- 2b. A PARTIAL world (some files missing) is a NAMED error — never a
+//        silent partial overwrite: the survivors keep their bytes and the
+//        missing file is not quietly re-minted.
+#[test]
+fn partial_world_is_refused_naming_the_missing_files() {
+    let out = scratch("bootstrap-partial").join("dev-out");
+    mint(&out, false, false);
+    std::fs::remove_file(out.join("tokens.json")).expect("drop tokens.json");
+    let jwks_before = std::fs::read(out.join("jwks.json")).unwrap();
+
+    // (No `expect_err`: BootstrapOutcome deliberately has no Debug impl —
+    // its Created arm carries token material that must never hit a log.)
+    let err = match bootstrap_dev(&out, false, false) {
+        Err(err) => err,
+        Ok(_) => panic!("a partial world must refuse"),
+    };
+    let msg = format!("{err:#}");
+    assert!(msg.contains("tokens.json"), "names the missing file: {msg}");
+    assert!(msg.contains("--force"), "points at the deliberate path: {msg}");
+
+    assert_eq!(
+        jwks_before,
+        std::fs::read(out.join("jwks.json")).unwrap(),
+        "the refused run overwrote nothing"
+    );
+    assert!(
+        !out.join("tokens.json").exists(),
+        "and did not quietly re-mint the missing file"
+    );
+}
+
+// -- 3. --force — the ONLY destructive path — regenerates a clean,
+//       still-valid world (fresh keys each time).
 #[test]
 fn force_regenerates_a_clean_world() {
     let out = scratch("bootstrap-force").join("dev-out");
-    let first = bootstrap_dev(&out, false, false).expect("first run");
+    let first = mint(&out, false, false);
     let first_token = token_for(&first, "agent_finance_analyst").to_string();
 
-    let second = bootstrap_dev(&out, true, false).expect("--force regenerates");
+    let second = mint(&out, true, false);
     assert_eq!(second.tokens.len(), 6);
     assert_ne!(
         first_token,
@@ -168,7 +254,7 @@ fn no_key_material_is_tracked() {
 #[test]
 fn doctor_passes_on_generated_config_and_names_an_induced_fault() {
     let out = scratch("bootstrap-doctor").join("dev-out");
-    let output = bootstrap_dev(&out, false, false).expect("bootstrap");
+    let output = mint(&out, false, false);
     let inputs = DoctorInputs {
         fixtures: common::repo_fixtures_dir(),
         artifacts: repo_root().join("compiler").join("artifacts"),
@@ -219,7 +305,7 @@ fn doctor_passes_on_generated_config_and_names_an_induced_fault() {
 #[tokio::test]
 async fn tokens_drive_the_real_router_whoami_and_the_seam() {
     let out = scratch("bootstrap-router").join("dev-out");
-    let output = bootstrap_dev(&out, false, false).expect("bootstrap");
+    let output = mint(&out, false, false);
 
     // Build the state production builds: fixtures + people + estate, then the
     // generated config APPLIED (bridge + ledger + alerting from the file).
@@ -276,8 +362,8 @@ async fn tokens_drive_the_real_router_whoami_and_the_seam() {
 #[test]
 fn container_mode_binds_wide_and_says_why_native_stays_loopback() {
     let dir = scratch("bootstrap-bind");
-    let native = bootstrap_dev(&dir.join("native"), false, false).expect("native world");
-    let container = bootstrap_dev(&dir.join("container"), false, true).expect("container world");
+    let native = mint(&dir.join("native"), false, false);
+    let container = mint(&dir.join("container"), false, true);
 
     // Native: NO bind key — the default (loopback_listener) path.
     let native_cfg = ServiceConfig::load(&native.config_path).expect("native config");
@@ -339,6 +425,26 @@ fn compose_ports_are_host_loopback() {
              every published port must carry the 127.0.0.1: prefix"
         );
     }
+}
+
+// -- 9. STANDING (S5c): the compose bootstrap one-shot runs WITHOUT --force.
+//       With the non-destructive default, this line is exactly what makes
+//       repeated `docker compose up` / `compose run` cycles unable to rotate
+//       keys or reset ledgers; a --force here would resurrect the footgun.
+#[test]
+fn compose_bootstrap_one_shot_is_not_forced() {
+    let compose = std::fs::read_to_string(repo_root().join("docker-compose.yml"))
+        .expect("docker-compose.yml at the repo root");
+    let bootstrap_cmd = compose
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .find(|line| line.contains("bootstrap-dev"))
+        .expect("the bootstrap one-shot command is in docker-compose.yml");
+    assert!(
+        !bootstrap_cmd.contains("--force"),
+        "the compose bootstrap one-shot must NOT pass --force — the \
+         non-destructive default is the point: {bootstrap_cmd}"
+    );
 }
 
 /// GET `uri` with a Bearer token through the router; return (status, body).
