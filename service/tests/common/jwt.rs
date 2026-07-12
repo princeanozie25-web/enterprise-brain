@@ -198,15 +198,18 @@ impl TokenSpec {
     }
 }
 
-/// Corrupt a valid token's signature by one character (still valid base64url,
-/// different bytes) — the flipped-byte forgery.
+/// Corrupt a valid token's signature while preserving canonical base64url.
+/// Mutating the final encoded character can produce non-canonical padding
+/// bits for a 256-byte RSA signature, which tests parsing rather than
+/// signature verification.
 pub fn tamper_signature(token: &str) -> String {
     let mut parts: Vec<String> = token.split('.').map(str::to_string).collect();
     assert_eq!(parts.len(), 3, "tamper_signature expects a compact JWS");
-    let sig = parts[2].as_bytes().to_vec();
-    let mut sig = sig;
-    let last = sig.len() - 1;
-    sig[last] = if sig[last] == b'A' { b'B' } else { b'A' };
-    parts[2] = String::from_utf8(sig).expect("base64url stays ascii");
+    let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    let mut signature = b64
+        .decode(&parts[2])
+        .expect("valid token has a decodable signature");
+    signature[0] ^= 0x01;
+    parts[2] = b64.encode(signature);
     parts.join(".")
 }
