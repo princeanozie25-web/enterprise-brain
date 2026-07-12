@@ -7,7 +7,7 @@ mod common;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use axum::body::Body;
@@ -48,10 +48,27 @@ fn percentile(sorted: &[Duration], p: f64) -> Duration {
     sorted[index.saturating_sub(1).min(sorted.len() - 1)]
 }
 
+/// These are BENCHMARKS with hard gates, not logic tests: the default test
+/// harness runs a target's tests on parallel threads, so the timing tests
+/// contend with each other for cores and flake under load (thrice observed,
+/// always under concurrent heavy builds). Every test in this target takes
+/// this lock so the target executes serially — the smallest mechanism the
+/// harness supports (cargo has no per-target --test-threads knob, and a
+/// workspace-wide RUST_TEST_THREADS=1 would serialize the whole suite).
+/// Thresholds are untouched; the gate just gets a quiet core.
+static QUIET_CORE: Mutex<()> = Mutex::new(());
+
+fn quiet_core() -> std::sync::MutexGuard<'static, ()> {
+    // A poisoned lock (an earlier benchmark panicked) must not cascade —
+    // the serialization, not the payload, is what matters here.
+    QUIET_CORE.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 // Startup: the full estate load + content-hash verification is well under
 // the 5 s budget.
 #[test]
 fn estate_load_stays_under_the_startup_budget() {
+    let _quiet = quiet_core();
     let started = Instant::now();
     let model = EstateModel::load(&estate_dir()).expect("estate loads");
     let elapsed = started.elapsed();
@@ -66,8 +83,13 @@ fn estate_load_stays_under_the_startup_budget() {
     );
 }
 
+// Holding the guard across await is THE mechanism (serialize the whole
+// benchmark); each #[tokio::test] is a single-task current-thread runtime,
+// so the deadlock this lint guards against cannot occur here.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn warm_p99_on_the_grown_estate_stays_under_100ms() {
+    let _quiet = quiet_core();
     let dir = scratch("estate-latency");
     let jwks_path = dir.join("jwks.json");
     fs::write(&jwks_path, &jwt::issuer().jwks_json).expect("write jwks");
@@ -194,8 +216,11 @@ async fn warm_p99_on_the_grown_estate_stays_under_100ms() {
 // S3 34.5ms p99 before the estate got an ingest-built index. Target < 10ms
 // (hard gate stays < 100ms); this proves the O(corpus) cliff is gone (query
 // time no longer re-tokenizes 750 bodies).
+// Same single-task-runtime justification as the warm_p99 benchmark above.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn retrieve_heavy_warm_p99_after_indexing() {
+    let _quiet = quiet_core();
     let dir = scratch("estate-latency-retrieve");
     let jwks_path = dir.join("jwks.json");
     fs::write(&jwks_path, &jwt::issuer().jwks_json).expect("write jwks");
