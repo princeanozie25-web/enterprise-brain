@@ -2,6 +2,8 @@
 
 **An authorization gateway for AI agents: authorization is proven before retrieval — unauthorized content never reaches the model.**
 
+> **Enterprise Brain** is a provisional working title — a permanent name is completing trademark clearance.
+
 ```text
                         ┌─────────────────────────── Enterprise Brain gateway ───────────────────────────┐
   agent (Entra JWT) ──▶ │  validation ladder ─▶ registry (tid,oid) ─▶ compiled scope ─▶ governed retrieval │ ──▶ only authorized
@@ -81,6 +83,7 @@ verify-ledger audit.jsonl                               -> CLEAN: 15 rows (15 ha
 
 ## Posture
 
+- **Synthetic corpus.** Every document, person, department, and organization in `fixtures/` is generated fiction — no real company data, no real people, no real records.
 - **No telemetry.** The gateway and the SDK make no calls except the ones you configure; nothing phones home.
 - **Entra status.** Supports Entra workload identities today; autonomous Agent ID attestation is integrated fail-closed and pending live validation against Microsoft's preview token issuance ([detail](docs/s0b-launch-gate.md)).
 - **Solo maintainer.** Best-effort responses; security reports get priority — see [SECURITY.md](SECURITY.md). No SLA is implied.
