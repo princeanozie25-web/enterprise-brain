@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref — a fresh push makes the old run moot.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: workspace suite (release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + build
+        uses: Swatinem/rust-cache@v2
+
+      # compiler/artifacts and retrieval/idx are generated, not committed
+      # (.gitignore) — the gateway and ~15 tests read them at their repo paths,
+      # so a fresh checkout must provision them exactly as the Dockerfile does
+      # before the suite runs.
+      - name: Provision compiled scope artifacts + retrieval index
+        run: |
+          cargo run --release -p scope-compiler -- compile --fixtures fixtures --out compiler/artifacts
+          cargo run --release -p retrieval     -- index   --fixtures fixtures --out retrieval/idx
+
+      - name: cargo test --workspace --release
+        run: cargo test --workspace --release
