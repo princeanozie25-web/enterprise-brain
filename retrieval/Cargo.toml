@@ -2,6 +2,7 @@
 name = "retrieval"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-only"
 description = "Enterprise Brain M2a: governed lexical (BM25) retrieval strictly inside M1 compiled allowlists"
 publish = false
 

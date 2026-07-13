@@ -2,6 +2,7 @@
 name = "wiki"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-only"
 description = "Enterprise Brain — org knowledge layer (slices 1-2): deterministic + scoped-LLM entity pages derived from the synthetic Bryremead sources, firewalled from the compiled authorization model and scope-gated at derivation."
 publish = false
 
