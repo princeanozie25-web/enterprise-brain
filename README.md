@@ -2,17 +2,46 @@
 
 **An authorization gateway for AI agents: authorization is proven before retrieval — unauthorized content never reaches the model.**
 
+[![CI](https://github.com/princeanozie25-web/enterprise-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/princeanozie25-web/enterprise-brain/actions/workflows/ci.yml)
+[![conformance 94,500/0/0](https://img.shields.io/badge/conformance-94%2C500%2F0%2F0-2ea44f)](#conformance)
+[![tests 351 passing](https://img.shields.io/badge/tests-351%20passing-2ea44f)](#conformance)
+[![license AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
+[![SDK Apache-2.0](https://img.shields.io/badge/SDK-Apache--2.0-blue)](https://github.com/princeanozie25-web/enterprise-brain-python)
+<!-- tests badge is static: bump "351 passing" when the workspace suite count changes (the CI badge above is live). -->
+
 > **Enterprise Brain** is a provisional working title — a permanent name is completing trademark clearance.
 
-```text
-                        ┌─────────────────────────── Enterprise Brain gateway ───────────────────────────┐
-  agent (Entra JWT) ──▶ │  validation ladder ─▶ registry (tid,oid) ─▶ compiled scope ─▶ governed retrieval │ ──▶ only authorized
-      /v1 (machine)     │        │                    │                   │  (scope INSIDE the query)      │      content
-                        │        └────────────────────┴───────────────────┴──▶ hash-chained decision ledger │
-  human (session) ────▶ │  console surface (separate door; a session never opens /v1, a JWT never opens it) │
-                        └────────────────────────────────────────────────────────────────────────────────┘
-   sources: primary corpus + estate connectors (bytes only — authority NEVER travels with a document)
+If you've ever built an internal AI assistant, you know the dirty secret: it runs on one service account that can read everything, and the "security" is a system prompt asking the model nicely not to mention the salary spreadsheet. **A system prompt is not an access control.**
+
+<p align="center">
+  <img src="docs/assets/seam-demo.gif" alt="Agent A is cleared for a confidential document and gets it (200, full body); Agent B is not and gets a 404 identical to 'does not exist'; then verify-ledger proves every row of the exchange is hash-chained." width="820">
+</p>
+
+<p align="center"><sub>Animation not playing? Static frame: <a href="docs/assets/seam-demo.png">docs/assets/seam-demo.png</a></sub></p>
+
+*Agent A is cleared for the document and gets it. Agent B is not — and gets a 404 identical to "does not exist." Then the ledger proves the whole exchange. The document did not decide; the access model did.*
+
+## Try it
+
+```sh
+git clone https://github.com/princeanozie25-web/enterprise-brain.git && cd enterprise-brain
+docker compose up
+# tokens print in the bootstrap logs — then:
+curl -H "Authorization: Bearer $AGENT_A" localhost:8787/v1/documents/<confidential-doc>   # 200
+curl -H "Authorization: Bearer $AGENT_B" localhost:8787/v1/documents/<confidential-doc>   # 404
 ```
+
+*Fully offline. Synthetic 750-document company. Demo credentials minted locally, never committed. Ten minutes from clone to handing your security team a tamper-evident ledger of everything the agent saw.*
+
+The gateway publishes **host-loopback only** (`127.0.0.1:8787`); the demo world persists across restarts (bootstrap is non-destructive by default; rotation is a deliberate `--force`). Full walkthrough with the exact tokens: [QUICKSTART.md](QUICKSTART.md) · native and SDK paths: [docs/quickstart.md](docs/quickstart.md).
+
+## Why this exists
+
+- Out-of-scope documents are **never even searched** — excluded at query construction, so there is no post-filter seam to leak through snippets or scores.
+- Your agent authenticates as **its own identity** (Entra JWT, 10-step fail-closed ladder) — not as a god-mode service account.
+- Every document that enters model context corresponds to **a ledgered allow** — hash-chained; tamper with any row in history and `verify-ledger` names it.
+- An agent probing beyond its scope raises **a structured alert in milliseconds** — off the request path, so alerting can never slow or break a request.
+- Misconfiguration **says its name** — `doctor` preflight and an unhealthy container with the broken field in the logs, never a silent 401.
 
 ## Ten lines to governed retrieval
 
@@ -29,23 +58,21 @@ retriever = eb.as_langchain_retriever()           # LangChain: every document th
 docs = retriever.invoke("supplier audit findings")  # model context is a ledgered allow
 ```
 
+## Conformance
+
 **94,500/0/0 estate-wide decision conformance; a single false-allow blocks release.** Every (principal × document) pair is checked against an oracle that recomputes expected access independently from the raw fixture facts — the gateway's answers must match all of them, and the suite re-runs on every change.
 
-## Three commands to a running gateway
+## Architecture
 
-```sh
-git clone https://github.com/princeanozie25-web/enterprise-brain.git
-cd enterprise-brain
-docker compose up --build -d     # healthy in ~a minute; tokens: docker compose logs bootstrap
+```text
+                        ┌─────────────────────────── Enterprise Brain gateway ───────────────────────────┐
+  agent (Entra JWT) ──▶ │  validation ladder ─▶ registry (tid,oid) ─▶ compiled scope ─▶ governed retrieval │ ──▶ only authorized
+      /v1 (machine)     │        │                    │                   │  (scope INSIDE the query)      │      content
+                        │        └────────────────────┴───────────────────┴──▶ hash-chained decision ledger │
+  human (session) ────▶ │  console surface (separate door; a session never opens /v1, a JWT never opens it) │
+                        └────────────────────────────────────────────────────────────────────────────────┘
+   sources: primary corpus + estate connectors (bytes only — authority NEVER travels with a document)
 ```
-
-The gateway publishes **host-loopback only** (`127.0.0.1:8787`). Demo agent tokens are minted locally on a volume — never committed, and the world persists across restarts (bootstrap is non-destructive by default; rotation is a deliberate `--force`). See [QUICKSTART.md](QUICKSTART.md) for the two curls that prove the invariant, and [docs/quickstart.md](docs/quickstart.md) for the native and SDK paths.
-
-## The seam, in one recording
-
-![Two agents, one confidential estate document: one reads it (200, full body), the other gets THE 404 — and every decision is a chained ledger row.](docs/assets/seam-demo.gif)
-
-The same object, two agents, two answers. **The document did not decide. The access model did** — and `verify-ledger` proves every 200 and 404 above is a hash-chained row. (Values are synthetic; the run is real.)
 
 ---
 
