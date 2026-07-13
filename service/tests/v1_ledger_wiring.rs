@@ -41,8 +41,7 @@ fn scratch(name: &str) -> PathBuf {
     // Unique per invocation: Windows scanners (Search indexer / Defender) can
     // hold a just-deleted path in delete-pending state, so re-creating the
     // SAME path races them into Os error 5 "Access is denied". A fresh suffix
-    // never re-opens a dying path; prior runs' dirs are swept best-effort (a
-    // locked leftover is skipped now and reaped on a later run).
+    // never re-opens a dying path.
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     // The base lives in the SYSTEM temp dir, not target/tmp: the repo sits
     // under Documents\, which Windows Search indexes by default — its crawler
@@ -50,16 +49,13 @@ fn scratch(name: &str) -> PathBuf {
     // os error 5. AppData\Local\Temp is outside the default index scope.
     let base = std::env::temp_dir().join("enterprise-brain-test-scratch");
     std::fs::create_dir_all(&base).expect("scratch base");
-    let prefix = format!("{name}-");
-    if let Ok(entries) = base.read_dir() {
-        for entry in entries.flatten() {
-            if entry.file_name().to_string_lossy().starts_with(&prefix) {
-                let _ = std::fs::remove_dir_all(entry.path());
-            }
-        }
-    }
+    // CREATE-ONLY: the unique pid+seq suffix already guarantees no collision,
+    // so this helper never deletes a sibling. Reaping by shared name-prefix
+    // raced a concurrently running test in the same binary that used the same
+    // name and deleted its live dir (failed estate_probes on Linux CI). Stale
+    // dirs from old runs are harmless; the OS temp cleaner reaps them.
     let dir = base.join(format!(
-        "{prefix}{}-{}",
+        "{name}-{}-{}",
         std::process::id(),
         SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
