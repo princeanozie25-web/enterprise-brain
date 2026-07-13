@@ -28,4 +28,5 @@ and `xms_par_app_azp`. Therefore `bridge_live` correctly denies it as
 Do not relax the bridge to close this gate. Re-run the ignored live test only
 after Microsoft provides a token issued with the documented Agent Identity
 facets. The support reproduction is in
-[s0b-upstream-reproduction.md](s0b-upstream-reproduction.md).
+[s0b-upstream-reproduction.md](s0b-upstream-reproduction.md); upstream report:
+<https://github.com/AzureAD/microsoft-identity-web/issues/3938>.
