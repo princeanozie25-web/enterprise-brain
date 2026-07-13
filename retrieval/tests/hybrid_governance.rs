@@ -12,7 +12,7 @@ mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -27,22 +27,28 @@ use retrieval::vector::{build_vectors, snippet_of};
 use serde_json::Value;
 
 fn scratch(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
-    // Windows deletion is asynchronous: a remove_dir_all can return while the
-    // entries are still delete-pending, making the fresh dir look non-empty.
-    // Retry, bounded, until the directory is really empty.
-    for attempt in 0u64..50 {
-        let _ = fs::remove_dir_all(&dir);
-        if fs::create_dir_all(&dir).is_ok()
-            && fs::read_dir(&dir)
-                .map(|mut entries| entries.next().is_none())
-                .unwrap_or(false)
-        {
-            return dir;
+    // Unique per invocation: Windows scanners (Search indexer / Defender) can
+    // hold a just-deleted path in delete-pending state, so re-creating the
+    // SAME path races them into Os error 5 "Access is denied". A fresh suffix
+    // never re-opens a dying path; prior runs' dirs are swept best-effort (a
+    // locked leftover is skipped now and reaped on a later run).
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let base = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let prefix = format!("{name}-");
+    if let Ok(entries) = base.read_dir() {
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with(&prefix) {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
         }
-        std::thread::sleep(std::time::Duration::from_millis(20 * (attempt.min(5) + 1)));
     }
-    panic!("scratch dir {name} could not be reset");
+    let dir = base.join(format!(
+        "{prefix}{}-{}",
+        std::process::id(),
+        SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    dir
 }
 
 struct HybridSetup {
