@@ -41,6 +41,12 @@ docker compose up --build -d     # healthy in ~a minute; tokens: docker compose 
 
 The gateway publishes **host-loopback only** (`127.0.0.1:8787`). Demo agent tokens are minted locally on a volume — never committed, and the world persists across restarts (bootstrap is non-destructive by default; rotation is a deliberate `--force`). See [QUICKSTART.md](QUICKSTART.md) for the two curls that prove the invariant, and [docs/quickstart.md](docs/quickstart.md) for the native and SDK paths.
 
+## The seam, in one recording
+
+![Two agents, one confidential estate document: one reads it (200, full body), the other gets THE 404 — and every decision is a chained ledger row.](docs/assets/seam-demo.gif)
+
+The same object, two agents, two answers. **The document did not decide. The access model did** — and `verify-ledger` proves every 200 and 404 above is a hash-chained row. (Values are synthetic; the run is real.)
+
 ---
 
 ## The invariants
