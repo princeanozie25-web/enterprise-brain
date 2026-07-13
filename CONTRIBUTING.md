@@ -35,7 +35,10 @@ and the PR.
 
 ## Licensing of contributions
 
-DCO vs CLA is **deliberately undecided** until the launch ceremony (the
-licence itself is still being finalised). Until then, contributions are
-accepted on the understanding they will be licensed under the project's
-eventual OSS licence; if that is unacceptable, wait for the decision.
+Contributions land under the **Developer Certificate of Origin**
+([developercertificate.org](https://developercertificate.org)): sign every
+commit with `git commit -s`, which adds the `Signed-off-by:` trailer
+asserting you have the right to submit the work. The project licence is
+AGPL-3.0 (see [LICENSE](LICENSE)); your contribution is licensed the same
+way. The DCO may be upgraded to a CLA at company formation — commits signed
+before any such change remain governed by the DCO they were made under.
