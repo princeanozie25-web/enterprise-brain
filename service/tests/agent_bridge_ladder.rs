@@ -273,6 +273,27 @@ fn row8_delegated_and_agent_user_shapes_are_unsupported() {
         deny_reason(bridge().authenticate(&obo)),
         DenyReason::UnsupportedTokenTypeDelegated
     );
+    // A token issued to the registered Agent Identity but without the signed
+    // AgentIdentity facets is not an autonomous Agent ID token. An omitted
+    // optional `idtyp` cannot turn this shape into an allow — and it is not
+    // provably DELEGATED either: it is evidence-insufficient, so it denies as
+    // agent_facets_missing (the S0b taxonomy: operators land on the
+    // attestation runbook row, not the delegated one). This is the live
+    // Microsoft preview token shape, reproduced (docs/s0b-launch-gate.md).
+    let nonfaceted_agent = TokenSpec::v1_autonomous(QA_OID)
+        .without("idtyp")
+        .without("scp")
+        .without("xms_sub_fct")
+        .without("xms_act_fct")
+        .without("xms_par_app_azp")
+        .without("xms_idrel")
+        .with("appid", json!(QA_OID))
+        .with("roles", json!(["Agent.Access"]))
+        .sign();
+    assert_eq!(
+        deny_reason(bridge().authenticate(&nonfaceted_agent)),
+        DenyReason::AgentFacetsMissing
+    );
     // The agent's user account: subject facet 13.
     let agent_user = TokenSpec::autonomous(QA_OID)
         .with("idtyp", json!("user"))
@@ -367,6 +388,24 @@ fn valid_v2_and_v1_agent_tokens_resolve_the_registered_principal() {
         }
         BridgeOutcome::Denied { reason, .. } => panic!("v1 denied {}", reason.as_str()),
     }
+}
+
+// Entra's `idtyp` is optional. A real autonomous Agent ID access-token shape
+// may therefore omit it while retaining both signed AgentIdentity facets.
+// This must resolve, but only because the facets identify the subject AND
+// actor as AgentIdentity; a delegated user remains rejected at row 8.
+#[test]
+fn autonomous_agent_without_optional_idtyp_resolves() {
+    let agent_without_optional_idtyp = TokenSpec::autonomous(QA_OID)
+        .without("idtyp")
+        .with("xms_sub_fct", json!("9 3 11"))
+        .with("xms_act_fct", json!("11 99"))
+        .sign();
+
+    assert_eq!(
+        resolved_principal(bridge().authenticate(&agent_without_optional_idtyp)),
+        "agent_qa_drafter"
+    );
 }
 
 // The HttpJwks failure path through the FULL ladder: no key -> deny.

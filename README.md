@@ -82,5 +82,6 @@ verify-ledger audit.jsonl                               -> CLEAN: 15 rows (15 ha
 ## Posture
 
 - **No telemetry.** The gateway and the SDK make no calls except the ones you configure; nothing phones home.
+- **Entra status.** Supports Entra workload identities today; autonomous Agent ID attestation is integrated fail-closed and pending live validation against Microsoft's preview token issuance ([detail](docs/s0b-launch-gate.md)).
 - **Solo maintainer.** Best-effort responses; security reports get priority — see [SECURITY.md](SECURITY.md). No SLA is implied.
 - **Licence to be finalised at public release.**

@@ -52,7 +52,9 @@ pub struct ClaimSet {
 /// ladder row 8.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scenario {
-    /// `idtyp: app` — the S0 target shape (facets checked at row 9).
+    /// An autonomous Agent ID. `idtyp: app` is the documented shape; the
+    /// `idtyp` claim is optional in Entra access tokens, so its absence is
+    /// accepted only when both signed AgentIdentity facets are present.
     AutonomousAgent,
     /// A human-subject (on-behalf-of / delegated) token.
     Delegated,
@@ -86,12 +88,19 @@ impl ClaimSet {
     /// from an agent's user account; a `13` facet classifies as the agent's
     /// user account REGARDLESS of `idtyp` (ambiguous hybrids deny as the
     /// unsupported interactive shape, never as autonomous — EB-4).
+    ///
+    /// `idtyp` is an optional Entra access-token claim. Its absence must not
+    /// turn a signed autonomous Agent ID token into a delegated token, but it
+    /// is NEVER an allow by itself: the absent-`idtyp` path requires both
+    /// AgentIdentity facets (`11`). An explicit non-`app` value, especially
+    /// `user`, remains delegated.
     pub fn scenario(&self) -> Scenario {
         if self.sub_fct.contains(&FACET_AGENT_USER_ACCOUNT) {
             return Scenario::AgentUserAccount;
         }
         match self.idtyp.as_deref() {
             Some("app") => Scenario::AutonomousAgent,
+            None if self.has_agent_facets() => Scenario::AutonomousAgent,
             _ => Scenario::Delegated,
         }
     }
@@ -223,6 +232,23 @@ mod tests {
         // Missing idtyp is not an autonomous agent.
         let bare = ClaimSet::from_value(&json!({}));
         assert_eq!(bare.scenario(), Scenario::Delegated);
+
+        // `idtyp` is optional on Entra access tokens. Its omission is not a
+        // delegated-user signal when the signed agent facets unambiguously
+        // identify an autonomous Agent ID.
+        let agent_without_optional_idtyp = ClaimSet::from_value(&json!({
+            "xms_sub_fct": "9 3 11", "xms_act_fct": "11 99"
+        }));
+        assert_eq!(
+            agent_without_optional_idtyp.scenario(),
+            Scenario::AutonomousAgent
+        );
+
+        // An explicit user subject cannot use agent facets to become app-only.
+        let user_with_agent_facets = ClaimSet::from_value(&json!({
+            "idtyp": "user", "xms_sub_fct": "11", "xms_act_fct": "11"
+        }));
+        assert_eq!(user_with_agent_facets.scenario(), Scenario::Delegated);
     }
 
     #[test]

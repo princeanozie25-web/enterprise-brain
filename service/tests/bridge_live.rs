@@ -67,9 +67,14 @@ fn live_entra_agent_token_walks_the_identical_ladder() {
         }
         BridgeOutcome::Denied { reason, claims } => {
             panic!(
-                "S0b LIVE: denied {} (claims extracted: {})",
+                "S0b LIVE: denied {} (claims extracted: {}; idtyp={:?} sub_fct={:?} act_fct={:?} parent={:?} idrel={:?})",
                 reason.as_str(),
-                claims.is_some()
+                claims.is_some(),
+                claims.as_ref().and_then(|c| c.idtyp.as_deref()),
+                claims.as_ref().map(|c| &c.sub_fct),
+                claims.as_ref().map(|c| &c.act_fct),
+                claims.as_ref().and_then(|c| c.parent_app_azp.as_deref()),
+                claims.as_ref().map(|c| &c.idrel),
             );
         }
     }

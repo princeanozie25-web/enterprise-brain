@@ -542,6 +542,20 @@ async fn wire_deny_is_generic() {
                     .sign(),
             ),
         ),
+        // S0b taxonomy: idtyp ABSENT + facets absent is the SAME reason
+        // (evidence-insufficient, not provably delegated) — and the same
+        // mute wire.
+        (
+            "agent_facets_missing (idtyp absent)",
+            &enabled,
+            Some(
+                TokenSpec::autonomous(FINANCE_OID)
+                    .without("idtyp")
+                    .without("xms_sub_fct")
+                    .without("xms_act_fct")
+                    .sign(),
+            ),
+        ),
         (
             "agent_not_registered",
             &enabled,

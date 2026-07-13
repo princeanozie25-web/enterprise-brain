@@ -28,7 +28,7 @@ misconfigurations before they become mystery denies.
 | `tenant_mismatch` | `tid` differs from the configured tenant | Same as issuer: the agent lives in another tenant |
 | `unsupported_token_type_delegated` | A delegated (user) token (`scp`/user claims) | Only autonomous-agent (app-only) tokens; use client-credentials |
 | `unsupported_token_type_agent_user` | An agent-user interactive shape (`xms_idrel` user side) | Same: app-only autonomous tokens only |
-| `agent_facets_missing` | `idtyp`/agent facets absent (`xms_act_fct`/`xms_sub_fct`) | The identity is not an Entra agent identity; register a real agent identity |
+| `agent_facets_missing` | Agent attestation facets absent: `xms_sub_fct`/`xms_act_fct` lack `11` — including tokens that omit `idtyp` entirely (evidence-insufficient, not provably delegated) | The issuer did not mint agent attestation claims — see [s0b-launch-gate](s0b-launch-gate.md); if the caller is not an agent identity at all, register a real one |
 | `agent_not_registered` | Ladder passed, but `(tid, oid)` has no registry row | Register the agent in `agent_bridge.agents` — a GHOST registration (row pointing at an unknown principal) is named by `doctor` at preflight |
 
 ## Resource-level denies (wire: THE 404 / generic 4xx-5xx)

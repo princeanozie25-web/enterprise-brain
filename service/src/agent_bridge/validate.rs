@@ -239,7 +239,19 @@ impl TokenValidator {
         match claims.scenario() {
             Scenario::AutonomousAgent => {}
             Scenario::Delegated => {
-                return Err(deny_with(DenyReason::UnsupportedTokenTypeDelegated))
+                // S0b taxonomy: an ABSENT `idtyp` classifies Delegated only
+                // because the agent facets were insufficient (absent-`idtyp`
+                // WITH both facets is autonomous). Such a token is not
+                // provably delegated — it is evidence-insufficient, and the
+                // reason that literally describes it is agent_facets_missing
+                // (routing operators to the attestation runbook row, not the
+                // delegated one). An EXPLICIT non-`app` idtyp remains the
+                // delegated deny.
+                return Err(deny_with(if claims.idtyp.is_none() {
+                    DenyReason::AgentFacetsMissing
+                } else {
+                    DenyReason::UnsupportedTokenTypeDelegated
+                }));
             }
             Scenario::AgentUserAccount => {
                 return Err(deny_with(DenyReason::UnsupportedTokenTypeAgentUser))
