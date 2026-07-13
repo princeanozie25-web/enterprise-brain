@@ -26,9 +26,9 @@ pub fn fixtures_dir() -> PathBuf {
         .join("fixtures")
 }
 
-/// A fresh per-invocation scratch dir under the cargo-managed tmp dir — the
-/// same unique-suffix shape every sibling crate's test helper uses (rationale
-/// in the body comment).
+/// A fresh per-invocation scratch dir under the SYSTEM temp dir — the same
+/// unique-suffix shape every sibling crate's test helper uses (rationale in
+/// the body comment).
 pub fn scratch(name: &str) -> PathBuf {
     // Unique per invocation: Windows scanners (Search indexer / Defender) can
     // hold a just-deleted path in delete-pending state, so re-creating the
@@ -36,7 +36,12 @@ pub fn scratch(name: &str) -> PathBuf {
     // never re-opens a dying path; prior runs' dirs are swept best-effort (a
     // locked leftover is skipped now and reaped on a later run).
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let base = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    // The base lives in the SYSTEM temp dir, not target/tmp: the repo sits
+    // under Documents\, which Windows Search indexes by default — its crawler
+    // opens freshly written index segments mid-build and the write fails with
+    // os error 5. AppData\Local\Temp is outside the default index scope.
+    let base = std::env::temp_dir().join("enterprise-brain-test-scratch");
+    std::fs::create_dir_all(&base).expect("scratch base");
     let prefix = format!("{name}-");
     if let Ok(entries) = base.read_dir() {
         for entry in entries.flatten() {
