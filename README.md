@@ -27,8 +27,8 @@ If you've ever built an internal AI assistant, you know the dirty secret: it run
 git clone https://github.com/princeanozie25-web/enterprise-brain.git && cd enterprise-brain
 docker compose up
 # tokens print in the bootstrap logs — then:
-curl -H "Authorization: Bearer $AGENT_A" localhost:8787/v1/documents/<confidential-doc>   # 200
-curl -H "Authorization: Bearer $AGENT_B" localhost:8787/v1/documents/<confidential-doc>   # 404
+curl -H "Authorization: Bearer $AGENT_A" localhost:8787/v1/documents/s3/finance-restricted/2026/q1/budget-variance-ashcombe.md   # 200
+curl -H "Authorization: Bearer $AGENT_B" localhost:8787/v1/documents/s3/finance-restricted/2026/q1/budget-variance-ashcombe.md   # 404
 ```
 
 *Fully offline. Synthetic 750-document company. Demo credentials minted locally, never committed. Ten minutes from clone to handing your security team a tamper-evident ledger of everything the agent saw.*
