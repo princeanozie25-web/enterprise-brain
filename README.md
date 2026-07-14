@@ -108,6 +108,7 @@ verify-ledger audit.jsonl                               -> CLEAN: 15 rows (15 ha
 | --- | --- |
 | [docs/quickstart.md](docs/quickstart.md) | Docker, native, and SDK paths from zero |
 | [docs/concepts.md](docs/concepts.md) | The invariants, the two surfaces, authority-vs-bytes |
+| [docs/without-an-agent.md](docs/without-an-agent.md) | Using it with **no LLM** — permission-aware search + audit trail on their own |
 | [docs/how-to/](docs/how-to/) | Register an agent, add a source, rotate dev keys, read the ledger, run doctor, verify a ledger |
 | [docs/reference/](docs/reference/) | `/v1` API, ServiceConfig schema, CLI (`bootstrap-dev` / `doctor` / `verify-ledger`) |
 | [docs/runbook-denials.md](docs/runbook-denials.md) | **Every deny class → where the truth lives → the fix** (the wire is mute on purpose) |
